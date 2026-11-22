@@ -6,7 +6,7 @@ import from json { dumps, loads }
 glob _logger: logging.Logger = logging.getLogger("jaclang.server.serving.sse");
 
 
-def _sse_json_default(o: any) -> any;
+def _sse_json_default(o: any) -> str;
 
 def format_sse_event(data_text: str, event: (str | None) = None) -> str;
 

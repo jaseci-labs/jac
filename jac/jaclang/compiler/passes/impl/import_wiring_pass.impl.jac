@@ -27,15 +27,12 @@ impl ImportWiringPass._check_arch_module(mod: Module) -> None {
     is_root = spec is not None
         and os.path.realpath(spec.path) == os.path.realpath(path);
     blocks: list[GraphImport] = [];
-    spaces_blocks: list[GraphSpaces] = [];
     for stmt in mod.body {
         if isinstance(stmt, GraphImport) {
             blocks.append(stmt);
-        } elif isinstance(stmt, GraphSpaces) {
-            spaces_blocks.append(stmt);
         } elif isinstance(stmt, String) {
             self.ctx.emit(E2089, node_override=stmt, kind="docstring");
-        } elif not isinstance(stmt, EmptyToken) {
+        } elif not isinstance(stmt, (EmptyToken, GraphSpaces)) {
             self.ctx.emit(
                 E2089,
                 node_override=stmt,
@@ -66,90 +63,6 @@ impl ImportWiringPass._check_arch_module(mod: Module) -> None {
                 self._check_rule_patterns(spec, stmt);
             } elif isinstance(stmt, ImportWire) {
                 self._check_wire(spec, stmt);
-            }
-        }
-    }
-    self._check_spaces(spaces_blocks);
-}
-
-impl ImportWiringPass._check_spaces(blocks: list[GraphSpaces]) -> None {
-    hosts = ("native", "browser", "wasm", "node", "hermes", "cpython");
-    space_hosts: dict[str, str] = {};
-    pattern_owner: dict[str, str] = {};
-    apps_seen: dict[str, set[str]] = {};
-    for block in blocks {
-        profile = block.profile_name;
-        for stmt in block.body {
-            if isinstance(stmt, SpaceDecl) {
-                if profile {
-                    self.ctx.emit(
-                        E1271, node_override=stmt.name, space=stmt.name.value
-                    );
-                }
-                if stmt.host.value not in hosts {
-                    self.ctx.emit(E1226, node_override=stmt.host, host=stmt.host.value);
-                }
-                if stmt.name.value in space_hosts {
-                    self.ctx.emit(
-                        E0077,
-                        node_override=stmt.name,
-                        name=stmt.name.value,
-                        kind="space"
-                    );
-                } else {
-                    space_hosts[stmt.name.value] = stmt.host.value;
-                }
-                for text in stmt.pattern_texts {
-                    owner = pattern_owner.get(text);
-                    if owner is not None and owner != stmt.name.value {
-                        self.ctx.emit(
-                            E1275,
-                            node_override=stmt.name,
-                            pattern=text,
-                            space=stmt.name.value,
-                            other=owner
-                        );
-                    } else {
-                        pattern_owner[text] = stmt.name.value;
-                    }
-                }
-            } elif isinstance(stmt, AppDecl) {
-                seen = apps_seen.setdefault(profile, set());
-                if stmt.name.value in seen {
-                    self.ctx.emit(
-                        E0077, node_override=stmt.name, name=stmt.name.value, kind="app"
-                    );
-                }
-                seen.add(stmt.name.value);
-            }
-        }
-    }
-    for block in blocks {
-        for stmt in block.body {
-            if not isinstance(stmt, AppDecl) {
-                continue;
-            }
-            for space in list(stmt.runs) + list(stmt.serves) {
-                if space.value not in space_hosts {
-                    self.ctx.emit(
-                        E1273,
-                        node_override=space,
-                        app=stmt.name.value,
-                        space=space.value
-                    );
-                }
-            }
-            for space in stmt.serves {
-                host = space_hosts.get(space.value, "");
-                if host and host not in ("browser", "wasm") {
-                    self.ctx.emit(
-                        E1272,
-                        node_override=space,
-                        app=stmt.name.value,
-                        space=space.value,
-                        host=host
-                    );
-                }
             }
         }
     }

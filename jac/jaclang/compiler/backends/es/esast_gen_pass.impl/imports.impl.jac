@@ -26,16 +26,15 @@ impl EsastGenPass._register_jac_runtime_import -> None {
 }
 
 impl EsastGenPass._inject_runtime_import(
-    name: str, nd: uni.UniNode, src: str = "", local: str = ""
+    name: str, nd: uni.UniNode, src: str = ""
 ) -> None {
-    local = local or name;
-    if local in self.injected_imports or self._has_import(local) {
+    if name in self.injected_imports or self._has_import(name) {
         return;
     }
     src = src or runtime_import_source(name, self.resolved_backend);
     specifier = self.sync_loc(
         es.ImportSpecifier(
-            imported=es.Identifier(name=name), local=es.Identifier(name=local)
+            imported=es.Identifier(name=name), local=es.Identifier(name=name)
         ),
         jac_node=nd
     );
@@ -44,36 +43,14 @@ impl EsastGenPass._inject_runtime_import(
         es.ImportDeclaration(specifiers=[specifier], source=source), jac_node=nd
     );
     self.imports.append(import_decl);
-    self.injected_imports.add(local);
+    self.injected_imports.add(name);
     if src.startswith('@jac/') and (src != JAC_PRELUDE_MODULE) {
         self._register_jac_runtime_import();
     }
 }
 
-impl EsastGenPass._is_stdjac_remote_import(nd: uni.Import) -> bool {
-    return nd.from_loc is not None
-        and nd.from_loc.dot_path_str == "stdjac.remote"
-        and bool(nd.items);
-}
-
-impl EsastGenPass._import_runtime_names(nd: uni.Import) -> None {
-    for item in nd.items {
-        if isinstance(item, uni.ModuleItem) {
-            self._inject_runtime_import(
-                item.name.value, nd, local=item.alias.sym_name if item.alias else ""
-            );
-        }
-    }
-}
-
 impl EsastGenPass.exit_import with uni.Import exit {
     if here.is_typed or here.is_comptime {
-        here.gen.es_ast = None;
-        return;
-    }
-
-    if self._is_stdjac_remote_import(here) {
-        self._import_runtime_names(here);
         here.gen.es_ast = None;
         return;
     }
@@ -385,49 +362,37 @@ impl EsastGenPass._generate_sv_import_stubs(
             );
         }
         call_args.append(provider_opts);
-        streams = self._stream_item_type(ret_type_name) is not None;
-        result_expr: es.Expression;
-        if streams {
-            result_expr = self._stream_call(
-                func_name, args_obj, provider_opts, ret_type_name, boundary_types, nd
-            );
-            self._inject_runtime_import('__jacCallStream', nd);
-        } else {
-            call_expr = self.sync_loc(
-                es.CallExpression(
-                    callee=self.sync_loc(
-                        es.Identifier(name='__jacCallFunction'), jac_node=nd
-                    ),
-                    arguments=call_args
+        call_expr = self.sync_loc(
+            es.CallExpression(
+                callee=self.sync_loc(
+                    es.Identifier(name='__jacCallFunction'), jac_node=nd
                 ),
-                jac_node=nd
-            );
-            await_expr: es.Expression = self.sync_loc(
-                es.AwaitExpression(argument=call_expr), jac_node=nd
-            );
-            result_expr = self._wrap_return_with_boundary(
-                await_expr, ret_type_name, boundary_types, nd, pre_awaited=True
-            );
-            self._inject_runtime_import('__jacCallFunction', nd);
-        }
+                arguments=call_args
+            ),
+            jac_node=nd
+        );
+        await_expr: es.Expression = self.sync_loc(
+            es.AwaitExpression(argument=call_expr), jac_node=nd
+        );
+        await_expr = self._wrap_return_with_boundary(
+            await_expr, ret_type_name, boundary_types, nd, pre_awaited=True
+        );
         return_stmt = self.sync_loc(
-            es.ReturnStatement(argument=result_expr), jac_node=nd
+            es.ReturnStatement(argument=await_expr), jac_node=nd
         );
         body = self.sync_loc(es.BlockStatement(body=[return_stmt]), jac_node=nd);
         func_id = self.sync_loc(es.Identifier(name=local_name), jac_node=nd);
         func_decl = self.sync_loc(
             es.FunctionDeclaration(
-                id=func_id,
-                params=js_params,
-                body=body,
-                generator=False,
-                async_=not streams
+                id=func_id, params=js_params, body=body, generator=False, async_=True
             ),
             jac_node=nd
         );
         stubs.append(func_decl);
     }
     if stubs {
+        self._inject_runtime_import('__jacCallFunction', nd);
+
         self.sv_import_stubs.extend(stubs);
     }
 }

@@ -22,15 +22,6 @@ glob:pub BridgeError = _BridgeError,
      BridgeUnavailable = _BridgeUnavailable,
      BridgeTimeout = _BridgeTimeout,
      BridgeRejected = _BridgeRejected,
-     RemoteError = _RemoteError,
-     RemoteUnavailable = _RemoteUnavailable,
-     RemoteTimeout = _RemoteTimeout,
-     RemoteRejected = _RemoteRejected,
-     RemoteDecodeError = _RemoteDecodeError,
-     RemoteFailed = _RemoteFailed,
-     JacArrangement = _JacArrangement,
-     JacLocalUsers = _JacLocalUsers,
-     unsafe_html = ___jacUnsafeHtml,
      __bridgeErrorFor = ___bridgeErrorFor,
      __bridgeErrorFromFetch = ___bridgeErrorFromFetch,
      __bridgeApiBase = ___bridgeApiBase;
@@ -38,7 +29,6 @@ glob:pub BridgeError = _BridgeError,
 glob:pub __createJacSchema = ___createJacSchema,
      __jacSpawn = ___jacSpawn,
      __jacCallFunction = ___jacCallFunction,
-     __jacCallStream = ___jacCallStream,
      __normalizeIdentity = ___normalizeIdentity,
      __normalizeCredential = ___normalizeCredential,
      __jacClearCache = ___jacClearCache,
@@ -98,11 +88,6 @@ async def:pub jacSsoConnections(api_base: str = "") -> list[dict[str, any]];
 async def:pub jacSsoDisconnect(platform: str, api_base: str = "") -> bool;
 
 def:pub jacSetToken(token: str) -> None;
-async def:pub jacArrangement -> _JacArrangement;
-async def:pub jacUseArrangement(name: str) -> None;
-async def:pub jacLocalUsers -> _JacLocalUsers;
-async def:pub jacUseLocalUser(name: str) -> bool;
-async def:pub jacLeaveLocalUser -> None;
 
 glob:pub Router = SolidRouter,
      useNavigate = solidUseNavigate,

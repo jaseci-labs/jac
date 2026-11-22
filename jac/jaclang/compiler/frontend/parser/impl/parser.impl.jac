@@ -7705,14 +7705,6 @@ impl parse_expression(
     );
 }
 
-impl Parser._check_word(word: str) -> bool {
-    return self.check(TokenKind.NAME) and self.current().value == word;
-}
-
-impl Parser._skip_token -> None {
-    self.advance();
-}
-
 impl Parser._name_or_keyword_token(what: str) -> LexToken {
     if self.check_name() or self.is_keyword_token() {
         return self.advance();
@@ -7729,130 +7721,25 @@ impl Parser.parse_graph_spaces -> GraphSpaces {
         kid.append(profile);
     }
     kid.append(self.consume_uni(TokenKind.LBRACE));
-    body: list[SpaceDecl | AppDecl] = [];
-    while not self.check(TokenKind.RBRACE) and not self.at_end() {
-        start = self.pos;
-        stmt: SpaceDecl | AppDecl | None = None;
-        if self._check_word("space") {
-            stmt = self.parse_space_decl();
-        } elif self._check_word("app") {
-            stmt = self.parse_app_decl();
-        } else {
-            self.emit_diag(
-                "Expected a space ('space name: host { ... }') or an app"
-                " ('app name { ... }') here",
-                "E0115"
-            );
-            self._skip_wiring_stmt();
-        }
-        if stmt is not None {
-            body.append(stmt);
-            kid.append(stmt);
-        }
-        if self.pos == start {
-            self._skip_token();
-        }
-    }
+    kid.extend(self._block_tokens());
     kid.append(self.consume_uni(TokenKind.RBRACE));
-    return GraphSpaces(profile=profile, body=body, kid=kid);
+    return GraphSpaces(profile=profile, kid=kid);
 }
 
-impl Parser.parse_space_decl -> SpaceDecl {
-    kid: list[UniNode] = [self.make_uni_token(self.expect(TokenKind.NAME))];
-    name = self.make_name(self.expect_name("space"));
-    kid.append(name);
-    kid.append(self.consume_uni(TokenKind.COLON));
-    host_tok = self.expect_name("host")
-        if self.check_name()
-        else self._name_or_keyword_token("host");
-    host = self.make_name(host_tok);
-    kid.append(host);
-    kid.append(self.consume_uni(TokenKind.LBRACE));
-    entry_module: ModulePath | None = None;
-    patterns: list[ModulePattern] = [];
-    while not self.check(TokenKind.RBRACE) and not self.at_end() {
-        start = self.pos;
-        if self.check(TokenKind.KW_ENTRY) {
-            entry_tok = self.current();
-            kid.append(self.consume_uni(TokenKind.KW_ENTRY));
-            path = self.parse_wire_module_path("entry");
-            if entry_module is None {
-                entry_module = path;
-            } else {
-                self.emit_diag(
-                    f"Space '{name.value}' has a second entry; a space starts at one module",
-                    "E1270",
-                    loc=entry_tok.loc
-                );
-            }
-            kid.append(path);
-            self.expect(TokenKind.SEMI);
-            kid.append(self.make_semi());
-        } elif self._check_word("store") or self._check_word("auth") {
-            self.emit_diag(
-                "A space holds 'entry <module>;' and module patterns only", "E0116"
-            );
-            self._skip_wiring_stmt();
-        } else {
-            pat = self.parse_module_pattern();
-            patterns.append(pat);
-            kid.append(pat);
-            while self.match_tok(TokenKind.BW_OR) {
-                kid.append(self.make_uni_token(self.previous()));
-                pat = self.parse_module_pattern();
-                patterns.append(pat);
-                kid.append(pat);
-            }
-            self.expect(TokenKind.SEMI);
-            kid.append(self.make_semi());
+impl Parser._block_tokens -> list[UniNode] {
+    held: list[UniNode] = [];
+    depth = 0;
+    while not self.at_end() {
+        if depth == 0 and self.check(TokenKind.RBRACE) {
+            return held;
         }
-        if self.pos == start {
-            self._skip_token();
+        tok = self.advance();
+        if tok.kind == TokenKind.LBRACE {
+            depth += 1;
+        } elif tok.kind == TokenKind.RBRACE {
+            depth -= 1;
         }
+        held.append(self.make_uni_token(tok));
     }
-    kid.append(self.consume_uni(TokenKind.RBRACE));
-    return SpaceDecl(
-        name=name, host=host, entry_module=entry_module, patterns=patterns, kid=kid
-    );
-}
-
-impl Parser.parse_app_decl -> AppDecl {
-    kid: list[UniNode] = [self.make_uni_token(self.expect(TokenKind.NAME))];
-    name = self.make_name(self.expect_name("app"));
-    kid.append(name);
-    kid.append(self.consume_uni(TokenKind.LBRACE));
-    runs: list[Name] = [];
-    serves: list[Name] = [];
-    while not self.check(TokenKind.RBRACE) and not self.at_end() {
-        start = self.pos;
-        if self._check_word("run") or self._check_word("serve") {
-            is_run = self.current().value == "run";
-            kid.append(self.make_uni_token(self.expect(TokenKind.NAME)));
-            while True {
-                space = self.make_name(self.expect_name("space"));
-                if is_run {
-                    runs.append(space);
-                } else {
-                    serves.append(space);
-                }
-                kid.append(space);
-                if not self.match_tok(TokenKind.COMMA) {
-                    break;
-                }
-                kid.append(self.make_uni_token(self.previous()));
-            }
-            self.expect(TokenKind.SEMI);
-            kid.append(self.make_semi());
-        } else {
-            self.emit_diag(
-                "An app holds 'run <spaces>;' and 'serve <spaces>;' only", "E0117"
-            );
-            self._skip_wiring_stmt();
-        }
-        if self.pos == start {
-            self._skip_token();
-        }
-    }
-    kid.append(self.consume_uni(TokenKind.RBRACE));
-    return AppDecl(name=name, runs=runs, serves=serves, kid=kid);
+    return held;
 }

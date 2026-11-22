@@ -147,37 +147,6 @@ test "def pub and endpoint effects" {
     assert "@jac/runtime" in js , "__jacCallFunction should be imported from @jac/runtime";
     assert '__jacCallFunction("get_server_data"' in js , "Should generate __jacCallFunction call with function name";
 
-    # --- a server function that gives an iterator is a stream: the page reads it
-    # with `async for` through __jacCallStream, never awaits it whole ---
-    stream_dir = os.path.join(_test_tmp_dir, "stream_app");
-    os.makedirs(stream_dir, exist_ok=True);
-    with open(os.path.join(stream_dir, "jac.toml"), "w") as toml {
-        toml.write(
-            '[project]\nname = "stream_app"\n\n[apps.web]\nkind = "web-app"\nentry-point = "page"\n\n[placement.pins]\n"stream_svc" = "server"\n'
-        );
-    }
-    with open(os.path.join(stream_dir, "stream_svc.jac"), "w") as svc {
-        svc.write(
-            'def:pub ticks(n: int) -> Iterator[int] {\n    for i in range(n) {\n        yield i;\n    }\n}\n\ndef:pub batch(n: int) -> Iterable[int] {\n    return [i for i in range(n)];\n}\n'
-        );
-    }
-    page_path = os.path.join(stream_dir, "page.jac");
-    with open(page_path, "w") as page {
-        page.write(
-            '"""A page reading a stream endpoint."""\n\nimport from stream_svc { ticks, batch }\nimport from stdjac.remote { RemoteError }\n\nasync def:pub app() -> Any {\n    seen: list[int] = [];\n    try {\n        async for t in ticks(3) {\n            seen = seen + [t];\n        }\n        seen = seen + list(await batch(2));\n    } except RemoteError as e {\n        seen = [];\n    }\n    return <div>{seen}</div>;\n}\n'
-        );
-    }
-    stream_prog = JacProgram();
-    mod = stream_prog.compile(page_path);
-    js = mod.gen.js;
-    assert not stream_prog.errors_had , [str(e) for e in stream_prog.errors_had];
-    assert '__jacCallStream("ticks"' in js , f"a stream endpoint is called through __jacCallStream, got: {js}";
-    assert '__jacCallFunction("ticks"' not in js , "a stream endpoint is not fetched whole";
-    assert '__jacCallFunction("batch"' in js , f"an Iterable result is a value, fetched whole as the server sends it, got: {js}";
-    assert "RemoteError" in js and "@jac/runtime" in js and "stdjac" not in js , (
-        f"stdjac.remote's errors are the browser runtime's own, got: {js}"
-    );
-
     # --- endpoint effects classifies walkers and functions ---
     effects_code = '"""Test auto endpoint effects."""\n\nnode Todo {\n    has title: str,\n        done: bool = False;\n}\n\nwalker get_todos {\n    can visit_root with Root entry {\n        report [-->];\n    }\n}\n\nwalker create_todo {\n    has title: str;\n    can do_create with Root entry {\n        here ++> Todo(title=self.title);\n    }\n}\n\ndef:pub get_stats() -> dict[any, any] {\n    return {"count": 10};\n}\n\ndef:pub reset_data() -> dict[any, any] {\n    items: list[any] = [];\n    del items;\n    return {};\n}\n\nasync def:pub app() -> Any {\n    todos = root spawn get_todos();\n    root spawn create_todo(title="test");\n    stats = await get_stats();\n    result = await reset_data();\n    return <div>{stats}{result}{todos}</div>;\n}\n';
     mod2 = compile_inline(effects_code, prog);

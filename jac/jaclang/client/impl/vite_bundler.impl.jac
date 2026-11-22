@@ -507,14 +507,6 @@ impl ViteBundler._generate_vite_config_content(
             f'        {q}{alias_key}{q}: path.resolve(projectRoot, {q}{target_clean}{q}),'
         );
     }
-    package_aliases = vite_config_data.get('alias_packages', {});
-    if isinstance(package_aliases, dict) {
-        for (package_name, replacement) in package_aliases.items() {
-            user_aliases_lines.append(
-                f'        {q}{package_name}{q}: {q}{replacement}{q},'
-            );
-        }
-    }
     user_aliases_str = '\n' + '\n'.join(user_aliases_lines)
         if user_aliases_lines
         else '';

@@ -6,7 +6,6 @@ walker ImportWiringPass(CompilerPass) {
     can run_walk with Module entry;
     def _check_arch_module(mod: Module) -> None;
     def _check_scope(spec: WiringSpec, block: GraphImport, seen: set[int]) -> None;
-    def _check_spaces(blocks: list[GraphSpaces]) -> None;
     def _check_wire(spec: WiringSpec, wire: ImportWire) -> None;
     def _check_target(
         spec: WiringSpec, provider: str, provider_ok: bool, target: WireTarget

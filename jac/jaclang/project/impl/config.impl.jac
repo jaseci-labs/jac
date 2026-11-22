@@ -1041,8 +1041,9 @@ impl _parse_toml_data(
         }
     }
     derived: dict[str, any] = {};
-    if config.project_root {
-        derived = derived_apps(str(config.project_root));
+    if config.project_root and has_spaces_block(str(config.project_root)) {
+        import from jaclang.project.spaces { archwire_apps }
+        derived = archwire_apps(str(config.project_root));
     }
     if "apps" in data or derived {
         config.apps = parse_apps(

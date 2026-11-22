@@ -57,27 +57,10 @@ obj WireRec {
     def bindings -> list[WireBinding];
 }
 
-obj SpaceRec {
-    has name: str,
-        host: str,
-        entry_module: str = "",
-        patterns: list[PatternRec] = [],
-        line: int = 0;
-}
-
-obj AppRec {
-    has name: str,
-        profile: str = "",
-        runs: list[str] = [],
-        serves: list[str] = [];
-}
-
 obj ArchRecords {
     has parse_failed: bool = False,
         wires: list[WireRec] = [],
         rules: list[RuleRec] = [],
-        spaces: list[SpaceRec] = [],
-        apps: list[AppRec] = [],
         spaces_text: str = "";
 }
 
@@ -87,8 +70,6 @@ obj WiringSpec {
         parse_failed: bool = False,
         wires: list[WireRec] = [],
         rules: list[RuleRec] = [],
-        spaces: list[SpaceRec] = [],
-        apps: list[AppRec] = [],
         spaces_text: str = "",
         _raw: dict[str, list[WireRec]] = {},
         _raw_by_prefix: dict[str, list[str]] = {},
@@ -166,9 +147,7 @@ def pattern_record(pattern: ModulePattern, scope: str = "") -> PatternRec;
 def rule_record(rule: ImportRule) -> RuleRec;
 def wire_records(wire: ImportWire, source: str = "") -> list[WireRec];
 def module_records(mod: Module, source: str) -> tuple[list[WireRec], list[RuleRec]];
-def space_records(
-    mod: Module, source: str
-) -> tuple[list[SpaceRec], list[AppRec], str];
+def spaces_text(mod: Module, source: str) -> str;
 
 def parse_records(source: str, path: str) -> tuple[bool, list[WireRec], list[RuleRec]];
 def parse_arch_records(source: str, path: str) -> ArchRecords;

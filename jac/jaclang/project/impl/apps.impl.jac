@@ -43,79 +43,6 @@ impl AppConfig.contains(project_root: str, abs_path: str) -> bool {
     return _norm_path(abs_path) == _norm_path(self.entry_path(project_root));
 }
 
-impl _desktop_overlay(
-    fields: dict[str, any], overlays: dict[str, any], arch_app: any
-) -> None {
-    desktop: dict[str, any] = dict(overlays.get("desktop") or {});
-    raw_profiles = fields.get("profiles");
-    profiles = [str(p) for p in raw_profiles]
-        if isinstance(raw_profiles, list) and raw_profiles
-        else ["default"];
-    remote = overlays.get("remote") if isinstance(overlays.get("remote"), dict) else {};
-    remote_url = str(next(iter(remote.values()), "") or "") if remote else "";
-    backends: dict[str, str] = {};
-    for profile in profiles {
-        runs = arch_app.arrangements.get(profile);
-        if runs is None {
-            continue;
-        }
-        embedded = any(
-            [
-                arch_app.hosts.get(space, "") in ("native", "cpython", "node")
-                for space in runs
-            ]
-        );
-        if embedded {
-            backends[profile] = "embedded";
-        } elif remote_url {
-            backends[profile] = remote_url;
-        }
-    }
-    if "backend" not in desktop and "backends" not in desktop {
-        if len(backends) > 1 {
-            desktop["backends"] = backends;
-            desktop.setdefault("default_backend", profiles[0]);
-        } elif backends {
-            desktop["backend"] = next(iter(backends.values()));
-        }
-    }
-    if fields.get("local_users") is True {
-        desktop.setdefault("profiles", True);
-    }
-    for key in ("name", "identifier", "version") {
-        value = fields.get(key);
-        if isinstance(value, str) and value and key not in desktop {
-            desktop[key] = value;
-        }
-    }
-    window = overlays.get("window");
-    if isinstance(window, dict) and "window" not in desktop {
-        desktop["window"] = dict(window);
-    }
-    if desktop {
-        overlays["desktop"] = desktop;
-    }
-}
-
-impl app_npm_tree(raw_config: dict[str, any], app: AppConfig) -> str {
-    trees = raw_config.get("npm");
-    if not isinstance(trees, dict) or not trees {
-        return "";
-    }
-    spaces_raw = raw_config.get("spaces");
-    for space in app.spaces {
-        table = spaces_raw.get(space) if isinstance(spaces_raw, dict) else None;
-        tree = table.get("npm") if isinstance(table, dict) else None;
-        if isinstance(tree, str) and tree in trees {
-            return tree;
-        }
-    }
-    if len(trees) == 1 {
-        return str(next(iter(trees.keys())));
-    }
-    return "";
-}
-
 impl has_spaces_block(root_dir: str) -> bool {
     arch = os.path.join(root_dir, "archwire.jac");
     if not os.path.isfile(arch) {
@@ -128,14 +55,6 @@ impl has_spaces_block(root_dir: str) -> bool {
     } except OSError {
         return False;
     }
-}
-
-impl derived_apps(root_dir: str) -> dict[str, any] {
-    if not has_spaces_block(root_dir) {
-        return {};
-    }
-    spaces: any = importlib.import_module("jaclang.project.spaces");
-    return spaces.archwire_apps(root_dir);
 }
 
 impl validate_app_name(name: str) -> None {
@@ -202,9 +121,6 @@ impl parse_apps(
             pins = dict(arch_app.pins);
             pins.update(placement.get("pins", {}));
             placement["pins"] = pins;
-            if arch_app.kind == "desktop" {
-                _desktop_overlay(fields, overlays, arch_app);
-            }
         }
         kind = str(fields.get("kind", "")).strip();
         if not kind and arch_app is not None {
@@ -232,23 +148,12 @@ impl parse_apps(
         if route and not route.startswith("/") {
             raise ValueError(f"[apps.{name}] route='{route}' must start with '/'");
         }
-        raw_profiles = fields.get("profiles", []);
         apps[name] = AppConfig(
             name=name,
             kind=kind,
             entry_point=entry_point,
             platform=platform,
             route=route,
-            title=str(fields.get("name", "")).strip(),
-            identifier=str(fields.get("identifier", "")).strip(),
-            version=str(fields.get("version", "")).strip(),
-            profiles=[str(x) for x in raw_profiles]
-                if isinstance(raw_profiles, list)
-                else [],
-            local_users=fields.get("local_users") is True,
-            spaces=list(arch_app.runs) + list(arch_app.serves)
-                if arch_app is not None
-                else [],
             overlays=overlays
         );
     }
@@ -260,21 +165,8 @@ impl parse_apps(
             name=name,
             kind=arch_app.kind,
             entry_point=arch_app.entry_point,
-            spaces=list(arch_app.runs) + list(arch_app.serves),
             overlays={"placement": {"pins": dict(arch_app.pins)}}
         );
-    }
-    if from_arch {
-        ordered: dict[str, AppConfig] = {};
-        for name in from_arch.keys() {
-            if name in apps {
-                ordered[name] = apps[name];
-            }
-        }
-        for (name, app) in apps.items() {
-            ordered.setdefault(name, app);
-        }
-        apps = ordered;
     }
     entries: dict[str, str] = {};
     for app in apps.values() {

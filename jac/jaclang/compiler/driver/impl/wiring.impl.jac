@@ -780,58 +780,24 @@ impl module_records(mod: Module, source: str) -> tuple[list[WireRec], list[RuleR
     return (wires, rules);
 }
 
-impl space_records(
-    mod: Module, source: str
-) -> tuple[list[SpaceRec], list[AppRec], str] {
-    spaces: list[SpaceRec] = [];
-    apps: list[AppRec] = [];
-    texts: list[str] = [];
-    for stmt in mod.body {
-        if not isinstance(stmt, GraphSpaces) {
-            continue;
-        }
-        texts.append(source[stmt.loc.pos_start:stmt.loc.pos_end]);
-        profile = stmt.profile_name;
-        for item in stmt.body {
-            if isinstance(item, SpaceDecl) {
-                entry_path = item.entry_module;
-                spaces.append(
-                    SpaceRec(
-                        name=item.name.value,
-                        host=item.host.value,
-                        entry_module=entry_path.dot_path_str
-                            if entry_path is not None
-                            else "",
-                        patterns=[pattern_record(p) for p in item.patterns],
-                        line=item.loc.first_line
-                    )
-                );
-            } elif isinstance(item, AppDecl) {
-                apps.append(
-                    AppRec(
-                        name=item.name.value,
-                        profile=profile,
-                        runs=[r.value for r in item.runs],
-                        serves=[r.value for r in item.serves]
-                    )
-                );
-            }
-        }
-    }
-    return (spaces, apps, "\n\n".join(texts));
+impl spaces_text(mod: Module, source: str) -> str {
+    return "\n\n".join(
+        [
+            source[stmt.loc.pos_start:stmt.loc.pos_end]
+            for stmt in mod.body
+            if isinstance(stmt, GraphSpaces)
+        ]
+    );
 }
 
 impl parse_arch_records(source: str, path: str) -> ArchRecords {
     (mod, had_error) = parse_woven(source, path, None, []);
     (wires, rules) = module_records(mod, source);
-    (spaces, apps, spaces_text) = space_records(mod, source);
     return ArchRecords(
         parse_failed=bool(had_error),
         wires=wires,
         rules=rules,
-        spaces=spaces,
-        apps=apps,
-        spaces_text=spaces_text
+        spaces_text=spaces_text(mod, source)
     );
 }
 
@@ -888,33 +854,6 @@ impl encode_records(records: ArchRecords) -> str {
             + "\x1f"
             + ("1" if records.parse_failed else "0")
     ];
-    for sp in records.spaces {
-        lines.append(
-            "\x1f".join(
-                [
-                    "S",
-                    sp.name,
-                    sp.host,
-                    sp.entry_module,
-                    _encode_patterns(sp.patterns),
-                    str(sp.line)
-                ]
-            )
-        );
-    }
-    for app in records.apps {
-        lines.append(
-            "\x1f".join(
-                [
-                    "A",
-                    app.name,
-                    app.profile,
-                    "\x1e".join(app.runs),
-                    "\x1e".join(app.serves)
-                ]
-            )
-        );
-    }
     if records.spaces_text {
         lines.append("T\x1f" + records.spaces_text.replace("\n", "\x1c"));
     }
@@ -970,35 +909,10 @@ impl decode_records(text: str) -> (ArchRecords | None) {
     }
     wires: list[WireRec] = [];
     rules: list[RuleRec] = [];
-    spaces: list[SpaceRec] = [];
-    apps: list[AppRec] = [];
     spaces_text = "";
     for line in lines[1:] {
         f = line.split("\x1f");
-        if f[0] == "S" and len(f) == 6 {
-            patterns = _decode_patterns(f[4]);
-            if patterns is None or not f[5].isdigit() {
-                return None;
-            }
-            spaces.append(
-                SpaceRec(
-                    name=f[1],
-                    host=f[2],
-                    entry_module=f[3],
-                    patterns=patterns,
-                    line=int(f[5])
-                )
-            );
-        } elif f[0] == "A" and len(f) == 5 {
-            apps.append(
-                AppRec(
-                    name=f[1],
-                    profile=f[2],
-                    runs=_split_list(f[3]),
-                    serves=_split_list(f[4])
-                )
-            );
-        } elif f[0] == "T" and len(f) == 2 {
+        if f[0] == "T" and len(f) == 2 {
             spaces_text = f[1].replace("\x1c", "\n");
         } elif f[0] == "W" and len(f) == 11 {
             flags = f[3];
@@ -1057,12 +971,7 @@ impl decode_records(text: str) -> (ArchRecords | None) {
         }
     }
     return ArchRecords(
-        parse_failed=head[2] == "1",
-        wires=wires,
-        rules=rules,
-        spaces=spaces,
-        apps=apps,
-        spaces_text=spaces_text
+        parse_failed=head[2] == "1", wires=wires, rules=rules, spaces_text=spaces_text
     );
 }
 
@@ -1221,8 +1130,6 @@ impl _load_spec(root_dir: str, arch_path: str) -> WiringSpec {
         parse_failed=records.parse_failed,
         wires=records.wires,
         rules=records.rules,
-        spaces=records.spaces,
-        apps=records.apps,
         spaces_text=records.spaces_text
     );
     _spec_cache[key] = (stamp, spec);
@@ -1734,15 +1641,12 @@ impl canonical_wiring_source(source: str, path: str) -> str {
         return source;
     }
     (wires, rules) = module_records(mod, source);
-    (spaces, apps, spaces_text) = space_records(mod, source);
     spec = WiringSpec(
         root_dir=os.path.dirname(os.path.abspath(path)),
         path=path,
         wires=wires,
         rules=rules,
-        spaces=spaces,
-        apps=apps,
-        spaces_text=spaces_text
+        spaces_text=spaces_text(mod, source)
     );
     return render_wiring(spec, wiring_facts(wires), rules);
 }

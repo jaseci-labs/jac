@@ -82,8 +82,6 @@ edge ElseValueRole(Role): IfElseExpr --> CfgExpr {}
 
 edge EndRole(Role): FString --> Token {}
 
-edge EntryRole(Role): SpaceDecl --> ModulePath {}
-
 edge ErrorMsgRole(Role): AssertStmt --> Expr {}
 
 edge EventRole(Role): EventSignature --> Token {}
@@ -113,8 +111,6 @@ edge FromTargetRole(Role): RaiseStmt --> Expr {}
 edge GuardRole(Role): MatchCase --> Expr {}
 
 edge HintRole(Role): Import --> SubTag[Token] {}
-
-edge HostRole(Role): SpaceDecl --> Name {}
 
 edge InsertLocRole(Role): VisitStmt --> Expr {}
 
@@ -176,11 +172,7 @@ edge RightRole(Role): UniNode --> Expr {}
 
 edge RightsRole(Role): CompareExpr --> Expr {}
 
-edge RunRole(Role): AppDecl --> Name {}
-
 edge ScopeRole(Role): GraphImport --> ModulePath {}
-
-edge ServeRole(Role): AppDecl --> Name {}
 
 edge SignatureRole(Role): UniNode --> EventSignature | FuncSignature {}
 
@@ -202,8 +194,7 @@ edge StringsRole(Role): MultiString --> FString | String {}
 
 edge TargetRole(Role): UniNode --> Expr {}
 
-edge TargetsRole(Role): ImportRule | ImportWire | SpaceDecl --> ModulePattern
-    | WireTarget {}
+edge TargetsRole(Role): ImportRule | ImportWire --> ModulePattern | WireTarget {}
 
 edge TgtEndpointRole(Role): Archetype --> Expr {}
 

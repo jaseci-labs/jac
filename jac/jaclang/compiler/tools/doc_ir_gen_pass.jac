@@ -193,15 +193,12 @@ walker DocIRGenPass(TreePass) {
     can exit_jsx_comment with uni.JsxComment exit;
     can exit_graph_import with uni.GraphImport exit;
     can exit_graph_spaces with uni.GraphSpaces exit;
-    can exit_space_decl with uni.SpaceDecl exit;
-    can exit_app_decl with uni.AppDecl exit;
     can exit_import_wire with uni.ImportWire exit;
     can exit_wire_target with uni.WireTarget exit;
     can exit_import_rule with uni.ImportRule exit;
     can exit_module_pattern with uni.ModulePattern exit;
     can exit_wire_item with uni.WireItem exit;
     def _wiring_stmt_doc_ir(nd: uni.UniNode) -> doc.DocType;
-    def _spaces_stmt_doc_ir(nd: uni.UniNode) -> doc.DocType;
     def _payload_doc_ir(items: list[doc.DocType]) -> doc.DocType;
     can doc_ir_default_exit with uni.UniNode exit;
     can finish_doc_comments with uni.UniNode exit;

@@ -165,7 +165,6 @@ walker TypeEvaluator {
         _mobui_module_cache: dict[str, bool] = {},
         _strict_site_cache: dict[int, bool] = {},
         _sv_async_syms_cache: dict[int, set[tuple[int, str]]] = {},
-        _client_bridge_syms_cache: dict[int, set[tuple[int, str]]] = {},
         _and_narrowing_overrides: dict[int, TypeBase] = {},
         _type_guard_probes: set[int] = set(),
         _loop_written_keys_cache: dict[int, set[str]] = {},
@@ -597,9 +596,6 @@ walker TypeEvaluator {
     def _lookup_class_member(base_type: ClassType, member: str) -> ClassMember | None;
     def _lookup_object_member(base_type: TypeBase, member: str) -> ClassMember | None;
     def _get_type_of_concurrent_expr(expr: ConcurrentExpr) -> TypeBase;
-    def _is_sync_iterator_type(t: TypeBase) -> bool;
-    def _is_async_iterator_type(t: TypeBase) -> bool;
-    def _make_async_iterator_type(inner: TypeBase) -> TypeBase;
     def _bind_filter_compare(cmp: Expr, filter_type: ClassType) -> None;
     def _bind_filter_member(target: Name, filter_type: ClassType) -> None;
     def _filter_order_name(expr: Expr) -> (Name | None);
@@ -640,7 +636,6 @@ walker TypeEvaluator {
     def _is_awaitable_type(t: TypeBase) -> bool;
     def _unwrap_awaitable_type(t: TypeBase, node_: UniNode) -> TypeBase;
     def _is_sv_async_call(expr: FuncCall) -> bool;
-    def _is_client_bridge_call(expr: FuncCall) -> bool;
     def _c_lent_args(args: MatchArgsToParamsResult) -> set[Expr | KWPair];
     def validate_arg_types(
         args: MatchArgsToParamsResult,

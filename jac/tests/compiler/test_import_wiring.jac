@@ -1932,29 +1932,6 @@ test "graph spaces declares the apps: their kinds, entries and where their modul
     shutil.rmtree(base, ignore_errors=True);
 }
 
-test "a graph spaces block is checked: hosts, entries, the spaces an app names" {
-    bad = (
-        "graph spaces {\n"
-        "    space site: webby { entry web; entry pages.index; pages.*; }\n"
-        "    space api: native { core.api | pages.*; }\n"
-        "\n"
-        "    app web { run api, store; serve api; }\n"
-        "}\n"
-        "\n"
-        "graph spaces local {\n"
-        "    space extra: native { core.api; }\n"
-        "}\n"
-    );
-    files = dict(_SPACES_FILES);
-    files["archwire.jac"] = bad;
-    base = _project(files);
-    codes = sorted(_errors(_compile(base, "archwire.jac")));
-    for code in ("E1226", "E1270", "E1271", "E1272", "E1273", "E1275") {
-        assert code in codes , (code, codes);
-    }
-    shutil.rmtree(base, ignore_errors=True);
-}
-
 test "graph spaces belongs in archwire.jac, and jac fmt keeps its layout" {
     files = dict(_SPACES_FILES);
     files["archwire.jac"] = _SPACES_ARCH;

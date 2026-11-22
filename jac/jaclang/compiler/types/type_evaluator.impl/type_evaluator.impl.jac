@@ -4068,28 +4068,6 @@ impl TypeEvaluator._make_coroutine_type(inner: TypeBase) -> TypeBase {
     return coro;
 }
 
-impl TypeEvaluator._is_sync_iterator_type(t: TypeBase) -> bool {
-    return isinstance(t, ClassType)
-        and t.is_builtin(["Iterator", "Generator"])
-        and bool(t.private.type_args);
-}
-
-impl TypeEvaluator._is_async_iterator_type(t: TypeBase) -> bool {
-    return isinstance(t, ClassType)
-        and t.is_builtin(["AsyncIterator", "AsyncGenerator"])
-        and bool(t.private.type_args);
-}
-
-impl TypeEvaluator._make_async_iterator_type(inner: TypeBase) -> TypeBase {
-    async_iter = self._get_class_from_module(self.typing_module, "AsyncIterator");
-    if async_iter is None or not isinstance(inner, ClassType) {
-        return self._make_coroutine_type(inner);
-    }
-    out = async_iter.clone_as_instance();
-    out.private.type_args = [inner.private.type_args[0]];
-    return out;
-}
-
 impl TypeEvaluator._is_awaitable_type(t: TypeBase) -> bool {
     if not isinstance(t, ClassType) {
         return False;
@@ -4160,7 +4138,6 @@ impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
     syms = self._sv_async_syms_cache.get(mod_key);
     if syms is None {
         syms = set();
-        client_syms: set[tuple[int, str]] = set();
         import from jaclang.compiler.driver.boundary_classify {
             CrossAppKind,
             classify_cross_app_import,
@@ -4229,27 +4206,11 @@ impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
                 }
                 bound = item.alias or item.name;
                 syms.add((id(item.name.sym), bound.value));
-                if is_boundary {
-                    client_syms.add((id(item.name.sym), bound.value));
-                }
             }
         }
         self._sv_async_syms_cache[mod_key] = syms;
-        self._client_bridge_syms_cache[mod_key] = client_syms;
     }
     return (id(tgt.sym), tgt.value) in syms;
-}
-
-impl TypeEvaluator._is_client_bridge_call(expr: FuncCall) -> bool {
-    if not self._is_sv_async_call(expr) {
-        return False;
-    }
-    mod = expr.find_parent_of_type(Module);
-    tgt = expr.target;
-    return mod is not None
-        and isinstance(tgt, Name)
-        and (id(tgt.sym), tgt.value)
-            in self._client_bridge_syms_cache.get(id(mod), set());
 }
 
 impl TypeEvaluator._prefetch_types {

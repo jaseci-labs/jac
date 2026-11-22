@@ -55,26 +55,6 @@ impl jacSetToken(token: str) -> None {
     _jacSetToken(token);
 }
 
-impl jacArrangement -> _JacArrangement {
-    return await _jacArrangement();
-}
-
-impl jacUseArrangement(name: str) -> None {
-    await _jacUseArrangement(name);
-}
-
-impl jacLocalUsers -> _JacLocalUsers {
-    return await _jacLocalUsers();
-}
-
-impl jacUseLocalUser(name: str) -> bool {
-    return await _jacUseLocalUser(name);
-}
-
-impl jacLeaveLocalUser -> None {
-    await _jacLeaveLocalUser();
-}
-
 impl Routes(props: dict[str, any]) -> JsxElement {
     return props["children"];
 }

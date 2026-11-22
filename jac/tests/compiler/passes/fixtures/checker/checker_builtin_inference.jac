@@ -36,34 +36,3 @@ def divmod_quot(a: int, b: int) -> int {
 def divmod_rem(a: int, b: int) -> int {
     return divmod(a, b)[1];
 }
-
-# 3. `max`/`min` of numbers: ints give an int and a mix of ints and floats a
-#    float. typeshed's one type variable bound to the first argument and
-#    refused `max(0, w - 3)`; `builtin_overrides.pyi` adds the numeric overloads.
-def extremes(w: float, xs: list[int], names: list[str]) -> float {
-    a: float = max(0, w - 3);
-    b: float = min(40.0, max(40, w + 1));
-    c: int = max(1, 2, 3);
-    d: int = max(xs);
-    e: str = min(names, key=lambda (s: str) -> int { len(s) });
-    g: int = max([], default=0);
-    return a + b + c + d + g + len(e);
-}
-
-# 4. `flow f(...)` is a `Task[T]`, which a field can hold, and `wait` on it is a `T`.
-obj Pending {
-    has task: Task[int],
-        n: int = 0;
-}
-
-def doubled(n: int) -> int {
-    return n * 2;
-}
-
-def tasks -> int {
-    p = Pending(task=flow doubled(2) );
-    v: int = wait p.task ;
-    s = flow str(v) ;
-    w: str = wait s ;
-    return v + len(w);
-}

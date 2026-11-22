@@ -92,9 +92,7 @@ impl WebTarget.start(
 impl WebTarget.build(
     entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
-    bundler = ViteBundler(
-        project_dir=project_dir, entry_path=str(entry_file.resolve())
-    );
+    bundler = ViteBundler(project_dir=project_dir);
 
     dist_dir = bundler.output_dir;
     if dist_dir {

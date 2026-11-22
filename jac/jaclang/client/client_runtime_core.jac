@@ -1,16 +1,9 @@
-obj:pub RemoteError(Exception) {
-    has space: str = "",
-        endpoint: str = "",
-        detail: str = "",
-        message: str = "";
-
-    def postinit;
-}
-
-obj:pub BridgeError(RemoteError) {
+obj:pub BridgeError(Exception) {
     has app: str = "",
         name: str = "",
-        status: int = 0;
+        detail: str = "",
+        status: int = 0,
+        message: str = "";
 
     def postinit;
 }
@@ -20,28 +13,6 @@ obj:pub BridgeUnavailable(BridgeError) {}
 obj:pub BridgeTimeout(BridgeError) {}
 
 obj:pub BridgeRejected(BridgeError) {}
-
-obj:pub RemoteUnavailable(BridgeUnavailable) {}
-
-obj:pub RemoteTimeout(BridgeTimeout) {}
-
-obj:pub RemoteRejected(BridgeRejected) {}
-
-obj:pub RemoteDecodeError(BridgeError) {}
-
-obj:pub RemoteFailed(BridgeError) {}
-
-obj:pub JacArrangement {
-    has names: list[str] = [],
-        current: str = "",
-        chosen: bool = True;
-}
-
-obj:pub JacLocalUsers {
-    has enabled: bool = False,
-        users: list[str] = [],
-        current: str = "";
-}
 
 def:pub __bridgeErrorFor(
     status: int, message: str, app: str = "", name: str = ""
@@ -74,17 +45,6 @@ def:pub jacSpawn(
 
 async def:pub __jacCallFunction(
     function_name: str, args: dict[str, any] = {}, opts: (dict[str, any] | None) = None
-) -> any;
-
-def:pub __jacCallStream(
-    function_name: str,
-    args: dict[str, any] = {},
-    opts: (dict[str, any] | None) = None,
-    decode: any = None
-) -> any;
-
-async def __jacStreamItems(
-    function_name: str, args: dict[str, any], opts: (dict[str, any] | None), decode: any
 ) -> any;
 
 async def:pub __authPolicy -> any;
@@ -129,17 +89,6 @@ async def:pub __jacAuthedJson(
 ) -> any;
 
 def:pub jacSetToken(token: str) -> None;
-
-async def:pub __jacBrokerJson(
-    method: str, url: str, body: (dict[str, any] | None) = None, must: bool = False
-) -> any;
-
-async def:pub jacArrangement -> JacArrangement;
-async def:pub jacUseArrangement(name: str) -> None;
-async def:pub jacLocalUsers -> JacLocalUsers;
-async def:pub jacUseLocalUser(name: str) -> bool;
-async def:pub jacLeaveLocalUser -> None;
-def:pub __jacUnsafeHtml(html: str) -> any;
 
 def:pub __jacClearCache -> None;
 

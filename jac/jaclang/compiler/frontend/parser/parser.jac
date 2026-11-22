@@ -410,10 +410,7 @@ obj Parser {
     def parse_impl_enum_body -> tuple[(list[Assignment], list[Token])];
     def parse_graph_import -> GraphImport;
     def parse_graph_spaces -> GraphSpaces;
-    def parse_space_decl -> SpaceDecl;
-    def parse_app_decl -> AppDecl;
-    def _check_word(word: str) -> bool;
-    def _skip_token -> None;
+    def _block_tokens -> list[UniNode];
     def _name_or_keyword_token(what: str) -> LexToken;
     def parse_import_rule -> ImportRule | None;
     def parse_import_wire -> ImportWire | None;
