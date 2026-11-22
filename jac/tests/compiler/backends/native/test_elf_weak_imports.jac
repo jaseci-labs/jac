@@ -89,7 +89,10 @@ def _weak_probe(shared: bool, provided: bool = False) {
         );
         if provided {
             dynamic = subprocess.run(
-                ["readelf", "-d", str(output)], capture_output=True, text=True, check=True
+                ["readelf", "-d", str(output)],
+                capture_output=True,
+                text=True,
+                check=True
             ).stdout;
             needed = [
                 line.split("[")[1].rstrip("]")
