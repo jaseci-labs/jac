@@ -44,23 +44,6 @@ jobs:
           ldd "$BUNDLE/$f" | grep 'not found' && exit 1 || true
         done
 
-    - name: Debug CEF launch (temporary)
-      working-directory: jac/examples/notes-app/.jac/client/desktop
-      run: |
-        sudo apt-get install -y gdb >/dev/null
-        for f in notes-app libcef_dispatch.so cef-subprocess; do
-          echo "=== NEEDED $f"; readelf -d "$f" | grep -E "NEEDED|RUNPATH|RPATH"
-        done
-        echo "=== load order (notes-app)"
-        LD_DEBUG=files ./notes-app --version 2>&1 | grep "calling init\|file=" | head -40 || true
-        echo "=== load order (cef-subprocess)"
-        LD_DEBUG=files ./cef-subprocess --type=utility 2>&1 | grep "file=" | head -20 || true
-        Xvfb :98 -screen 0 1280x720x24 &
-        DISPLAY=:98 FONTCONFIG_FILE=$PWD/minimal-fonts.conf JAC_CEF_DISABLE_GPU=1 \
-        timeout 120s gdb -batch -ex "set pagination off" -ex "set follow-fork-mode parent" \
-          -ex "handle SIGPIPE nostop noprint" -ex run -ex bt -ex "info symbol \$pc" \
-          ./notes-app 2>&1 | grep -v "^\[New Thread\|^\[Thread\|keysym\|xkbcomp" | tail -60 || true
-
     - name: Headless smoke with timeout (X11)
       working-directory: jac/examples/notes-app/.jac/client/desktop
       run: |
