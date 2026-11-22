@@ -425,17 +425,32 @@ impl ASTValidationPass.enter_import with Import entry {
         return;
     }
     scope = find_python_scope_node_of(here);
-    bound = self._import_scopes.setdefault(id(scope), {});
-    direct = here.parent is scope or isinstance(here.parent, ModuleCode);
+    if scope is None {
+        return;
+    }
+    if id(scope) not in self._import_scopes {
+        bound: dict[str, tuple[(ModuleItem | ModulePath), Name]] = {};
+        for imp in scope.get_all_sub_nodes(Import) {
+            if imp.is_absorb
+                or not (imp.parent is scope or isinstance(imp.parent, ModuleCode)) {
+                continue;
+            }
+            for item in imp.items {
+                name = self._bound_name(item);
+                if name is not None and name.value not in bound {
+                    bound[name.value] = (item, name);
+                }
+            }
+        }
+        self._import_scopes[id(scope)] = bound;
+    }
     for item in here.items {
         name = self._bound_name(item);
         if name is None {
             continue;
         }
-        prior = bound.get(name.value);
-        if prior is None and direct {
-            bound[name.value] = (item, name);
-        } elif prior is not None
+        prior = self._import_scopes[id(scope)].get(name.value);
+        if prior is not None
             and self._import_target(prior[0]) != self._import_target(item) {
             self.ctx.emit(
                 E2036,

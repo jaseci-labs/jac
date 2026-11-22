@@ -506,16 +506,21 @@ test "E2036: an import after the local definition still collides" {
     clashes = [
         "def Thing -> int {\n    return 7;\n}\n\nimport from rec { Thing }\n",
         "import from os.path { join } import from shlex { join }",
+        "import from b { A } import from b { A } import from c { A }",
         "import from b { A as X } import from b { C as X }",
         "import from .b { A } import from pkg.b { A }",
         "import os.path as p; import shlex as p;",
         "import from os.path { join } with entry { import from shlex { join } }",
         "with entry { import from b { A } } import from c { A }",
         "def f(x: bool) -> None { import from b { A } if x { import from c { A } } }",
-        "def join -> int { return 1; } with entry { if True { import from shlex { join } } }",
+        "def f(x: bool) -> None { if x { import from c { A } } import from b { A } }",
+        "def join -> int { return 1; } with entry { if True { import from shlex { join } } }"
+    ];
+    # The self-import is the local join, so it clashes with shlex as the def does.
+    self_import = [
         "def join -> int { return 1; } with entry { if True { import from .test { join } } import from shlex { join } }"
     ];
-    for (expected, sources) in [(0, allowed), (1, clashes)] {
+    for (expected, sources) in [(0, allowed), (1, clashes), (2, self_import)] {
         for source in sources {
             (_, prog) = parse_and_validate(source);
             got = count_diagnostic_code(prog, "E2036");
