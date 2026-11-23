@@ -30,6 +30,7 @@ obj KubernetesTargetBase(DeploymentTarget) {
         sa_spec: dict[str, any], namespace: str, core_v1: any
     );
 
+    def _assert_own_app(app_name: str);
     def get_status(app_name: str) -> ResourceStatusInfo;
     def scale(app_name: str, replicas: int);
     def _get_lb_endpoint(app_name: str) -> (str | None);
