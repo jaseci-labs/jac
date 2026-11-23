@@ -2080,6 +2080,7 @@ graph import {
         resolve_jac_virtual_module_exports
     }
     project.package_scope ++> [
+        compiler.backends.native.host_facts.package_store_dir { store_root },
         dist.seal.vendor_packages | packages.mounts { mounts_dir },
         packages.artifact.project_role
             | packages.commands
@@ -2092,7 +2093,6 @@ graph import {
         packages.store { store_root },
     ]
     project.package_scope --> [
-        compiler.backends.native.host_facts.package_store_dir { store_root },
         compiler.driver.jir._module_cache_root { in_store },
         compiler.driver.jir._module_projection { is_dependency_module },
     ]

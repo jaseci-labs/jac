@@ -113,6 +113,5 @@ impl import_search_dirs -> list[str] {
 }
 
 impl package_store_dir -> str {
-    import from jaclang.project.package_scope { store_root }
     return str(store_root());
 }
