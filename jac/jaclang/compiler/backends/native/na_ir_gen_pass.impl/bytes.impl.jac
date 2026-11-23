@@ -804,9 +804,7 @@ impl NaIRGenPass._codec_lookup_fn -> ir.Function {
     if self._codec_lookup_function is not None {
         return self._codec_lookup_function;
     }
-    codec_tables = active_host().native_fact(FACT_CODEC_TABLES, "").split(FACT_SEP);
-    alias_rows = bytes.fromhex(codec_tables[0]);
-    module_rows = bytes.fromhex(codec_tables[1]);
+    (alias_rows, module_rows) = codec_tables();
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i64 = ir.IntType(64);
@@ -1322,9 +1320,7 @@ impl NaIRGenPass._emit_bytes_decode(
     n = self._bytes_len_val(target);
     nonempty = b.icmp_signed("!=", n, ir.Constant(i64, 0), name="dec.nonempty");
     if enc_literal is not None {
-        codec_name: (str | None) = active_host().native_fact(
-            FACT_CODEC_NAME, enc_literal
-        );
+        codec_name: (str | None) = canonical_codec_name(enc_literal);
         if not codec_name {
             self._emit_runtime_raise(
                 nonempty, "LookupError", f"unknown encoding: {enc_literal}"

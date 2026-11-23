@@ -302,13 +302,7 @@ impl WiringSpec.project_modules -> list[str] {
     }
     paths: list[str] = [];
     self._scan_modules(self.root_dir, paths, set());
-    ignored = set(
-        active_host().native_fact(
-            HOST_FACT_GIT_IGNORED, os.path.realpath(self.root_dir)
-        ).split(
-            HOST_FACT_SEP
-        )
-    );
+    ignored = set(active_host().git_ignored_under(os.path.realpath(self.root_dir)));
     found: list[str] = [];
     unnamed: list[str] = [];
     for path in paths {
@@ -971,13 +965,7 @@ impl arch_file_for(path: str) -> (str | None) {
 
 impl is_stdlib_module(name: str) -> bool {
     if not _STDLIB_NAMES {
-        _STDLIB_NAMES.append(
-            set(
-                active_host().native_fact(HOST_FACT_STDLIB_MODULES, "").split(
-                    HOST_FACT_SEP
-                )
-            )
-        );
+        _STDLIB_NAMES.append(set(sys.stdlib_module_names));
     }
     return name in _STDLIB_NAMES[0];
 }

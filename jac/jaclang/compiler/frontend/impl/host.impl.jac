@@ -186,8 +186,8 @@ impl HostServices.native_lowering_failed(
     program: JacProgram, path: str, detail: str
 ) {}
 
-impl HostServices.native_fact(kind: str, key: str) -> str {
-    return "";
+impl HostServices.git_ignored_under(root_dir: str) -> list[str] {
+    return [];
 }
 
 impl HostServices.save_native_debug_ir(path: str, text: str) {}

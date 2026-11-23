@@ -538,9 +538,6 @@ graph import {
         emit_c
     }
     compiler.backends.native.floors ++> dist.payload.vendor { WASM_FLOOR_MANIFEST }
-    compiler.backends.native.host_facts --> project.compiler_host.ProjectHost.native_fact {
-        host_native_fact
-    }
     compiler.backends.native.link_plan ++> [
         cli.commands.native_build { LinkPlan },
         cli.commands.native_build.native_build {
@@ -1056,11 +1053,6 @@ graph import {
             ProjectDefaults,
             ProjectFacts
         },
-        project.compiler_host.ProjectHost.native_fact {
-            HOST_FACT_GIT_IGNORED,
-            HOST_FACT_SEP,
-            HOST_FACT_STDLIB_MODULES
-        },
         studio.gate { active_host, install_host },
     ]
     compiler.frontend.parser ++> [
@@ -1498,7 +1490,8 @@ graph import {
     ]
     jac0core --> [
         artifacts.kit.runtime_floor_root { sealed as sealed_mod },
-        artifacts.router._omitted | compiler.backends.native.host_facts.compute_fact {
+        artifacts.router._omitted
+            | compiler.backends.native.host_facts.sealed_runtime_active {
             sealed
         },
     ]
@@ -2099,7 +2092,7 @@ graph import {
         packages.store { store_root },
     ]
     project.package_scope --> [
-        compiler.backends.native.host_facts.host_native_fact { store_root },
+        compiler.backends.native.host_facts.package_store_dir { store_root },
         compiler.driver.jir._module_cache_root { in_store },
         compiler.driver.jir._module_projection { is_dependency_module },
     ]
@@ -4698,6 +4691,10 @@ graph import compiler {
         tests.xbackend_equiv._prelude_cwd { stage_jac_prelude_package },
         tests.xbackend_equiv.run_js_module_fixture { stage_jac_prelude_package },
     ]
+    backends.native.host_facts --> driver.native_iface.resolve_native_unit_ref {
+        import_search_dirs,
+        package_store_dir
+    }
     backends.native.link_plan --> [
         driver.compiler.JacCompiler._load_native_from_cache { jit_engine_for_cached },
         driver.nativecache.NativeUnitRegistry.compile_unit { build_link_plan },
@@ -4730,11 +4727,6 @@ graph import compiler {
         driver.nativecache.NativeUnitRegistry.emit_objects { emit_unit_objects },
         driver.nativecache.NativeUnitRegistry.object_for { emit_unit_object },
     ]
-    backends.native.na_constants --> driver.native_iface.resolve_native_unit_ref {
-        FACT_IMPORT_PATHS,
-        FACT_PACKAGE_STORE,
-        FACT_SEP
-    }
     backends.native.na_ir_gen_pass ++> [
         driver.pipeline.native_ir_passes { NaIRGenPass },
         driver.pipeline.native_lower_passes { NaIRGenPass },
@@ -6550,7 +6542,6 @@ graph import compiler {
             | backends.es.esast_gen_pass
             | backends.es.free_ident_audit.client_ambient_globals
             | backends.es.jac_runtime_js.build_osp_core_js
-            | backends.native.abi.struct_layouts
             | backends.native.na_ir_gen_pass
             | backends.py.artifact_imports
             | driver.boundary_classify
@@ -6615,12 +6606,7 @@ graph import compiler {
         },
         driver.program.JacProgram.stamp_app_facts
             | types.type_evaluator.TypeEvaluator._ts_decl_path { active_host },
-        driver.wiring {
-            HOST_FACT_GIT_IGNORED,
-            HOST_FACT_SEP,
-            HOST_FACT_STDLIB_MODULES,
-            active_host
-        },
+        driver.wiring { active_host },
         passes.package_boundary_pass { ProjectFacts, active_host },
         pkg_paths._target_root_real { package_root },
         types.type_evaluator.TypeEvaluator._untyped_external_is_error { active_host },
@@ -6632,7 +6618,6 @@ graph import compiler {
             | driver.compilation_context.context_program
             | driver.compile_options.CompileOptions.effective_triple
             | driver.jir._memoized
-            | driver.native_iface.resolve_native_unit_ref
             | driver.program.JacProgram._get_compiler
             | passes.boundary_analysis_pass.BoundaryAnalysisPass.enter_atom_trailer
             | passes.mtir_gen_pass.MTIRGenPass._get_scope_str
@@ -9051,7 +9036,7 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._audit_free_identifiers
             | backends.es.jac_runtime_js._build_exc_runtime_js
             | backends.native.foreign
-            | backends.native.host_facts.primitive_methods_fact
+            | backends.native.host_facts.primitive_method_names
             | backends.native.na_ir_gen_pass.NaIRGenPass.__post_init__
             | c_interop._spec_for_name
             | passes.declaration_type_pass
@@ -9828,6 +9813,16 @@ graph import compiler.backends.native {
         na_ir_gen_pass.NaIRGenPass._foreign_model { collect_foreign_structs },
     ]
     foreign --> na_ir_gen_pass.NaIRGenPass._codegen_call { declared_type_name }
+    host_facts ++> [
+        abi.struct_layouts { struct_layouts_of },
+        na_ir_gen_pass {
+            canonical_codec_name,
+            codec_tables,
+            primitive_method_names,
+            sealed_runtime_active,
+            target_layout
+        },
+    ]
     lexical_scope ++> na_ir_gen_pass { FunctionSource, LexicalScope }
     link_glue ++> [
         link_plan {
@@ -9849,13 +9844,13 @@ graph import compiler.backends.native {
         jit_engine_for_module
     }
     llvm.binding as llvm ++> [
-        host_facts.struct_layouts_fact
+        host_facts.struct_layouts_of
             | link_glue.bind_shared_callbacks
             | link_plan
             | na_compile_pass
             | native_link
             | wasm_build._exported_functions,
-        host_facts.target_fact
+        host_facts.target_layout
             | link_glue.init_object_codegen
             | wasm_build._load_libc_module,
         wasm_build.prepare_wasm_module,
@@ -9899,18 +9894,6 @@ graph import compiler.backends.native {
         wasm_build.prepare_wasm_module { optimize_unit },
     ]
     na_constants ++> [
-        abi.struct_layouts { FACT_SEP, FACT_STRUCT_LAYOUTS },
-        host_facts {
-            FACT_CODEC_NAME,
-            FACT_CODEC_TABLES,
-            FACT_IMPORT_PATHS,
-            FACT_PACKAGE_STORE,
-            FACT_PRIMITIVE_METHODS,
-            FACT_SEALED_RUNTIME,
-            FACT_SEP,
-            FACT_STRUCT_LAYOUTS,
-            FACT_TARGET
-        },
         na_ir_gen_pass {
             ALLOC_ID_MASK,
             CLASS_DISPLAY_OFF,
@@ -9920,12 +9903,6 @@ graph import compiler.backends.native {
             EXC_LINEAGE_BITS,
             EXC_LINEAGE_MIX,
             EXC_LINEAGE_SLOTS,
-            FACT_CODEC_NAME,
-            FACT_CODEC_TABLES,
-            FACT_PRIMITIVE_METHODS,
-            FACT_SEALED_RUNTIME,
-            FACT_SEP,
-            FACT_TARGET,
             JACVAL_ELLIPSIS_TAG,
             LIVE_NODE_NEXT_OFF,
             LIVE_NODE_RC_OFF,
@@ -9987,7 +9964,7 @@ graph import compiler.backends.native {
         na_ir_gen_pass.NaIRGenPass._ensure_emitters,
         na_ir_gen_pass._native_emitter_of,
     ]
-    primitives_native as emitters ++> host_facts.primitive_methods_fact;
+    primitives_native as emitters ++> host_facts.primitive_method_names;
     region_abi ++> na_ir_gen_pass { REGION_KERNEL_ABI }
     wasm_artifact ++> [
         native_link { wasm_ld_args, write_allowed_imports },

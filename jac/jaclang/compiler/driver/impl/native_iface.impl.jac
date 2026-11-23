@@ -25,24 +25,18 @@ impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
             }
         }
     }
-    import from jaclang.compiler.frontend.host { active_host }
-    import from jaclang.compiler.backends.native.na_constants {
-        FACT_IMPORT_PATHS,
-        FACT_PACKAGE_STORE,
-        FACT_SEP
+    import from jaclang.compiler.backends.native.host_facts {
+        import_search_dirs,
+        package_store_dir
     }
-    for search_dir in active_host().native_fact(FACT_IMPORT_PATHS, "").split(
-        FACT_SEP
-    ) {
-        if search_dir and os.path.isabs(search_dir) {
-            candidate = os.path.join(search_dir, ref);
-            if os.path.isfile(candidate) {
-                return candidate;
-            }
+    for search_dir in import_search_dirs() {
+        candidate = os.path.join(search_dir, ref);
+        if os.path.isfile(candidate) {
+            return candidate;
         }
     }
 
-    store = active_host().native_fact(FACT_PACKAGE_STORE, "");
+    store = package_store_dir();
     if store and os.path.isdir(store) {
         for org in sorted(os.listdir(store)) {
             org_dir = os.path.join(store, org);
