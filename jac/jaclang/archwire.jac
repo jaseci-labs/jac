@@ -5680,7 +5680,15 @@ graph import compiler {
         driver.build_services.CompilerBuildServices.prepare_application {
             set_effective_default_codespace
         },
-        driver.compilation_context { is_compiler_source_path },
+        driver.compilation_context
+            | driver.compiler.JacCompiler._wants_native_engine
+            | driver.jir
+            | driver.program.JacProgram.toolchain_dependency
+            | driver.selfhost.SelfHostCache.owns
+            | passes.endpoint_effect_pass.EndpointEffectPass.record_callables
+            | passes.package_boundary_pass.PackageBoundaryPass.run_walk {
+            is_compiler_source_path
+        },
         driver.compile_options.pop_native_target { _native_target_ctx },
         driver.compile_options.push_native_target { set_native_target_override },
         driver.compiler | tests.xbackend_equiv.run_js_module_fixture {
@@ -5689,18 +5697,10 @@ graph import compiler {
         },
         driver.compiler.JacCompiler._cached_client_artifact { ClientArtifact },
         driver.compiler.JacCompiler._load_native_from_cache { CodeGenTarget },
-        driver.compiler.JacCompiler._wants_native_engine
-            | driver.program.JacProgram.toolchain_dependency
-            | driver.selfhost.SelfHostCache.owns
-            | passes.endpoint_effect_pass.EndpointEffectPass.record_callables
-            | passes.package_boundary_pass.PackageBoundaryPass.run_walk {
-            is_compiler_source_path
-        },
         driver.ifacecache.native_lowering_reads {
             is_compiler_source_path,
             is_native_by_location
         },
-        driver.jir { is_compiler_source_path },
         driver.native_iface {
             NATIVE_ABI_VERSION,
             NativeEnumLayout,

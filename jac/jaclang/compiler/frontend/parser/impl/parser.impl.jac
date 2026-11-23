@@ -453,13 +453,7 @@ impl Parser.parse_module -> Module {
             mod_name = base[:dot] if dot > 0 else base;
         }
     }
-    module = Module(
-        source=self.source,
-        name=mod_name,
-        doc=doc,
-        body=body,
-        kid=kid
-    );
+    module = Module(source=self.source, name=mod_name, doc=doc, body=body, kid=kid);
     node_list: list[UniNode] = [];
     seen: dict[int, bool] = {};
     walk: list[UniNode] = [module];
@@ -2763,11 +2757,7 @@ impl Parser.parse_jsx_element -> JsxElement {
         kid.extend(children);
         kid.append(self.consume_uni(TokenKind.JSX_FRAG_CLOSE));
         return JsxElement(
-            name=None,
-            attributes=[],
-            children=children,
-            is_fragment=True,
-            kid=kid
+            name=None, attributes=[], children=children, is_fragment=True, kid=kid
         );
     }
 

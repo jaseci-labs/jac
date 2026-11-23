@@ -1747,10 +1747,7 @@ impl PyastBuildPass.proc_ann_assign(nd: py_ast.AnnAssign) -> Assignment {
             kid.append(assign_value);
         }
         return Assignment(
-            target=[target],
-            value=assign_value,
-            type_tag=annotation_subtag,
-            kid=kid
+            target=[target], value=assign_value, type_tag=annotation_subtag, kid=kid
         );
     } else {
         raise RuntimeError(self.ctx.ice());

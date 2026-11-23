@@ -2793,7 +2793,6 @@ impl DeleteStmt.type_may_hold_graph(t: (TypeBase | None)) -> bool {
 }
 
 
-
 impl ReportStmt.postinit -> None {
     UniNode.postinit(self);
     CodeBlockStmt.postinit(self);

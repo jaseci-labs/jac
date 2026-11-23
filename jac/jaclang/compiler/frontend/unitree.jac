@@ -2005,7 +2005,6 @@ node AssignCompr(AtomExpr) {
 
 node JsxElement(AtomExpr) {
     has is_fragment: bool;
-
     has name: (JsxElementName | None) { getter; }
     has attributes: (Sequence[JsxAttribute] | None) { getter; }
     has children: (Sequence[(JsxChild | JsxElement)] | None) { getter; }

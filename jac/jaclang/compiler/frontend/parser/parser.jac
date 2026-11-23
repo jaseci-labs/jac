@@ -18,15 +18,13 @@ glob _TOK_NAMED_BY_VALUE: frozenset[TokenKind] = frozenset(
              TokenKind.JSX_FRAG_OPEN,
              TokenKind.JSX_FRAG_CLOSE
          ]
-     );
-
-glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
+     ),
+     TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          kind: (
              "NOT"
                  if kind == TokenKind.KW_NOT
                  else (kind.value if kind in _TOK_NAMED_BY_VALUE else kind.name)
-         )
-         for kind in TokenKind
+         ) for kind in TokenKind
      };
 
 def _string_lit_text(raw: str) -> str;
@@ -77,7 +75,6 @@ obj Parser {
     );
 
     def _reject_paren_filter;
-
     def make_uni_token(tok: LexToken) -> Token;
     def make_name(tok: LexToken, is_enum_stmt: bool = False) -> Name;
     def make_special_name(tok: LexToken) -> Name;
