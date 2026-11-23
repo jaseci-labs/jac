@@ -793,7 +793,8 @@ class IRBuilder {
         ptr: Value | None,
         name: str = '',
         align: int | None = None,
-        typ: types.Type | None = None
+        typ: types.Type | None = None,
+        volatile: bool = False
     ) -> Value {
         if ptr is None {
             raise TypeError(MISSING_OPERAND);
@@ -801,6 +802,7 @@ class IRBuilder {
         self._pointer_type(ptr, "load from");
         ld = instructions.LoadInstr(self.block, ptr, name, typ);
         ld.align = align;
+        ld.volatile = volatile;
         self._insert(ld);
         return ld;
     }

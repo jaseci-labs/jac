@@ -1179,6 +1179,52 @@ native layout records the emitted name separately from its source-level key.
   so aliased codes resolve to the same name CPython reports. SCOPE: Linux
   and Darwin tables only; no `strerror`-style message lookup is exported
   (`os.strerror` stays a compiler intercept).
+- **`array.jac`** (Mechanism B over the raw-buffer intrinsics) -- the
+  CPython `array` typecode surface (`b B h H i I l L q Q f d`), raw ingest
+  via `frombytes`/`fromfile`, `byteswap`, and value-based cross-typecode
+  equality. Integer elements use the host width table, so `l`/`L` are 8
+  bytes (LP64) where CPython on Windows uses 4; float elements pack
+  little-endian. SCOPE/divergences: the `Q`/`L` unsigned typecodes cannot
+  represent values >= 2**63 -- the native integer domain is signed `i64`,
+  so such values read back negative (the same limit the `int` type
+  itself has); slicing, `del`, `tobuffer`, and the `u`/`w` typecodes are
+  not provided; `fromfile`/`tofile` take a file-like `any` receiver whose
+  method calls na cannot lower, so both stay Python-only on the native lane
+  (calling them from native code is a lowering error, not a runtime one).
+  Constructor/`extend` accept `list`, `array`, `bytes`, `bytearray`, and
+  `str` (iterated element-wise, so `str` fails coercion like CPython);
+  `set`/`frozenset` storage is element-typed so `any` reads the wrong
+  slots, `tuple`/`range` have no `any` box, `dict` element views are
+  unsupported, and generators/`memoryview` have no detectable runtime
+  shape -- all stay Python-only. Non-iterables raise CPython's
+  `'<type>' object is not iterable`.
+- **`binascii.jac`** (Mechanism B over the raw-buffer intrinsics) --
+  `hexlify`/`unhexlify`/`a2b_hex`/`b2a_hex`, `a2b_base64`/`b2a_base64`
+  (strict mode included), `crc32`/`crc_hqx`, `a2b_uu`/`b2a_uu`, and
+  `a2b_qp`/`b2a_qp`, with `Error` subclassing `ValueError` as on CPython.
+  SCOPE/divergences: `hexlify`'s `sep` must be `bytes` (CPython also
+  accepts `str`); `a2b_uu(b"")` raises `Error("Missing length byte")`,
+  matching current CPython -- older releases read past the buffer and
+  return garbage, so callers porting uudecode loops should not rely on the
+  empty-input result either way.
+- **`mmap.jac`** (Mechanism F over `_mmap_native` libc floors and
+  `_mmap_platform` per-OS constants) -- anonymous and file-backed mappings
+  with `read`/`write`/`seek`/`find`/`move`/`flush`/`resize`/`close`,
+  `ACCESS_READ`/`ACCESS_WRITE`/`ACCESS_COPY`, and `size()`. File-size
+  validation (`cannot mmap an empty file`, length/offset checks) applies
+  only to regular files -- character devices such as `/dev/zero` pass
+  straight to `mmap(2)` like CPython. The mapping's fd is duplicated with
+  `FD_CLOEXEC` so `size()` answers the file size without sharing the
+  caller's descriptor lifetime. SCOPE/divergences: POSIX targets only
+  (Linux/Darwin; the C floor does not link on Windows); `resize` supports
+  anonymous maps and refuses file-backed shared maps (no `ftruncate` +
+  `mremap` path -- a `MAP_PRIVATE` file-backed resize remaps anonymously
+  and loses the file association, as CPython's fallback did pre-`mremap`);
+  `_writable` derives from `PROT_WRITE`, so a default-access map created
+  with `prot=PROT_READ` is rejected here where CPython's `is_writable()`
+  would call it writable (deliberate hardening -- such a map would SIGSEGV
+  on write); `size()` on an anonymous map raises `OSError(EBADF)` matching
+  CPython <= 3.14.
 
 The syscall-backed `os` / `os.path` entry points (`makedirs`, `realpath`,
 `mkdir`, `exists`, `getmtime`, `normcase`, ...) are Mechanism-A/H compiler
@@ -1254,8 +1300,9 @@ Mechanism-A intercepts, not here.
 
 ## Unsafe raw-buffer intrinsics
 
-Mechanism-B modules whose inner loops are byte shuffles (`string`) can
-bypass per-element container calls through a small unsafe floor registered
+Mechanism-B modules with byte-oriented or typed-buffer loops (`string`,
+`binascii`, `array`, and `mmap`) can bypass per-element container calls
+through a small unsafe floor registered
 in `jac/jaclang/compiler/intrinsic_registry.jac` (same mechanism as
 `region_native.jac`'s `__mem_load_i64`/`__mem_store_i64`):
 
@@ -1266,8 +1313,11 @@ in `jac/jaclang/compiler/intrinsic_registry.jac` (same mechanism as
   the `List.u8` `{ i64 len, i64 cap, i8* data }` header.
 - `__mem_load_i8/i16/i32/i64(addr: int) -> int` and
   `__mem_store_i8/i16/i32/i64(addr: int, val: int)` -- raw loads/stores.
-  Loads zero-extend narrow reads to `i64`; stores truncate `i64` to the
-  named width. (The `i32` pair pre-existed for `_errno_native`.) The
+  Loads sign-extend narrow reads to `i64`; stores truncate `i64` to the
+  named width. Callers that need the unsigned bit pattern mask explicitly
+  (`& 0xFF`, `& 0xFFFF`, `& 0xFFFFFFFF`) -- see `array.impl.jac::_get_le`
+  and `js_engine`'s `mem.jac::read_byte`/`read_u16`/`read_u32` for the
+  convention. (The `i32` pair pre-existed for `_errno_native`.) The
   access width lives as `width` metadata on the `IntrinsicEntry` (the
   checker-visible specs stay `i64`, so callers pass plain `int`); the
   emitters never derive semantics from the intrinsic name.
@@ -1282,8 +1332,8 @@ Layout and lifetime contract for callers:
 - Empty buffers may return a meaningless/null data pointer; guard `n == 0`
   before dereferencing.
 - Writing through `__bytes_data` mutates "immutable" bytes -- only safe
-  on a fresh, unshared buffer (e.g. a `s.encode()` result overwritten in
-  place before it escapes, the `capwords` idiom).
+  on a fresh, unshared buffer (e.g. `out = b"\\x00" * n` filled before it
+  escapes, the `hexlify`/`unhexlify` idiom).
 - On the sv (Python) backend these names are undefined; modules using
   them are native-only (which is fine -- `na_stdlib` only ships on na).
 
