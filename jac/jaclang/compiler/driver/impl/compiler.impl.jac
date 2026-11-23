@@ -455,7 +455,7 @@ impl JacCompiler._sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None
     if located is None {
         return None;
     }
-    (_, root, bundle_dir, jir_path) = located;
+    (_, pkg_root, bundle_dir, jir_path) = located;
     if not os.path.isfile(jir_path) {
         return None;
     }
@@ -464,7 +464,7 @@ impl JacCompiler._sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None
     }
     import from pathlib { Path as _Path }
     try {
-        return (_Path(jir_path).read_bytes(), root);
+        return (_Path(jir_path).read_bytes(), pkg_root);
     } except OSError {
         return None;
     }
@@ -489,14 +489,14 @@ impl JacCompiler._precompiled_jir_data(full_target: str) -> (tuple[bytes, str] |
     if located is None {
         return None;
     }
-    (norm_file, root, bundle_dir, jir_path) = located;
+    (norm_file, pkg_root, bundle_dir, jir_path) = located;
     if not bundle_dir_allowed(bundle_dir) or not os.path.isfile(jir_path) {
         return None;
     }
     try {
         data = _Path(jir_path).read_bytes();
-        if precompiled_jir_matches_source(data, norm_file, package_root=root) {
-            return (data, root);
+        if precompiled_jir_matches_source(data, norm_file, package_root=pkg_root) {
+            return (data, pkg_root);
         }
     } except Exception {}
     return None;
@@ -513,16 +513,17 @@ impl JacCompiler._get_precompiled_jir_bytecode(
     if located is None {
         return None;
     }
-    (norm_file, root, bundle_dir, jir_path) = located;
+    (norm_file, pkg_root, bundle_dir, jir_path) = located;
     if not bundle_dir_allowed(bundle_dir) or not os.path.isfile(jir_path) {
         return None;
     }
     import from pathlib { Path as _Path }
     try {
         jir_data = _Path(jir_path).read_bytes();
-        trusted = _sealed.image_for_bundle_dir(bundle_dir) is not None
-            or precompiled_jir_matches_source(jir_data, norm_file, package_root=root);
-        if not trusted {
+        if _sealed.image_for_bundle_dir(bundle_dir) is None
+            and not precompiled_jir_matches_source(
+                jir_data, norm_file, package_root=pkg_root
+            ) {
             return None;
         }
         bc = read_bytecode_only(jir_data);
@@ -531,8 +532,8 @@ impl JacCompiler._get_precompiled_jir_bytecode(
         }
         ct_raw = read_section_bytes(jir_data, SEC_CTDEPS);
         return (
-            patch_co_filenames_bytes(bc, PRECOMPILE_SENTINEL, root),
-            absolutize_ct_deps_section(ct_raw, root) if ct_raw else b""
+            patch_co_filenames_bytes(bc, PRECOMPILE_SENTINEL, pkg_root),
+            absolutize_ct_deps_section(ct_raw, pkg_root) if ct_raw else b""
         );
     } except Exception {
         return None;
