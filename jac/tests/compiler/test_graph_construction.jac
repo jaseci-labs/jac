@@ -153,13 +153,42 @@ test "client regeneration retains construction imports" {
 }
 
 test "native construction runtime does not admit compiler internals" {
-    import from jaclang.compiler.frontend.codeinfo { resolve_native_module }
+    import from jaclang.compiler.frontend.codeinfo {
+        reset_native_unit_compile,
+        resolve_native_module,
+        set_native_unit_compile
+    }
     import from tempfile { gettempdir }
-    (_, runtime) = resolve_native_module(
-        "jaclang.runtime.graph_fragment", gettempdir()
-    );
-    assert runtime is not None;
-    (_, compiler) = resolve_native_module("jaclang.cli.cli", gettempdir());
+    base = gettempdir();
+    for module in [
+        "jaclang.runtime.archetype",
+        "jaclang.runtime.constructs",
+        "jaclang.runtime.graph_fragment"
+    ] {
+        (_, runtime) = resolve_native_module(module, base);
+        assert runtime is not None , module;
+        previous = set_native_unit_compile(True);
+        try {
+            (_, pinned) = resolve_native_module(module, base);
+            assert pinned is not None , (
+                f"a pinned native unit must still resolve {module}, got: {pinned}"
+            );
+        } finally {
+            reset_native_unit_compile(previous);
+        }
+    }
+    previous = set_native_unit_compile(True);
+    try {
+        for module in ["jaclang.cli.cli", "jaclang.runtime.context"] {
+            (_, pinned) = resolve_native_module(module, base);
+            assert pinned is None , (
+                f"a pinned native unit must not admit {module}, got: {pinned}"
+            );
+        }
+    } finally {
+        reset_native_unit_compile(previous);
+    }
+    (_, compiler) = resolve_native_module("jaclang.cli.cli", base);
     assert compiler is None;
 }
 
