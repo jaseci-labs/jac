@@ -1,7 +1,7 @@
 """The bundled `signal` / `subprocess` modules must answer what CPython answers.
 
 `import signal` and `import subprocess` bind CPython's modules on the sv
-pathway and `na_stdlib/signal.linux.jac` / `na_stdlib/subprocess.linux.jac` on
+pathway and `na_stdlib/signal.<os>.jac` / `na_stdlib/subprocess.jac` on
 the na pathway, so running one fixture through both and demanding identical
 output *is* the congruence contract -- CPython is the oracle, not a
 hand-copied expectation table.
