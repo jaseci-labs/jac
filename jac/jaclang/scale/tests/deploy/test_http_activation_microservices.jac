@@ -1515,7 +1515,9 @@ test "discover_capabilities caches per (cluster, namespace, service-address, cli
         _apps_api=unittest.mock.MagicMock(),
         http_scaler_address="keda-add-ons-http-external-scaler.keda.svc.cluster.local:9090",
         interceptor_service_address="keda-add-ons-http-interceptor-proxy.keda.svc.cluster.local:8080"
-    ).discover_capabilities("default");
+    ).discover_capabilities(
+        "default"
+    );
     lookups = [
         (c[1]["name"], c[1]["namespace"])
         for c in fqdn_core.read_namespaced_service.call_args_list
