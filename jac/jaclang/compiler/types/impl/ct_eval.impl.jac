@@ -48,12 +48,6 @@ impl _impl_body(nd: UniNode) -> list[UniNode] {
     return [];
 }
 
-impl _is_builtin_name(name: str) -> bool {
-    return name in CT_BUILTIN_TYPES
-        or name in CT_BUILTIN_EXCEPTIONS
-        or name in CT_BUILTIN_FUNCS;
-}
-
 impl CtEvaluator._enter_root(nd: UniNode) -> (Module | None) {
     prev = self._ct_root;
     if prev is None {

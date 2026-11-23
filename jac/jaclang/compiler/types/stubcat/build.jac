@@ -3,19 +3,6 @@ import os;
 import sys;
 import time;
 
-glob PRELUDE_ORDER: tuple[str, ...] = (
-         "builtins",
-         "typing",
-         "types",
-         "enum",
-         "jac_builtins",
-         "dom_types",
-         "na_builtins",
-         "js_globals",
-         "builtin_overrides",
-         "typing_ambient"
-     );
-
 def parse_versions(stdlib_dir: str) -> dict[str, tuple[int, int]];
 
 def _minor_of(text: str) -> int;

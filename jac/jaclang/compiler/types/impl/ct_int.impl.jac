@@ -24,10 +24,6 @@ impl mag_to_int(m: list[int]) -> int {
     return out;
 }
 
-impl mag_is_zero(m: list[int]) -> bool {
-    return len(m) == 0;
-}
-
 impl mag_cmp(a: list[int], b: list[int]) -> int {
     if len(a) != len(b) {
         return 1 if len(a) > len(b) else -1;
@@ -352,10 +348,6 @@ impl digit_value(ch: str) -> int {
         return o - 55;
     }
     return -1;
-}
-
-impl mag_pow2(bits: int) -> list[int] {
-    return mag_shl([1], bits);
 }
 
 impl mag_isqrt(n: list[int]) -> list[int] {

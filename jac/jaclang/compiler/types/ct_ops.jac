@@ -44,8 +44,6 @@ def int_divmod(a: CtInt, b: CtInt) -> tuple[CtInt, CtInt];
 
 def int_bit_length(a: CtInt) -> int;
 
-def int_small_index(a: CtInt) -> int;
-
 def int_pow(a: CtInt, b: CtInt) -> CtValue;
 
 def int_lshift(a: CtInt, b: CtInt) -> CtInt;
