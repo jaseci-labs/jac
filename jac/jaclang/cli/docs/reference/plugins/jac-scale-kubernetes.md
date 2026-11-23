@@ -780,7 +780,7 @@ jac scale status app.jac
 
 Displays a table with:
 
-- **Component health** - Jaseci App, Postgres, Prometheus, Grafana, NGINX Ingress (companion components appear when deployed)
+- **Component health** - Jaseci App (every service in the fleet and the gateway, reported as the least healthy one), Postgres, Prometheus, Grafana, NGINX Ingress (companion components appear when deployed)
 - **Pod readiness** - `ready/total` replica count per component
 - **Service URLs** - application endpoint and Grafana URL
 

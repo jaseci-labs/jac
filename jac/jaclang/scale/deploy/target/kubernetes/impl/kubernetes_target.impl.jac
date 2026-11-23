@@ -537,6 +537,15 @@ impl KubernetesTargetBase.get_full_status(app_name: str) -> dict[str, any] {
         }
     }
 
+    fleet: list[any] = [];
+    try {
+        fleet = self._fleet_deployments(apps_v1, namespace, app_name);
+    } except Exception as e {
+        if self.logger {
+            self.logger.warning(f"Failed to list the fleet in '{namespace}': {e}");
+        }
+    }
+
     sts_map = {};
     try {
         sts_items: list[any] = apps_v1.list_namespaced_stateful_set(
@@ -576,6 +585,16 @@ impl KubernetesTargetBase.get_full_status(app_name: str) -> dict[str, any] {
             self.logger.warning(f"Failed to list Pods in '{namespace}': {e}");
         }
     }
+
+    app_health = self._fleet_health(fleet, set(restarting_apps));
+    components.append(
+        {
+            'name': 'Jaseci App',
+            'status': app_health.status.value if app_health else 'not_deployed',
+            'ready': app_health.ready_replicas if app_health else 0,
+            'total': app_health.replicas if app_health else 0
+        }
+    );
 
     component_defs: list[dict[str, any]] = [
         {'k8s_name': app_name + d[0], 'display': d[1], 'is_sts': d[2]}
