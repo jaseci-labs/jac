@@ -49,6 +49,7 @@ obj IdentityStorage {
     def identity_taken(value: str) -> bool abst;
     def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, any]] abst;
     def list_provisioned_users -> list[dict[str, any]] abst;
+    def count_provisioned_users -> int abst;
     def delete_if_provisioned(user_id: str) -> bool abst;
     def get_user_by_sso(platform: str, external_id: str) -> dict[str, any] | None abst;
     def create_user(
@@ -128,6 +129,7 @@ obj PgIdentityStorage(IdentityStorage) {
     def identity_taken(value: str) -> bool;
     def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, any]];
     def list_provisioned_users -> list[dict[str, any]];
+    def count_provisioned_users -> int;
     def delete_if_provisioned(user_id: str) -> bool;
     def get_user_by_sso(platform: str, external_id: str) -> dict[str, any] | None;
 }

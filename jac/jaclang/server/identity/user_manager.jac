@@ -142,6 +142,7 @@ obj UserManager {
     def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, any]];
     def delete_user(user_id: str) -> dict[str, str];
     def list_provisioned_users -> dict[str, any];
+    def count_provisioned_users -> int;
     def delete_provisioned_users -> dict[str, any];
     def create_user_as_admin(
         identities: list[dict[str, any]],

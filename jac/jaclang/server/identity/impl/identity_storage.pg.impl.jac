@@ -34,6 +34,12 @@ glob _PG_IDENTITY_SCHEMA: list[str] = [
     """
      ];
 
+glob _PG_PROVISIONED_WHERE: str = """
+          AND COALESCE(u.doc->'identities', '[]'::jsonb) = '[]'::jsonb
+          AND COALESCE(u.doc->'credentials', '[]'::jsonb) = '[]'::jsonb
+          AND NOT EXISTS (SELECT 1 FROM sso_lookups s WHERE s.user_id = u.user_id)
+          AND NOT EXISTS (SELECT 1 FROM identity_lookups l WHERE l.user_id = u.user_id)""";
+
 
 def _pg_json_default(o: object) -> str;
 
@@ -552,10 +558,9 @@ impl PgIdentityStorage.list_provisioned_users -> list[dict[str, any]] {
         """
         SELECT u.user_id, u.doc->>'root_id', u.doc->>'created_at'
         FROM identity_users u
-        WHERE COALESCE(u.doc->'identities', '[]'::jsonb) = '[]'::jsonb
-          AND COALESCE(u.doc->'credentials', '[]'::jsonb) = '[]'::jsonb
-          AND NOT EXISTS (SELECT 1 FROM sso_lookups s WHERE s.user_id = u.user_id)
-          AND NOT EXISTS (SELECT 1 FROM identity_lookups l WHERE l.user_id = u.user_id)
+        WHERE TRUE"""
+            + _PG_PROVISIONED_WHERE
+            + """
         ORDER BY u.doc->>'created_at'
         """,
         {}
@@ -589,6 +594,13 @@ impl PgIdentityStorage.list_provisioned_users -> list[dict[str, any]] {
     return found;
 }
 
+impl PgIdentityStorage.count_provisioned_users -> int {
+    rows = self.store.rows(
+        "SELECT COUNT(*) FROM identity_users u WHERE TRUE" + _PG_PROVISIONED_WHERE, {}
+    );
+    return int(rows[0][0]) if rows else 0;
+}
+
 impl PgIdentityStorage.delete_if_provisioned(user_id: str) -> bool {
     anchors_table = self.store.rows("SELECT to_regclass('anchors') IS NOT NULL", {});
     no_data = '';
@@ -604,11 +616,8 @@ impl PgIdentityStorage.delete_if_provisioned(user_id: str) -> bool {
     rows = self.store.rows(
         """
         DELETE FROM identity_users u
-        WHERE u.user_id = :u
-          AND COALESCE(u.doc->'identities', '[]'::jsonb) = '[]'::jsonb
-          AND COALESCE(u.doc->'credentials', '[]'::jsonb) = '[]'::jsonb
-          AND NOT EXISTS (SELECT 1 FROM sso_lookups s WHERE s.user_id = u.user_id)
-          AND NOT EXISTS (SELECT 1 FROM identity_lookups l WHERE l.user_id = u.user_id)"""
+        WHERE u.user_id = :u"""
+            + _PG_PROVISIONED_WHERE
             + no_data
             + """
         RETURNING u.user_id

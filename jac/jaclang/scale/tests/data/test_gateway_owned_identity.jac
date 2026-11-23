@@ -10,6 +10,7 @@ real two-process fleet over HTTP.
 """
 
 import os;
+import logging;
 import uuid;
 import subprocess;
 import time;
@@ -469,6 +470,7 @@ test "the gateway's clean-up removes provisioned records, so a deleted account's
         assert set(by_id) == {gone, used} , f"listed {sorted(by_id)}";
         assert by_id[gone]["holds_data"] is False;
         assert by_id[used]["holds_data"] is True;
+        assert gw.count_provisioned_users() == 2;
 
         result = gw.delete_provisioned_users();
         assert result == {"deleted": [gone], "kept_with_data": [used]} , str(result);
@@ -478,6 +480,7 @@ test "the gateway's clean-up removes provisioned records, so a deleted account's
         assert storage.get_user_by_id(linked) is not None;
         assert storage.get_user_by_id(real["user_id"]) is not None;
         assert gw.list_provisioned_users()["users"] == [by_id[used]];
+        assert gw.count_provisioned_users() == 1;
     } finally {
         _close_isolated(store, rt, base);
     }
@@ -500,6 +503,26 @@ test "the admin endpoints list and delete provisioned records, admin only" {
         stray = str(uuid.uuid4());
         storage.ensure_user_by_id(stray);
         portal = JacAPIServerAdmin(user_manager=gw);
+
+        # The start-up warning reports the count, from a count-only query.
+        seen: list[str] = [];
+        class _Seen(logging.Handler) {
+            def emit(self: any, record: logging.LogRecord) {
+                seen.append(record.getMessage());
+            }
+        }
+        handler = _Seen(level=logging.WARNING);
+        logging.getLogger().addHandler(handler);
+        previous = os.environ.pop(_SV_ENV, None);
+        try {
+            portal.warn_provisioned_users();
+        } finally {
+            logging.getLogger().removeHandler(handler);
+            if previous is not None {
+                os.environ[_SV_ENV] = previous;
+            }
+        }
+        assert any(m.startswith("1 blank account record(s)") for m in seen) , str(seen);
 
         refused = portal.admin_delete_provisioned_users(Authorization=None);
         assert refused.ok is False;
@@ -573,6 +596,7 @@ test "an app that provisions on its own store refuses the clean-up" {
     }
     assert "error" in manager.list_provisioned_users();
     assert "error" in manager.delete_provisioned_users();
+    assert manager.count_provisioned_users() == 0;
     admin = manager.create_internal_user(
         f"ops_{uuid.uuid4().hex[:8]}", f"Pw-{uuid.uuid4().hex}!a1", role="admin"
     );

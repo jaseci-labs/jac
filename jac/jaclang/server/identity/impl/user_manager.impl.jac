@@ -719,6 +719,13 @@ impl UserManager.list_provisioned_users -> dict[str, any] {
     return {'users': users, 'count': len(users)};
 }
 
+impl UserManager.count_provisioned_users -> int {
+    if self.provision_unknown_users {
+        return 0;
+    }
+    return self._identity_storage.count_provisioned_users();
+}
+
 impl UserManager.delete_provisioned_users -> dict[str, any] {
     if self.provision_unknown_users {
         return {'error': PROVISIONED_HERE};

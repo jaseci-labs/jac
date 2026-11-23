@@ -996,12 +996,11 @@ impl JacAPIServerAdmin.warn_provisioned_users -> None {
         return;
     }
     try {
-        found = manager.list_provisioned_users();
+        count = manager.count_provisioned_users();
     } except Exception as e {
         logger.debug(f"could not count provisioned account records: {e}");
         return;
     }
-    count = int(found.get('count', 0));
     if count {
         logger.warning(
             f"{count} blank account record(s) on this store were written by fleet "
