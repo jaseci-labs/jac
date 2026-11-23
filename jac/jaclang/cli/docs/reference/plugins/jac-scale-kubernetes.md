@@ -1629,7 +1629,7 @@ reachable at call time).
 | `preview(spec)` | the manifest bundle, nothing applied (microservice target only, like `--dry-run`) |
 | `destroy(app_name, namespace, component="")` | removes the deployment; never prompts |
 | `status(app_name, namespace)` | full status dict (components, pod counts, URLs) |
-| `resource_status(app_name, namespace)` | `ResourceStatusInfo{status, replicas, ready_replicas, available_replicas, updated_replicas, replica_floor, reason, message}`; `status` is one of `active`, `activating`, `inactive`, `deactivating`, `degraded`, `unknown` (see [Deployment Status](#deployment-status)) |
+| `resource_status(app_name, namespace)` | `ResourceStatusInfo{status, replicas, ready_replicas, available_replicas, updated_replicas, replica_floor, reason, message}` for the whole fleet: the least healthy member's `status`, with replica counts summed across members; `status` is one of `active`, `activating`, `inactive`, `deactivating`, `degraded`, `unknown` (see [Deployment Status](#deployment-status)) |
 | `autoscaler_status(app_name, namespace, service="")` | `AutoscalerRuntimeStatus`: everything `ResourceStatusInfo` carries plus `engine`, `autoscaler_name`, `trigger_active`, `scaler_ready`, `conditions`, `resource_version` (see [Autoscaler runtime status](#autoscaler-runtime-status)) |
 | `watch_autoscaler_transitions(app_name, namespace, label_selector=None, timeout_seconds=None)` | iterator of `AutoscalerTransition` (see [Observing transitions](#observing-transitions)) |
 | `service_url(app_name, namespace)` | externally reachable URL or `None` |

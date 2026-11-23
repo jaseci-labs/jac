@@ -242,17 +242,39 @@ impl KubernetesTargetBase._fleet_deployments(
     return [];
 }
 
+impl KubernetesTargetBase._fleet_health(
+    deployments: list[any], crashlooping_apps: set[str]
+) -> (ResourceStatusInfo | None) {
+    members = [
+        assess_workload(
+            d, crashlooping=(d.metadata.labels or {}).get("app") in crashlooping_apps
+        ) for d in deployments
+    ];
+    if not members {
+        return None;
+    }
+    worst = min(members, key=lambda (m) { _FLEET_SEVERITY.index(m.status); });
+    return ResourceStatusInfo(
+        status=worst.status,
+        reason=worst.reason,
+        message=worst.message,
+        replicas=sum(m.replicas for m in members),
+        current_replicas=sum(m.current_replicas for m in members),
+        ready_replicas=sum(m.ready_replicas for m in members),
+        available_replicas=sum(m.available_replicas for m in members),
+        updated_replicas=sum(m.updated_replicas for m in members),
+        replica_floor=sum(m.replica_floor for m in members)
+    );
+}
+
 impl KubernetesTargetBase.get_status(app_name: str) -> ResourceStatusInfo {
     try {
         self._assert_own_app(app_name);
         self._load_cluster_config();
-        apps_v1 = client.AppsV1Api();
-        core_v1 = client.CoreV1Api();
-        namespace = self.k8s_config.namespace;
-
-        return assess_workload(
-            apps_v1.read_namespaced_deployment(name=app_name, namespace=namespace)
+        fleet = self._fleet_deployments(
+            client.AppsV1Api(), self.k8s_config.namespace, app_name
         );
+        return self._fleet_health(fleet, set()) or assess_workload(None);
     } except Exception as e {
         if self.logger {
             self.logger.error(f"Failed to get status for '{app_name}': {e}");

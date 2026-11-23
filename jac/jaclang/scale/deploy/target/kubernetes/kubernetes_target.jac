@@ -2,6 +2,15 @@ glob DB_DATA_PATH: str = '/var/lib/jac/pgdata',
      DB_DISK_TIMEOUT_S: int = 10,
      DB_DISK_WARN_PERCENT: int = 80;
 
+glob _FLEET_SEVERITY: list[ResourceStatus] = [
+         ResourceStatus.DEGRADED,
+         ResourceStatus.UNKNOWN,
+         ResourceStatus.ACTIVATING,
+         ResourceStatus.DEACTIVATING,
+         ResourceStatus.ACTIVE,
+         ResourceStatus.INACTIVE
+     ];
+
 obj KubernetesTargetBase(DeploymentTarget) {
     has config: KubernetesConfig,
         logger: (Logger | None) = None,
@@ -32,6 +41,10 @@ obj KubernetesTargetBase(DeploymentTarget) {
 
     def _assert_own_app(app_name: str);
     def _fleet_deployments(apps_v1: any, namespace: str, app_name: str) -> list[any];
+    def _fleet_health(
+        deployments: list[any], crashlooping_apps: set[str]
+    ) -> (ResourceStatusInfo | None);
+
     def get_status(app_name: str) -> ResourceStatusInfo;
     def scale(app_name: str, replicas: int, service: str = "");
     def _get_lb_endpoint(app_name: str) -> (str | None);
