@@ -83,10 +83,10 @@ by `mode`: "commit" or "rollback" name how A's transaction ended; "assign" and
 Either way A then holds B's value, and an in-place edit on top of it is stored.
 In "deleted", "in place deleted" (A still inside a read snapshot) and "open txn
 deleted" (A keeps its serializable transaction open across B's delete, so its
-first attempt fails with a serialization error and the replay is what reports
-the conflict) B removes the counter instead, A's write over it (an assignment, or
-an in-place edit) must report a conflict, and the row stays gone after A's commit,
-retry and close (jac#10419)."""
+commit fails with a serialization error and the unit is lost: A aborts, as the
+request loop does before a re-run) B removes the counter instead, A's write over
+it (an assignment, or an in-place edit) must report a conflict, and the row stays
+gone after A's commit, retry and close (jac#10419)."""
 def _after_other_commit(td: str, mode: str) {
     old = JacRuntime.exec_ctx;
     ctx1 = _ctx(td);
@@ -166,6 +166,9 @@ def _after_other_commit(td: str, mode: str) {
                 f"{mode}: a write over a version that moved must report a "
                 "conflict, not silently overwrite the winner or vanish"
             );
+            if mode == "open txn deleted" {
+                ctxa.mem.abort();
+            }
             # Reported once, then gone: the next read must not flush it again.
             ctxa.mem.read_barrier();
         }
