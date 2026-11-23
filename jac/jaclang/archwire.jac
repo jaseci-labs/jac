@@ -4721,6 +4721,9 @@ graph import compiler {
         driver.nativecache.NativeUnitRegistry.emit_objects { emit_unit_objects },
         driver.nativecache.NativeUnitRegistry.object_for { emit_unit_object },
     ]
+    backends.native.na_constants ++> types.type_evaluator.TypeEvaluator._report_missing_import_name {
+        stdlib_intercepted
+    }
     backends.native.na_constants --> driver.native_iface.resolve_native_unit_ref {
         FACT_IMPORT_PATHS,
         FACT_PACKAGE_STORE,

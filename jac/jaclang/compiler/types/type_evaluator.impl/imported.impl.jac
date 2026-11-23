@@ -694,6 +694,7 @@ impl TypeEvaluator._report_missing_import_name(
         and source.loc.mod_path.endswith(".jac")
         and native_variant_of(source.loc.mod_path) == source.loc.mod_path
         and not is_toolchain_unit(source.loc.mod_path)
+        and not stdlib_intercepted(imp.from_loc.dot_path_str, item.name.value)
         and source.lookup("__getattr__", deep=False) is None
         and not module_absorbs_names(source)
         and not any(

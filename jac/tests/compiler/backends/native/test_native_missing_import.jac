@@ -51,6 +51,19 @@ test "the checker makes a name a Jac module does not define E1145 and keeps W110
         ),
         ("include", "W1101", {"base.jac": lib, "lib.jac": "include base;\n"}),
         (
+            "import cycle",
+            "E1145",
+            {
+                "lib.jac": "import from main { main_fn, missing_fn }\n" + lib,
+                "main.jac": "import from lib { present_fn }\n\ndef main_fn -> int {\n    return 1;\n}\n"
+            }
+        ),
+        (
+            "native-intercepted name",
+            "W1101",
+            {"random.jac": lib, "main.jac": "import from random { randint }\n"}
+        ),
+        (
             "platform variant",
             "W1101",
             {"lib.jac": lib, "lib.linux.jac": lib, "lib.darwin.jac": lib}
@@ -102,8 +115,12 @@ test "the checker makes a name a Jac module does not define E1145 and keeps W110
         for (run, rows) in [("cold", checks), ("warm", checks[:2])] {
             for (label, expected, path) in rows {
                 codes = check_codes(path);
-                other = "W1101" if expected == "E1145" else "E1145";
-                if expected not in codes or other in codes {
+                if [
+                    c
+                    for c in codes
+                    if c in ("E1145", "W1101")
+                ]
+                    != [expected] {
                     failures.append(
                         f"{label} ({run}): expected {expected}, got {codes}"
                     );
