@@ -862,9 +862,11 @@ test "status reads a container's current state, not its lifetime restart count" 
 
 test "a deployed fleet is found by the Deployments the builder emitted" {
     import unittest.mock;
-    def member(svc: str) -> any {
+    def member(svc: str, available: int = 1) -> any {
         return _as_emitted(
-            _rollout(generation=1, observed=1, replicas=1, updated=1, available=1),
+            _rollout(
+                generation=1, observed=1, replicas=1, updated=1, available=available
+            ),
             svc,
             "shop"
         );
@@ -872,24 +874,34 @@ test "a deployed fleet is found by the Deployments the builder emitted" {
     legacy = _rollout(generation=1, observed=1, replicas=1, updated=1, available=1);
     legacy.metadata.name = "shop";
     legacy.metadata.labels = _legacy_deployment("shop").metadata.labels;
-    # (label, fleet, service passed to scale, Deployment scaled)
-    cases: list[tuple[str, list[any], str, str]] = [
+    # (label, fleet, service passed to scale, expected status, Deployment scaled)
+    cases: list[tuple[str, list[any], str, str, str]] = [
         (
             "a solo app and its gateway",
             [member("shop"), member(GATEWAY_NAME)],
             "",
+            "active",
             "shop-deployment"
         ),
         (
             "a workspace service named by its [apps] key",
             [member("web"), member("products_app"), member(GATEWAY_NAME)],
             "products_app",
+            "active",
             "products-app-deployment"
+        ),
+        (
+            "a fleet with one service still starting",
+            [member("web", available=0), member(GATEWAY_NAME)],
+            "web",
+            "activating",
+            "web-deployment"
         ),
         (
             "a pre-0.34.9 Deployment a redeploy has not replaced yet",
             [legacy],
             "",
+            "active",
             "shop"
         )
     ];
@@ -897,12 +909,16 @@ test "a deployed fleet is found by the Deployments the builder emitted" {
     with unittest.mock.patch(
         "jaclang.scale.deploy.target.kubernetes.kubernetes_target.k8s_cluster_config"
     ) {
-        for (label, fleet, service, scaled) in cases {
+        for (label, fleet, service, status, scaled) in cases {
             apps = FakeAppsV1(items=fleet);
             with unittest.mock.patch(
                 "jaclang.scale.deploy.target.kubernetes.kubernetes_target.client.AppsV1Api",
                 return_value=apps
             ) {
+                got = _target("shop", "shop").get_status("shop").status.value;
+                if got != status {
+                    wrong.append(f"{label}: status {got}, expected {status}");
+                }
                 try {
                     _target("shop", "shop").scale("shop", 3, service);
                 } except Exception as e {
@@ -911,6 +927,15 @@ test "a deployed fleet is found by the Deployments the builder emitted" {
                 if apps.patched != [(scaled, {"spec": {"replicas": 3}})] {
                     wrong.append(f"{label}: patched {apps.patched}, expected {scaled}");
                 }
+            }
+        }
+        with unittest.mock.patch(
+            "jaclang.scale.deploy.target.kubernetes.kubernetes_target.client.AppsV1Api",
+            return_value=FakeAppsV1(items=[])
+        ) {
+            got = _target("shop", "shop").get_status("shop").status.value;
+            if got != "unknown" {
+                wrong.append(f"an undeployed fleet: status {got}, expected unknown");
             }
         }
         with unittest.mock.patch(
