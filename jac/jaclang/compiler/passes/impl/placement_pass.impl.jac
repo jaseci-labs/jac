@@ -794,7 +794,6 @@ impl settle_native_module(
     del pending[:];
     del warnings[:];
     gen = mod.gen;
-    gen.native_refusal_code = refusal.code;
     gen.native_refusal = refusal.headline();
     gen.llvm_ir = None;
     gen.native_engine = None;

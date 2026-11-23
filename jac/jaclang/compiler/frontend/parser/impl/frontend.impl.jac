@@ -24,9 +24,7 @@ impl _replay_diags(
 impl parse_diags(
     source: str, file_path: str = "<input>"
 ) -> tuple[bool, list[SrcDiag], list[SrcDiag]] {
-    (tokens, _comments, lex_diags, lex_errs) = na_lexer.tokenize_full(
-        source, file_path
-    );
+    (tokens, _comments, lex_diags, lex_errs) = tokenize_full(source, file_path);
     parser = Parser(tokens=tokens, file_path=file_path, source_code=source);
     parser.parse();
     return (parser.error_count > 0 or lex_errs > 0, parser.diags, lex_diags, );
@@ -35,7 +33,7 @@ impl parse_diags(
 impl parse(
     source: str, file_path: str = "<input>", prog: (JacProgram | None) = None
 ) -> tuple[Module, bool] {
-    (tokens, comments, lex_diags, lex_errs) = na_lexer.tokenize_full(source, file_path);
+    (tokens, comments, lex_diags, lex_errs) = tokenize_full(source, file_path);
     parser = Parser(tokens=tokens, file_path=file_path, source_code=source);
     module = parser.parse();
     had_error = finish_parse(
