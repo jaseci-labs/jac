@@ -780,12 +780,32 @@ impl module_records(mod: Module, source: str) -> tuple[list[WireRec], list[RuleR
     return (wires, rules);
 }
 
+impl spaces_text(mod: Module, source: str) -> str {
+    return "\n\n".join(
+        [
+            source[stmt.loc.pos_start:stmt.loc.pos_end]
+            for stmt in mod.body
+            if isinstance(stmt, GraphSpaces)
+        ]
+    );
+}
+
+impl parse_arch_records(source: str, path: str) -> ArchRecords {
+    (mod, had_error) = parse_woven(source, path, None, []);
+    (wires, rules) = module_records(mod, source);
+    return ArchRecords(
+        parse_failed=bool(had_error),
+        wires=wires,
+        rules=rules,
+        spaces_text=spaces_text(mod, source)
+    );
+}
+
 impl parse_records(
     source: str, path: str
 ) -> tuple[bool, list[WireRec], list[RuleRec]] {
-    (mod, had_error) = parse_woven(source, path, None, []);
-    (wires, rules) = module_records(mod, source);
-    return (bool(had_error), wires, rules);
+    records = parse_arch_records(source, path);
+    return (records.parse_failed, records.wires, records.rules);
 }
 
 impl _split_list(text: str) -> list[str] {
@@ -827,12 +847,18 @@ impl _decode_patterns(text: str) -> (list[PatternRec] | None) {
     return out;
 }
 
-impl encode_records(
-    parse_failed: bool, wires: list[WireRec], rules: list[RuleRec]
-) -> str {
+impl encode_records(records: ArchRecords) -> str {
     lines: list[str] = [
-        "jacwire\x1f" + str(RECORDS_FORMAT) + "\x1f" + ("1" if parse_failed else "0")
+        "jacwire\x1f"
+            + str(RECORDS_FORMAT)
+            + "\x1f"
+            + ("1" if records.parse_failed else "0")
     ];
+    if records.spaces_text {
+        lines.append("T\x1f" + records.spaces_text.replace("\n", "\x1c"));
+    }
+    wires = records.wires;
+    rules = records.rules;
     for w in wires {
         flags = ("1" if w.is_module_form else "0")
             + ("1" if w.is_absorb else "0")
@@ -875,7 +901,7 @@ impl encode_records(
     return "\n".join(lines);
 }
 
-impl decode_records(text: str) -> (tuple[bool, list[WireRec], list[RuleRec]] | None) {
+impl decode_records(text: str) -> (ArchRecords | None) {
     lines = text.split("\n");
     head = lines[0].split("\x1f");
     if len(head) != 3 or head[0] != "jacwire" or head[1] != str(RECORDS_FORMAT) {
@@ -883,9 +909,12 @@ impl decode_records(text: str) -> (tuple[bool, list[WireRec], list[RuleRec]] | N
     }
     wires: list[WireRec] = [];
     rules: list[RuleRec] = [];
+    spaces_text = "";
     for line in lines[1:] {
         f = line.split("\x1f");
-        if f[0] == "W" and len(f) == 11 {
+        if f[0] == "T" and len(f) == 2 {
+            spaces_text = f[1].replace("\x1c", "\n");
+        } elif f[0] == "W" and len(f) == 11 {
             flags = f[3];
             if len(flags) != 5
                 or not (
@@ -941,7 +970,9 @@ impl decode_records(text: str) -> (tuple[bool, list[WireRec], list[RuleRec]] | N
             return None;
         }
     }
-    return (head[2] == "1", wires, rules);
+    return ArchRecords(
+        parse_failed=head[2] == "1", wires=wires, rules=rules, spaces_text=spaces_text
+    );
 }
 
 impl is_arch_file(path: str) -> bool {
@@ -1084,23 +1115,22 @@ impl _load_spec(root_dir: str, arch_path: str) -> WiringSpec {
     host = active_host();
     source = host.read_source(arch_path);
     digest = hashlib.sha256(source.encode()).hexdigest();
-    records: (tuple[bool, list[WireRec], list[RuleRec]] | None) = None;
+    records: (ArchRecords | None) = None;
     held = host.wiring_records(digest);
     if held {
         records = decode_records(held);
     }
     if records is None {
-        records = parse_records(source, arch_path);
-        host.keep_wiring_records(
-            digest, encode_records(records[0], records[1], records[2])
-        );
+        records = parse_arch_records(source, arch_path);
+        host.keep_wiring_records(digest, encode_records(records));
     }
     spec = WiringSpec(
         root_dir=root_dir,
         path=arch_path,
-        parse_failed=records[0],
-        wires=records[1],
-        rules=records[2]
+        parse_failed=records.parse_failed,
+        wires=records.wires,
+        rules=records.rules,
+        spaces_text=records.spaces_text
     );
     _spec_cache[key] = (stamp, spec);
     return spec;
@@ -1591,6 +1621,9 @@ impl render_wiring(
             _block_text(block, [text for (_key, text) in sorted(wires[block])])
         );
     }
+    if spec.spaces_text {
+        blocks.insert(0, spec.spaces_text.strip());
+    }
     return "\n\n".join(blocks) + "\n" if blocks else "";
 }
 
@@ -1600,7 +1633,10 @@ impl canonical_wiring_source(source: str, path: str) -> str {
         or mod.doc is not None
         or mod.source.comments
         or any(
-            [not isinstance(stmt, (GraphImport, EmptyToken)) for stmt in mod.body]
+            [
+                not isinstance(stmt, (GraphImport, GraphSpaces, EmptyToken))
+                for stmt in mod.body
+            ]
         ) {
         return source;
     }
@@ -1609,7 +1645,8 @@ impl canonical_wiring_source(source: str, path: str) -> str {
         root_dir=os.path.dirname(os.path.abspath(path)),
         path=path,
         wires=wires,
-        rules=rules
+        rules=rules,
+        spaces_text=spaces_text(mod, source)
     );
     return render_wiring(spec, wiring_facts(wires), rules);
 }

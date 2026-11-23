@@ -449,6 +449,20 @@ impl JcirGenPass.exit_concurrent_expr with ConcurrentExpr exit {
             func = 'thread_wait';
         }
     }
+    if func == 'thread_run' and self.val(here.target).cls == 'Call' {
+        call = self.val(here.target);
+        self.set_out(
+            here,
+            [
+                self.call_node(
+                    self.jaclib_obj(func),
+                    [call.get('func')] + list(call.get('args')),
+                    list(call.get('keywords'))
+                )
+            ]
+        );
+        return;
+    }
     if func {
         lambda_ex = [
             self.nod(

@@ -6,7 +6,7 @@ impl ImportWiringPass.run_walk with Module entry {
         return;
     }
     for stmt in mod.body {
-        if isinstance(stmt, GraphImport) {
+        if isinstance(stmt, (GraphImport, GraphSpaces)) {
             self.ctx.emit(E2088, node_override=stmt);
         }
     }
@@ -32,7 +32,7 @@ impl ImportWiringPass._check_arch_module(mod: Module) -> None {
             blocks.append(stmt);
         } elif isinstance(stmt, String) {
             self.ctx.emit(E2089, node_override=stmt, kind="docstring");
-        } elif not isinstance(stmt, EmptyToken) {
+        } elif not isinstance(stmt, (EmptyToken, GraphSpaces)) {
             self.ctx.emit(
                 E2089,
                 node_override=stmt,

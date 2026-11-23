@@ -437,7 +437,11 @@ impl JacClientCompiler._scan_and_compile_pages(
     collected_globals: (dict[(str, any)] | None) = None,
     native: bool = False
 ) -> bool {
-    scanner = RouteScanner(self._app_root(), route_exports_of=self._route_exports_of);
+    scanner = RouteScanner(
+        self._app_root(),
+        route_exports_of=self._route_exports_of,
+        route_params_of=self._route_params_of
+    );
     if not scanner.has_pages_dir() {
         return False;
     }
@@ -496,7 +500,11 @@ impl JacClientCompiler._warn_unrouted_pages(
 }
 
 impl JacClientCompiler.rescan_pages(self: JacClientCompiler) -> bool {
-    scanner = RouteScanner(self._app_root(), route_exports_of=self._route_exports_of);
+    scanner = RouteScanner(
+        self._app_root(),
+        route_exports_of=self._route_exports_of,
+        route_params_of=self._route_params_of
+    );
     if not scanner.has_pages_dir() {
         return False;
     }
@@ -523,6 +531,7 @@ impl JacClientCompiler.rescan_pages(self: JacClientCompiler) -> bool {
 }
 
 impl JacClientCompiler._generate_routes_manifest(self: JacClientCompiler) -> bool {
+    import json;
     scanner = self._route_scanner;
     if scanner is None {
         return False;
@@ -562,8 +571,11 @@ impl JacClientCompiler._generate_routes_manifest(self: JacClientCompiler) -> boo
             continue;
         }
         auth_str = "true" if route.auth_required else "false";
+        params_js = json.dumps(route.params);
+        rest_js = json.dumps(route.rest_param);
         lines.append(
-            f'\t{{ path: "{route.path}", element: {route.component_import}, auth: {auth_str} }},'
+            f'\t{{ path: "{route.path}", element: {route.component_import}, auth: {auth_str},'
+            f' params: {params_js}, rest: {rest_js} }},'
         );
     }
     lines.append('];');
@@ -729,17 +741,37 @@ impl _bundle_runtime_js(
     return '\n'.join(parts) + '\n';
 }
 
-impl JacClientCompiler._route_exports_of(
+impl JacClientCompiler._route_manifest_of(
     self: JacClientCompiler, module_path: Path
-) -> tuple[((str | None), (str | None))] {
+) -> ClientManifest | None {
     if not self.scan_routes_with_bundle {
-        return resolve_route_exports(module_path);
+        return None;
     }
     source_root = self.jac_compiler.source_root or self.project_dir;
     try {
-        artifact = self.jac_compiler._compile_to_js(module_path, source_root);
+        return self.jac_compiler._compile_to_js(module_path, source_root).manifest;
     } except ClientBundleError {
+        return None;
+    }
+}
+
+impl JacClientCompiler._route_exports_of(
+    self: JacClientCompiler, module_path: Path
+) -> tuple[((str | None), (str | None))] {
+    manifest = self._route_manifest_of(module_path);
+    if manifest is None {
         return resolve_route_exports(module_path);
     }
-    return (artifact.manifest.page_export, artifact.manifest.layout_export);
+    return (manifest.page_export, manifest.layout_export);
+}
+
+impl JacClientCompiler._route_params_of(
+    self: JacClientCompiler, module_path: Path
+) -> list[str] {
+    manifest = self._route_manifest_of(module_path);
+    if manifest is None {
+        return resolve_route_params(module_path);
+    }
+    page = manifest.page_export;
+    return list(manifest.params.get(page, [])) if page is not None else [];
 }

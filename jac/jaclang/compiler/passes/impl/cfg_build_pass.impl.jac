@@ -48,11 +48,30 @@ impl CFGBuildPass._link_sequential(body: Sequence[CodeBlockStmt]) -> None {
             }
         } elif has_bool_sc {
             self._connect_tails(prev, next);
+        } elif isinstance(prev, WithStmt)
+            and prev.body
+            and not self._may_suppress(prev) {
+            self._connect_tails(prev, next);
         } else {
             self.link_bbs(prev, next);
             self._connect_tails(prev, next);
         }
     }
+}
+
+impl CFGBuildPass._may_suppress(nd: WithStmt) -> bool {
+    for item in nd.exprs {
+        call = item.expr;
+        if not isinstance(call, FuncCall) {
+            continue;
+        }
+        target = call.target;
+        name = target.right if isinstance(target, AtomTrailer) else target;
+        if isinstance(name, Name) and name.sym_name == "suppress" {
+            return True;
+        }
+    }
+    return False;
 }
 
 impl CFGBuildPass._exit_wired(nd: UniCFGNode) -> bool {
@@ -341,13 +360,17 @@ impl CFGBuildPass._find_next_cfg_stmt_after(
 impl CFGBuildPass._find_next_cfg_stmt_after_branch(nd: UniNode) -> (UniCFGNode | None) {
     cur: UniNode = nd;
     while cur.parent is not None {
-        if (nxt := self._find_next_cfg_stmt_after(cur.parent, cur)) is not None {
+        parent = cur.parent;
+        if (nxt := self._find_next_cfg_stmt_after(parent, cur)) is not None {
             return nxt;
         }
-        if not isinstance(cur.parent, (IfStmt, ElseStmt)) {
+        if not (
+            isinstance(parent, (IfStmt, ElseStmt))
+            or (isinstance(parent, WithStmt) and not self._may_suppress(parent))
+        ) {
             return None;
         }
-        cur = cur.parent;
+        cur = parent;
     }
     return None;
 }

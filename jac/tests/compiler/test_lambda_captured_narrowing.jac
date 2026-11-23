@@ -20,11 +20,18 @@ glob FIXTURE = os.path.join(
          TESTS_DIR, "compiler", "fixtures", "lambda_captured_narrowing.jac"
      );
 
-"""Type-check the fixture and return the lines its errors point at."""
+"""Type-check the fixture and return the lines its diagnostics point at: the
+errors, and the W1099 warnings for a read off a capture that may still be None."""
 def error_lines -> list[int] {
     prog = JacProgram();
     prog.compile(file_path=FIXTURE, options=CompileOptions(no_cgen=True));
-    return sorted([e.loc.first_line for e in (prog.errors_had or [])]);
+    lines = [e.loc.first_line for e in (prog.errors_had or [])];
+    lines += [
+        w.loc.first_line
+        for w in (prog.warnings_had or [])
+        if w.code is not None and w.code.code == "W1099"
+    ];
+    return sorted(lines);
 }
 
 test "a guarded lambda and a nested def both see the narrowed capture" {

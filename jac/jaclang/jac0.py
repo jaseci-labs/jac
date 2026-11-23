@@ -456,6 +456,7 @@ class Param:
     is_star: bool = False
     is_dstar: bool = False
     star_sep: bool = False
+    slash_sep: bool = False
 
 
 @dataclass
@@ -2053,6 +2054,11 @@ class Parser:
             is_star = False
             is_dstar = False
 
+            if self._at_op("/"):
+                self._advance()
+                params.append(Param(slash_sep=True))
+                self._match(TT.COMMA)
+                continue
             if self._at_op("**"):
                 self._advance()
                 is_dstar = True
@@ -2847,8 +2853,8 @@ class CodeGen:
     def _format_params(self, params: list[Param]) -> str:
         parts: list[str] = []
         for p in params:
-            if p.star_sep:
-                parts.append("*")
+            if p.star_sep or p.slash_sep:
+                parts.append("/" if p.slash_sep else "*")
                 continue
             prefix = "**" if p.is_dstar else ("*" if p.is_star else "")
             s = f"{prefix}{p.name}"

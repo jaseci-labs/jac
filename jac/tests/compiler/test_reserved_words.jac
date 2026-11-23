@@ -90,6 +90,14 @@ test "a reserved word after a dot needs no escape" {
     }
 }
 
+test "a reserved word as a keyword-argument name needs no escape" {
+    # The name before '=' in a call's arguments is the callee's parameter, never a
+    # binding of the caller's, so `ContextVar("x", default="")` reads as Python does.
+    for word in reserved_words() {
+        assert _codes(f"with entry {{ v = f({word}=1); }}") == [] , word;
+    }
+}
+
 
 test "the builtin type kinds are exactly the enum's TYP_ members" {
     # The set is spelled out because tokens.jac runs natively in the compiler

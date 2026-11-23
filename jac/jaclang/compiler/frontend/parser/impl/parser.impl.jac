@@ -1485,7 +1485,7 @@ impl Parser.parse_call_arg -> Expr | KWPair {
                 var=self.make_special_name(self.advance()), is_enum_stmt=False
             );
         } else {
-            name = self.make_name(self.expect_name("keyword argument"));
+            name = self.make_name(self._name_or_keyword_token("keyword argument"));
         }
         eq_uni = self.consume_uni(TokenKind.EQ);
         value = self.parse_expression();
@@ -3212,6 +3212,12 @@ impl Parser.parse_element_stmt -> ElementStmt | EmptyToken | None {
 
     if self.check(TokenKind.KW_COMPTIME) {
         return self.parse_comptime_element();
+    }
+
+    if self.check(TokenKind.KW_GRAPH)
+        and self.check_peek(TokenKind.NAME)
+        and self.peek().value == "spaces" {
+        return self.parse_graph_spaces();
     }
 
     if self.check_any(TokenKind.KW_GRAPH, TokenKind.KW_IMPL)
@@ -7697,4 +7703,43 @@ impl parse_expression(
         parser.diags,
         lex_diags
     );
+}
+
+impl Parser._name_or_keyword_token(what: str) -> LexToken {
+    if self.check_name() or self.is_keyword_token() {
+        return self.advance();
+    }
+    return self.expect_name(what);
+}
+
+impl Parser.parse_graph_spaces -> GraphSpaces {
+    kid: list[UniNode] = [self.consume_uni(TokenKind.KW_GRAPH)];
+    kid.append(self.make_uni_token(self.expect(TokenKind.NAME)));
+    profile: Name | None = None;
+    if self.check_name() {
+        profile = self.make_name(self.expect_name("profile"));
+        kid.append(profile);
+    }
+    kid.append(self.consume_uni(TokenKind.LBRACE));
+    kid.extend(self._block_tokens());
+    kid.append(self.consume_uni(TokenKind.RBRACE));
+    return GraphSpaces(profile=profile, kid=kid);
+}
+
+impl Parser._block_tokens -> list[UniNode] {
+    held: list[UniNode] = [];
+    depth = 0;
+    while not self.at_end() {
+        if depth == 0 and self.check(TokenKind.RBRACE) {
+            return held;
+        }
+        tok = self.advance();
+        if tok.kind == TokenKind.LBRACE {
+            depth += 1;
+        } elif tok.kind == TokenKind.RBRACE {
+            depth -= 1;
+        }
+        held.append(self.make_uni_token(tok));
+    }
+    return held;
 }

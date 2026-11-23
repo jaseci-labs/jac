@@ -354,6 +354,9 @@ impl OwnershipCheckPass._emit_sendability_diagnostics -> None {
             if nm.find_parent_of_type(OpenStmt) is not None {
                 continue;
             }
+            if ownership == OwnershipKind.NONE and self._borrow_sym_of(nm) is None {
+                continue;
+            }
             if self._borrow_sym_of(nm) is not None {
                 owner = self._escaping_borrow_owner(nm);
                 if owner is not None {

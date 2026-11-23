@@ -1,4 +1,5 @@
 import os;
+import re;
 
 glob APP_TABLE_KEYS: tuple[str, ...] = (
          "kind",
@@ -31,14 +32,19 @@ obj AppConfig {
     def contains(project_root: str, abs_path: str) -> bool;
 }
 
+def has_spaces_block(root_dir: str) -> bool;
+
 def validate_app_name(name: str) -> None;
+
 
 def validate_entry_point(module: str) -> str;
 
 def resolve_entry_path(module: str, project_root: str) -> str;
 
 def parse_apps(
-    project_data: dict[str, any], apps_data: dict[str, any]
+    project_data: dict[str, any],
+    apps_data: dict[str, any],
+    derived: dict[str, DerivedApp] | None = None
 ) -> dict[str, AppConfig];
 
 def implicit_app(config: any) -> AppConfig;

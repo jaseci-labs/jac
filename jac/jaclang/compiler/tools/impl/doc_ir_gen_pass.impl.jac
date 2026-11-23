@@ -3016,3 +3016,20 @@ impl DocIRGenPass.exit_wire_item with uni.WireItem exit {
     }
     here.gen.doc_ir = self.concat(parts, ast_node=here);
 }
+
+impl DocIRGenPass.exit_graph_spaces with uni.GraphSpaces exit {
+    loc = here.loc;
+    lines = loc.orig_src.code.encode("utf-8")[loc.pos_start:loc.pos_end].decode(
+        "utf-8"
+    ).split(
+        "\n"
+    );
+    parts: list[doc.DocType] = [];
+    for (i, line) in enumerate(lines) {
+        if i {
+            parts.append(self.hard_line());
+        }
+        parts.append(self.text(line.rstrip()));
+    }
+    here.gen.doc_ir = self.concat(parts, ast_node=here);
+}

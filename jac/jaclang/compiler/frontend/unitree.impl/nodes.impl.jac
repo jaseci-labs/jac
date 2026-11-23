@@ -4261,3 +4261,7 @@ impl UniNode.element_sub_nodes[T](typ: type[T]) -> list[T] {
     }
     return found;
 }
+
+impl GraphSpaces.postinit -> None {
+    UniNode.postinit(self);
+}

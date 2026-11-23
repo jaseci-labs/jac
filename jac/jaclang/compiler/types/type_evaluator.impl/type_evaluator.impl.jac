@@ -1150,13 +1150,26 @@ impl TypeEvaluator._get_type_of_expression_core(
                         }
                         return self._null_ok_attr_type(expr, base_type);
                     }
-                    self.emit_diag(
-                        E1099,
-                        expr.right,
-                        attr=expr.right.value,
-                        type=str(base_type),
-                        missing=", ".join(missing_types)
-                    );
+                    only_none = member_types
+                        and all(
+                            [m == "NoneType" or m == "None" for m in missing_types]
+                        );
+                    if only_none {
+                        self.emit_diag(
+                            W1099,
+                            expr.right,
+                            attr=expr.right.value,
+                            type=str(base_type)
+                        );
+                    } else {
+                        self.emit_diag(
+                            E1099,
+                            expr.right,
+                            attr=expr.right.value,
+                            type=str(base_type),
+                            missing=", ".join(missing_types)
+                        );
+                    }
                     if member_types {
                         if decl_for_ide and decl_for_ide.sym {
                             decl_for_ide.sym.add_use(expr.right);
@@ -2103,7 +2116,7 @@ impl TypeEvaluator._get_type_of_expression_core(
             }
 
         case ConcurrentExpr():
-            return self.get_type_of_expression(expr.target);
+            return self._get_type_of_concurrent_expr(expr);
 
         case YieldExpr():
             if expr.expr is not None {
@@ -2169,6 +2182,29 @@ impl TypeEvaluator._get_type_of_expression_core(
     }
 
     return UnknownType();
+}
+
+impl TypeEvaluator._get_type_of_concurrent_expr(expr: ConcurrentExpr) -> TypeBase {
+    target_type = self.get_type_of_expression(expr.target);
+    is_flow = expr.tok is not None and expr.tok.name == Tok.KW_FLOW;
+    task_class = self.prefetch.task_class;
+    if task_class is None {
+        return target_type;
+    }
+    if is_flow {
+        if isinstance(target_type, UnknownType) {
+            return target_type;
+        }
+        task = task_class.clone_as_instance();
+        task.private.type_args = [self._convert_to_instance(target_type)];
+        return task;
+    }
+    if isinstance(target_type, ClassType)
+        and target_type.shared.same_class(task_class.shared)
+        and target_type.private.type_args {
+        return target_type.private.type_args[0];
+    }
+    return target_type;
 }
 
 impl TypeEvaluator._bind_filter_compare(cmp: Expr, filter_type: ClassType) -> None {
@@ -2782,11 +2818,19 @@ impl TypeEvaluator._callable_mismatch(
 
     if dest_func.return_type and src_func.return_type {
         dest_ret = self._convert_to_instance(dest_func.return_type);
+        if dest_func.is_async
+            and not (dest_func.function_flags & FunctionTypeFlags.Generator) {
+            dest_ret = self._make_coroutine_type(dest_ret);
+        }
 
         if self.is_none_type(dest_ret) {
             return None;
         }
         src_ret = self._convert_to_instance(src_func.return_type);
+        if src_func.is_async
+            and not (src_func.function_flags & FunctionTypeFlags.Generator) {
+            src_ret = self._make_coroutine_type(src_ret);
+        }
         if not self.assign_type(src_ret, dest_ret, strict) {
             return ReturnMismatch(src_return=src_ret, dest_return=dest_ret);
         }
@@ -4235,6 +4279,7 @@ impl TypeEvaluator._prefetch_types {
     self.prefetch.walker_class = get_jac_builtin_class("Walker");
     self.prefetch.path_class = get_jac_builtin_class("GraphQuery");
     self.prefetch.jsx_element_class = get_jac_builtin_class("JsxElement");
+    self.prefetch.task_class = get_jac_builtin_class("Task");
     self.prefetch.html_common_props_class = get_jac_builtin_class("_HtmlCommonProps");
     self.prefetch.jsx_intrinsic_elements_class = get_jac_builtin_class(
         "_JsxIntrinsicElements"

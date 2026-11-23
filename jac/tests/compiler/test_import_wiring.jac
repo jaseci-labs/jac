@@ -1861,3 +1861,89 @@ test "a module whose file name no wire can name keeps written imports under the 
         shutil.rmtree(base, ignore_errors=True);
     }
 }
+
+glob _SPACES_ARCH: str = (
+         "graph spaces {\n"
+         "    space site: browser { entry web; pages.* | core.site.*; }\n"
+         "    space phone: hermes { entry mobile.main; }\n"
+         "    space api: native { core.api; }\n"
+         "    space cli: native { entry cli.main; }\n"
+         "\n"
+         "    app web { run api; serve site; }\n"
+         "    app desktop { run site; }\n"
+         "    app mobile { run phone; }\n"
+         "    app cli { run cli; }\n"
+         "}\n"
+         "\n"
+         "graph spaces local {\n"
+         "    app desktop { run site, api; }\n"
+         "}\n"
+         "\n"
+         "graph import {\n"
+         "    edge Core: core.* --> cli.* | mobile.* | pages.* | web;\n"
+         "\n"
+         "    core.api ++> cli.main | pages.index { greet }\n"
+         "}\n"
+     ),
+     _SPACES_FILES: dict[str, str] = {
+         "web.jac": "def:pub app(children: any) -> JsxElement {\n    return <main>{children}</main>;\n}\n",
+         "pages/index.jac": "def:pub page -> JsxPage {\n    return <p>{greet()}</p>;\n}\n",
+         "core/api.jac": "def:pub greet -> str {\n    return \"hi\";\n}\n",
+         "core/site/ui.jac": "def Badge -> JsxElement {\n    return <b>x</b>;\n}\n",
+         "mobile/main.jac": "def:pub app -> JsxElement {\n    return <p>m</p>;\n}\n",
+         "cli/main.jac": "with entry {\n    print(greet());\n}\n"
+     };
+
+test "graph spaces declares the apps: their kinds, entries and where their modules run" {
+    import from jaclang.project.workspace { workspace_for_path }
+    files = dict(_SPACES_FILES);
+    files["archwire.jac"] = _SPACES_ARCH.replace(
+        "graph spaces {", "graph  spaces {", 1
+    );
+    base = _project(files);
+    ws = workspace_for_path(os.path.join(base, "web.jac"));
+    assert ws is not None;
+    kinds = {name: app.kind for (name, app) in ws.apps.items()};
+    assert kinds
+        == {
+            "web": "web-app",
+            "desktop": "desktop",
+            "mobile": "mobile",
+            "cli": "cli"
+        } , kinds;
+    assert ws.apps["web"].`entry.endswith("web.jac");
+    assert ws.apps["desktop"].`entry.endswith("web.jac");
+    assert ws.apps["mobile"].`entry.endswith(os.path.join("mobile", "main.jac"));
+    assert ws.apps["cli"].`entry.endswith(os.path.join("cli", "main.jac"));
+    web_pins = ws.apps["web"].pins;
+    assert web_pins.get("core.api") == "server" , web_pins;
+    assert web_pins.get("pages.*") == "client" , web_pins;
+    assert web_pins.get("core.site.*") == "client" , web_pins;
+    assert web_pins.get("web") == "client" , web_pins;
+    assert "core.api" not in ws.apps["cli"].pins , ws.apps["cli"].pins;
+    arch_path = os.path.join(base, "archwire.jac");
+    with open(arch_path, "w", encoding="utf-8") as fh {
+        fh.write(_SPACES_ARCH.replace("    app cli { run cli; }\n", ""));
+    }
+    later = os.path.getmtime(arch_path) + 2;
+    os.utime(arch_path, (later, later));
+    ws2 = workspace_for_path(os.path.join(base, "web.jac"));
+    assert ws2 is not None and "cli" not in ws2.apps , sorted(ws2.apps);
+    shutil.rmtree(base, ignore_errors=True);
+}
+
+test "graph spaces belongs in archwire.jac, and jac fmt keeps its layout" {
+    files = dict(_SPACES_FILES);
+    files["archwire.jac"] = _SPACES_ARCH;
+    files["core/other.jac"] = "graph spaces {\n    space x: native { core.other; }\n}\n";
+    base = _project(files);
+    assert "E2088" in _errors(_compile(base, "core/other.jac"));
+    assert _formatted(base, "archwire.jac") == _SPACES_ARCH;
+    shared_line = _SPACES_ARCH.replace("}\n\ngraph import {", "} graph import {", 1);
+    assert shared_line != _SPACES_ARCH;
+    files["archwire.jac"] = shared_line;
+    base2 = _project(files);
+    assert _formatted(base2, "archwire.jac") == _SPACES_ARCH;
+    shutil.rmtree(base, ignore_errors=True);
+    shutil.rmtree(base2, ignore_errors=True);
+}

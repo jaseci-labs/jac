@@ -28,6 +28,7 @@ walker UnparsePass(TreePass) {
     can exit_archetype with uni.Archetype exit;
     can exit_impl_def with uni.ImplDef exit;
     can exit_graph_import with uni.GraphImport exit;
+    can exit_graph_spaces with uni.GraphSpaces exit;
     can exit_import_wire with uni.ImportWire exit;
     can exit_wire_target with uni.WireTarget exit;
     can exit_import_rule with uni.ImportRule exit;

@@ -142,6 +142,7 @@ glob IR_LOADS: list[str] = [
          'jaclang.project.tomlio',
          'jaclang.project.mobui_scope',
          'jaclang.project.config',
+         'jaclang.project.spaces',
          'jaclang.compiler.passes.static_analysis_pass',
          'jaclang.compiler.passes.access_check_pass',
          'jaclang.compiler.passes.variant_agreement_pass',

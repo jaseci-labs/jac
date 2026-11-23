@@ -39,7 +39,8 @@ obj PrefetchedTypes {
         jsx_intrinsic_elements_class: ClassType | None = None,
         enum_class: ClassType | None = None,
         mappingproxy_class: ClassType | None = None,
-        set_class: ClassType | None = None;
+        set_class: ClassType | None = None,
+        task_class: ClassType | None = None;
 }
 
 obj MatchArgsToParamsResult {
@@ -594,6 +595,7 @@ walker TypeEvaluator {
 
     def _lookup_class_member(base_type: ClassType, member: str) -> ClassMember | None;
     def _lookup_object_member(base_type: TypeBase, member: str) -> ClassMember | None;
+    def _get_type_of_concurrent_expr(expr: ConcurrentExpr) -> TypeBase;
     def _bind_filter_compare(cmp: Expr, filter_type: ClassType) -> None;
     def _bind_filter_member(target: Name, filter_type: ClassType) -> None;
     def _filter_order_name(expr: Expr) -> (Name | None);

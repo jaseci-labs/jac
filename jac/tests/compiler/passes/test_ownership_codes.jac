@@ -819,9 +819,9 @@ glob OWNERSHIP_CASES: list[tuple[any, ...]] = [
          ),
          (
              "ownership_sendability",
-             "E1308: a plain mutable (unannotated) value passed to `flow` is not sendable",
+             "a plain (unannotated) value passed to `flow` is sendable: the task shares the caller's memory",
              "send_plain_mutable.jac",
-             ["E1308"]
+             []
          ),
          (
              "ownership_sendability",

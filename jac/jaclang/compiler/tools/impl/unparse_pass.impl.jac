@@ -1284,3 +1284,7 @@ impl _join_kids(nd: uni.UniNode, sep: str = " ") -> str {
         ]
     );
 }
+
+impl UnparsePass.exit_graph_spaces with uni.GraphSpaces exit {
+    here.gen.jac = " ".join([k.gen.jac for k in [here->:Kid:->]]);
+}

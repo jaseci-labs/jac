@@ -3,7 +3,7 @@ impl TweetCard(
     tweet: Tweet,
     myUsername: str,
     onLike: Callable[[str], None],
-    onComment: Callable[[str, str], bool],
+    onComment: Callable[[str, str], Awaitable[bool]],
     onDelete: Callable[[str], None],
 ) -> JsxElement {
     theme = useTheme();

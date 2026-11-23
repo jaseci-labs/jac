@@ -87,6 +87,7 @@ walker CFGBuildPass(TreePass) {
     can exit_switch_stmt with SwitchStmt exit;
     can exit_switch_case with SwitchCase exit;
     can exit_with_stmt with WithStmt exit;
+    def _may_suppress(nd: WithStmt) -> bool;
     can exit_typed_ctx_block with TypedCtxBlock exit;
     can exit_open_stmt with OpenStmt exit;
     can exit_jsx_slot with JsxSlot exit;

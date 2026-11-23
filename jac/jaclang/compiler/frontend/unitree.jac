@@ -1,7 +1,6 @@
 import os;
 import type from collections.abc { Sequence }
 
-
 walker TreeWalker {}
 
 node UniNode {
@@ -897,6 +896,20 @@ node WireItem(UniNode) {
 
     has binding: str { getter; }
 
+    def __repr__ -> str;
+}
+
+node GraphSpaces(ElementStmt) {
+    has profile: (Name | None) { getter; }
+
+    def init(
+        *,
+        doc: (String | None) = None,
+        profile: (Name | None),
+        kid: Sequence[UniNode] = []
+    ) -> None;
+
+    def postinit -> None;
     def __repr__ -> str;
 }
 

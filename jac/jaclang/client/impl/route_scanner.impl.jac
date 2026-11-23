@@ -99,6 +99,20 @@ impl RouteScanner._scan_directory(
             } else {
                 route_path = f"{url_prefix}/{route_segment}";
             }
+            params = list(self.route_params_of(`entry)) if self.route_params_of else [];
+            rest_param = "";
+            segments = route_path.split("/");
+            for param in params {
+                if param.startswith("*") {
+                    rest_param = param[1:];
+                    if not is_catch_all {
+                        route_path = route_path.rstrip("/") + "/*";
+                    }
+                    is_catch_all = True;
+                } elif f":{param}" not in segments {
+                    route_path = route_path.rstrip("/") + f"/:{param}";
+                }
+            }
             component_name = self._file_to_component_name(`entry);
             route = RouteEntry(
                 path=route_path,
@@ -106,7 +120,9 @@ impl RouteScanner._scan_directory(
                 file_path=`entry,
                 source_export=page_export,
                 auth_required=auth_required,
-                is_catch_all=is_catch_all
+                is_catch_all=is_catch_all,
+                params=[p.lstrip("*") for p in params],
+                rest_param=rest_param
             );
             routes.append(route);
             self._page_files.append(`entry);
@@ -179,6 +195,10 @@ impl RouteScanner._detect_collisions(routes: list[RouteEntry]) -> None {
 
 impl resolve_route_exports(module_path: Path) -> tuple[((str | None), (str | None))] {
     return route_exports(Jac.get_program(), str(module_path));
+}
+
+impl resolve_route_params(module_path: Path) -> list[str] {
+    return route_params(Jac.get_program(), str(module_path));
 }
 
 impl entry_drops_route_children(manifest: any) -> bool {

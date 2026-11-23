@@ -10,6 +10,7 @@ glob JCIR_BUILTIN_NAMES: frozenset[str] = frozenset(
              "PtrView",
              "Pinned",
              "pin",
+             "Task",
              "addressof",
              "VaList",
              "_jac_clib_bind",

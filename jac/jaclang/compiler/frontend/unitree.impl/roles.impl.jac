@@ -2987,3 +2987,19 @@ impl MatchArch.init(
     );
     self.postinit();
 }
+
+impl GraphSpaces.init(
+    *, doc: (String | None) = None, profile: (Name | None), kid: Sequence[UniNode] = []
+) -> None {
+    self._link(kid, {DocRole: doc, NameRole: profile});
+    self.postinit();
+}
+
+impl GraphSpaces.profile.getter -> (Name | None) {
+    found = [self->:NameRole:->];
+    return (found[0] as Name) if found else None;
+}
+
+impl GraphSpaces.__repr__ -> str {
+    return f"{type(self).__name__}";
+}
