@@ -3,7 +3,7 @@ must reach the summariser, and the model, in the same shape as one made during t
 
 import from jaclang.byllm.lib { MockLLM }
 import from jaclang.byllm._optdeps.litellm { LiteLLMMessage }
-import from support { call, finish, say }
+import from support { blank_replies, call, finish, say }
 
 
 glob LOOKUP_CALL: list[dict[str, any]] = [
@@ -140,6 +140,7 @@ test "the model is sent a tool call from conversation= as a dict" {
         assert calls[0][0]["function"]["name"] == "lookup" , (
             f"{shape}: the tool call must survive the round trip: {calls}"
         );
+        assert not blank_replies(sent) , f"{shape}: blank assistant text was sent: {sent}";
     }
 }
 

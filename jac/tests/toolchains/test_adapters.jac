@@ -89,11 +89,13 @@ test "source workspaces carry impl annexes and source assets, not build outputs"
             "impl value -> int { return 1; }"
         );
         (source / "shim.c").write_text("int value;");
+        (source / "minimal-fonts.conf").write_text("<fontconfig/>");
         (source / "README.md").write_text("docs");
         with patch.dict(os.environ, {"JAC_CACHE_HOME": str(base / "cache")}) {
             first = source_workspace(source, "binding");
             assert (first / "impl" / "binding.impl.jac").is_file();
             assert (first / "shim.c").is_file();
+            assert (first / "minimal-fonts.conf").read_text() == "<fontconfig/>";
             assert not (first / "README.md").exists();
             (first / "libshim.so").write_text("built");
             assert source_workspace(first, "binding") == first;
