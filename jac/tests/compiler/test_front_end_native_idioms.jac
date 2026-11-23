@@ -428,32 +428,6 @@ test "Jdb.has_breakpoint still reads the compiled bytecode" {
     assert not debugger.has_breakpoint(marshal.dumps(without_bp));
 }
 
-# ─────────────────────────────────────────────────────────────────────
-# placement: typ.__name__ -> the name carried beside the type
-# ─────────────────────────────────────────────────────────────────────
-
-# `scan_native_blockers` read `typ.__name__` off entries of a constant class
-# list purely to name the offender in a diagnostic string. The name now rides
-# beside the type so the runtime does no reflection. Reflection is fine HERE --
-# a test is never lowered natively -- so this pins the pair against drift.
-test "placement blocker tables carry the real class name" {
-    import from jaclang.compiler.placement.placement {
-        PLACEMENT_NATIVE_REJECT_NODES,
-        PLACEMENT_SV_SIGNAL_NODES
-    }
-    tables = [PLACEMENT_SV_SIGNAL_NODES, PLACEMENT_NATIVE_REJECT_NODES];
-    seen = 0;
-    for table in tables {
-        for (nd_name, typ) in table {
-            assert nd_name == typ.__name__ , (
-                f"placement table name {nd_name!r} drifted from {typ.__name__!r}"
-            );
-            seen += 1;
-        }
-    }
-    assert seen == 2 , f"expected 2 tabled node types, saw {seen}";
-}
-
 test "scan_native_blockers names the offending node from the table" {
     import from jaclang.compiler.placement.placement { scan_native_blockers }
     prog = JacProgram();

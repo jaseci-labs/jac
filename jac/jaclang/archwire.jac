@@ -5045,7 +5045,6 @@ graph import compiler {
             is_client_native_edge_import
         },
         passes.wasm_contract.host_contracts { symbol_linked_source_module },
-        placement.placement.summarize_module { module_own_native_anchor },
         placement.placement_facts.discover_spaces
             | placement.placement_solver._materialize_module { hub_module_for_path },
         placement.placement_solver._is_sv_import { import_crosses_apps },
