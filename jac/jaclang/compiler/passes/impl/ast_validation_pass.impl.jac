@@ -432,6 +432,7 @@ impl ASTValidationPass.enter_import with Import entry {
         bound: dict[str, tuple[(ModuleItem | ModulePath), Name]] = {};
         for imp in scope.get_all_sub_nodes(Import) {
             if imp.is_absorb
+                or find_python_scope_node_of(imp) is not scope
                 or not (imp.parent is scope or isinstance(imp.parent, ModuleCode)) {
                 continue;
             }

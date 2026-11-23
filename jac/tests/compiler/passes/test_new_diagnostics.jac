@@ -500,6 +500,7 @@ test "E2036: an import after the local definition still collides" {
         "import os.path as p; import from os { path as p }",
         "include b; import from c { b }",
         "import from b { A } def f -> None { import from c { A } }",
+        "obj C { with entry { import from os.path { join } } } import from shlex { join }",
         "def f(x: bool) -> None { if x { import from b { A } } else { import from c { A } } }",
         "with entry { try { import from b { A } } except ImportError { import from c { A } } }"
     ];
