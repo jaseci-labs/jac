@@ -48,13 +48,50 @@ def _hand_rolled_canary(app: str) -> any {
 }
 
 
+def _selected(selector: str, labels: dict[str, str]) -> bool {
+    import re;
+    terms: list[str] = re.split(r",(?![^()]*\))", selector) if selector else [];
+    for term in terms {
+        term = term.strip();
+        if term.startswith("!") {
+            matched = term[1:] not in labels;
+        } elif " in " in term {
+            (key, values) = term.split(" in ", 1);
+            matched = labels.get(key.strip())
+                in [v.strip() for v in values.strip(" ()").split(",")];
+        } else {
+            (key, value) = term.split("=", 1);
+            matched = labels.get(key) == value;
+        }
+        if not matched {
+            return False;
+        }
+    }
+    return True;
+}
+
+
 obj FakeAppsV1 {
     has items: list[any],
         deleted: list[str] = [],
-        stateful_sets: list[any] = [];
+        stateful_sets: list[any] = [],
+        patched: list[tuple[str, any]] = [];
 
     def list_namespaced_deployment(namespace: str, **kwargs: any) -> any {
-        return SimpleNamespace(items=list(self.items));
+        selector = str(kwargs.get("label_selector") or "");
+        return SimpleNamespace(
+            items=[
+                item
+                for item in self.items
+                if _selected(selector, item.metadata?.labels or {})
+            ]
+        );
+    }
+
+    def patch_namespaced_deployment(
+        name: str, namespace: str, body: any, **kwargs: any
+    ) {
+        self.patched.append((name, body));
     }
 
     def list_namespaced_stateful_set(namespace: str, **kwargs: any) -> any {
@@ -428,6 +465,15 @@ test "the same code and config stays one release across services" {
     assert len(releases) == 1;
     assert releases[0]["deployments"]
         == {"orders-app-deployment": 4, "gateway-deployment": 2};
+}
+
+
+def _as_emitted(deployment: any, svc: str, app: str = "standup") -> any {
+    builder = ManifestBuilder(k8s_config=KubernetesConfig(app_name=app, namespace=app));
+    emitted = builder._build_deployment_manifest(svc, {})["metadata"];
+    deployment.metadata.name = emitted["name"];
+    deployment.metadata.labels = emitted["labels"];
+    return deployment;
 }
 
 
@@ -811,6 +857,65 @@ test "status reads a container's current state, not its lifetime restart count" 
     assert container_crashlooping(_container(False, 3, waiting="CrashLoopBackOff"), 3);
     assert container_crashlooping(_container(False, 3), 3);
     assert not container_crashlooping(_container(True, 9), 3);
+}
+
+
+test "a deployed fleet is found by the Deployments the builder emitted" {
+    import unittest.mock;
+    def member(svc: str) -> any {
+        return _as_emitted(
+            _rollout(generation=1, observed=1, replicas=1, updated=1, available=1),
+            svc,
+            "shop"
+        );
+    }
+    legacy = _rollout(generation=1, observed=1, replicas=1, updated=1, available=1);
+    legacy.metadata.name = "shop";
+    legacy.metadata.labels = _legacy_deployment("shop").metadata.labels;
+    # (label, fleet, Deployment scaled)
+    cases: list[tuple[str, list[any], str]] = [
+        (
+            "a solo app and its gateway",
+            [member("shop"), member(GATEWAY_NAME)],
+            "shop-deployment"
+        ),
+        ("a pre-0.34.9 Deployment a redeploy has not replaced yet", [legacy], "shop")
+    ];
+    wrong: list[str] = [];
+    with unittest.mock.patch(
+        "jaclang.scale.deploy.target.kubernetes.kubernetes_target.k8s_cluster_config"
+    ) {
+        for (label, fleet, scaled) in cases {
+            apps = FakeAppsV1(items=fleet);
+            with unittest.mock.patch(
+                "jaclang.scale.deploy.target.kubernetes.kubernetes_target.client.AppsV1Api",
+                return_value=apps
+            ) {
+                try {
+                    _target("shop", "shop").scale("shop", 3);
+                } except Exception as e {
+                    wrong.append(f"{label}: scale raised {e}");
+                }
+                if apps.patched != [(scaled, {"spec": {"replicas": 3}})] {
+                    wrong.append(f"{label}: patched {apps.patched}, expected {scaled}");
+                }
+            }
+        }
+        with unittest.mock.patch(
+            "jaclang.scale.deploy.target.kubernetes.kubernetes_target.client.AppsV1Api",
+            return_value=FakeAppsV1(items=[member("web"), member(GATEWAY_NAME)])
+        ) {
+            try {
+                _target("shop", "shop").scale("shop", 3);
+                wrong.append("a workspace scaled a member it was not asked for");
+            } except ValueError as e {
+                if "web" not in str(e) {
+                    wrong.append(f"the refusal does not name the members: {e}");
+                }
+            }
+        }
+    }
+    assert wrong == [] , "\n".join(wrong);
 }
 
 
