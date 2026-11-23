@@ -496,3 +496,175 @@ test "bodiless responses end at the head" {
     }
     assert not failures , "\n".join(failures);
 }
+
+
+def _recv_request(conn: any, pending: bytearray) -> (str | None) {
+    while b"\r\n\r\n" not in pending {
+        data = conn.recv(65536);
+        if not data {
+            return None;
+        }
+        pending.extend(data);
+    }
+    (head, _, rest) = bytes(pending).partition(b"\r\n\r\n");
+    text = head.decode("latin-1").lower();
+    length = 0;
+    for line in text.split("\r\n")[1:] {
+        (name, _, value) = line.partition(":");
+        if name.strip() == "content-length" {
+            length = int(value.strip());
+        }
+    }
+    while len(rest) < length {
+        data = conn.recv(65536);
+        if not data {
+            return None;
+        }
+        rest += data;
+    }
+    pending.clear();
+    pending.extend(rest[length:]);
+    return text;
+}
+
+
+def _keep_alive(reply: bytes) -> any {
+    def handle(conn: any) {
+        pending = bytearray();
+        while _recv_request(conn, pending) is not None {
+            conn.sendall(reply);
+        }
+        conn.close();
+    }
+    return handle;
+}
+
+
+async def _send_each(port: int, methods: list[str], mode: str) -> list[any] {
+    outcomes: list[any] = [];
+    for method in methods {
+        try {
+            resp = await arequest(
+                method,
+                f"http://127.0.0.1:{port}/x",
+                data=b"{}",
+                timeout=2.0,
+                stream=mode in ("stream", "partial"),
+                keep_alive=mode != "off"
+            );
+            if mode == "stream" {
+                blocks: list[bytes] = [];
+                async for block in resp.aiter_raw() {
+                    blocks.append(block);
+                }
+                await resp.aclose();
+                outcomes.append(b"".join(blocks));
+            } elif mode == "partial" {
+                async for _ in resp.aiter_raw() {
+                    break;
+                }
+                await resp.aclose();
+                outcomes.append("partial");
+            } else {
+                outcomes.append(resp.body);
+            }
+        } except ClientConnectionError as e {
+            outcomes.append(type(e));
+        }
+    }
+    return outcomes;
+}
+
+
+glob _OK: bytes = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+
+
+test "connection reuse follows the response framing" {
+    cases: list[tuple[str, bytes, list[str], str, list[any], int]] = [
+        ("content-length", _OK, ["GET", "GET", "GET"], "body", [b"ok"] * 3, 1),
+        (
+            "interim 100 continue",
+            b"HTTP/1.1 100 Continue\r\n\r\n" + _OK,
+            ["GET", "GET", "GET"],
+            "body",
+            [b"ok"] * 3,
+            1
+        ),
+        (
+            "bodiless 204",
+            b"HTTP/1.1 204 No Content\r\n\r\n",
+            ["GET", "GET", "GET"],
+            "body",
+            [b""] * 3,
+            1
+        ),
+        ("streamed to the end", _OK, ["GET", "GET", "GET"], "stream", [b"ok"] * 3, 1),
+        (
+            "stream closed after one block",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 100000\r\n\r\n" + b"x" * 100000,
+            ["GET", "GET"],
+            "partial",
+            ["partial"] * 2,
+            2
+        ),
+        (
+            "chunked",
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+                + b"2\r\nok\r\n0\r\n\r\n",
+            ["GET", "GET"],
+            "body",
+            [b"ok"] * 2,
+            2
+        ),
+        (
+            "connection close",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+            ["GET", "GET"],
+            "body",
+            [b"ok"] * 2,
+            2
+        ),
+        (
+            "connection close after keep-alive",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n"
+                + b"Connection: keep-alive\r\nConnection: close\r\n\r\nok",
+            ["GET", "GET"],
+            "body",
+            [b"ok"] * 2,
+            2
+        ),
+        (
+            "http/1.0",
+            b"HTTP/1.0 200 OK\r\nContent-Length: 2\r\n\r\nok",
+            ["GET", "GET"],
+            "body",
+            [b"ok"] * 2,
+            2
+        ),
+        (
+            "content-length overrun",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nokEXTRA",
+            ["GET", "GET"],
+            "body",
+            [b"ok"] * 2,
+            2
+        ),
+        ("keep-alive not requested", _OK, ["GET", "GET"], "off", [b"ok"] * 2, 2)
+    ];
+    failures: list[str] = [];
+    for (name, reply, methods, mode, expected, connections) in cases {
+        (srv, held, port) = _start_server(_keep_alive(reply));
+        try {
+            outcomes = asyncio.run(_send_each(port, methods, mode));
+            if outcomes != expected or len(held) != connections {
+                failures.append(
+                    f"{name}: outcomes={outcomes!r} connections={len(held)}, "
+                    f"expected {expected!r} over {connections}"
+                );
+            }
+        } finally {
+            _stop_server(srv, held);
+        }
+    }
+    assert not failures , "\n".join(failures);
+}
