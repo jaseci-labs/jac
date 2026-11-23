@@ -74,10 +74,6 @@ impl wasm_ir_units(
     return (llvm_ir_str, app_imports, unit_paths);
 }
 
-impl wasm_artifact(program: JacProgram, file_path: str, exports: list[str]) -> bytes {
-    return wasm_artifact_inputs(program, file_path, exports)[0];
-}
-
 impl wasm_artifact_inputs(
     program: JacProgram, file_path: str, exports: list[str]
 ) -> tuple[bytes, list[list[str]]] {
@@ -110,10 +106,6 @@ impl native_application(
             pop_native_target(previous);
         }
     }
-}
-
-impl build_wasm(program: JacProgram, path: str, exports: list[str]) -> bytes {
-    return wasm_artifact(program, path, exports);
 }
 
 impl route_exports(program: JacProgram, path: str) -> tuple[str | None, str | None] {

@@ -7,7 +7,6 @@ glob CLIENT_RECORD_VERSION: int = 5,
 
 obj UnitProducts {
     has path: str,
-        jcir: bytes = b"",
         mtir: str = "",
         interop: str = "",
         client: str = "",
@@ -15,20 +14,7 @@ obj UnitProducts {
         ct_file_deps: list[str] = [],
         ct_body_deps: list[str] = [],
         ct_def_deps: list[str] = [],
-        def_spans: list[str] = [],
-        app: str = "",
-        persistence: list[str] = [],
-        import_edges: list[str] = [],
-        client_manifest: str = "",
-        native_ir: str = "",
-        native_iface: str = "",
-        native_layout: str = "",
-        native_deps: list[str] = [],
-        iface: str = "",
-        iface_shape: str = "",
-        iface_jir: str = "",
-        effects: str = "",
-        jac_deps: list[str] = [];
+        def_spans: list[str] = [];
 }
 
 def definition_span_rows(tree: uni.Module) -> list[str];
@@ -36,8 +22,6 @@ def definition_span_rows(tree: uni.Module) -> list[str];
 def note_definition_span(rows: list[str], definition: uni.UniNode, qualname: str);
 
 def dependency_span_rows(module: uni.Module, program: JacProgram) -> list[str];
-
-def jac_dependencies(module: uni.Module) -> list[str];
 
 def import_edge_rows(module: uni.Module) -> list[str];
 
@@ -74,8 +58,6 @@ def placement_record(
 ) -> str;
 
 def unit_products(module: uni.Module, program: JacProgram) -> UnitProducts;
-
-def native_products(module: uni.Module, products: UnitProducts);
 
 def definition_deps(products: UnitProducts) -> list[tuple[str, str]];
 

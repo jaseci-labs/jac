@@ -484,7 +484,7 @@ program, or Python via `ctypes`) can load across a process/module boundary.
 Native code reaches the *client* by compiling to wasm.
 `jac build --native --target wasm32` (and the client bundler's `_emit_na_wasm`,
 which serves `/static/<stem>.wasm`) both route through
-`wasm_build.compile_to_wasm`: it sets the `wasm32-unknown-unknown` triple,
+`pipeline_runner.wasm_artifact_inputs`: it sets the `wasm32-unknown-unknown` triple,
 compiles AOT, honors the project's `[memory]` settings (`profile = "nogc"`
 builds headerless and audits the IR for `__rc_*` machinery), runs `opt2`
 **without** `internalize` (so defined functions stay exported), and links

@@ -25,5 +25,3 @@ import from jaclang.lsp.protocol.server { LanguageServer }
 
 import jaclang.lsp.protocol.types as lspt;
 import nonexistent_module;
-
-include jaclang.compiler.driver.log;

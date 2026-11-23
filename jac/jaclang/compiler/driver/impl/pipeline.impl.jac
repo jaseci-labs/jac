@@ -6,10 +6,6 @@ impl unavailable_schedule(request: ProductRequest) -> (PassSchedule | None) {
     return None;
 }
 
-impl empty_schedule(request: ProductRequest) -> (PassSchedule | None) {
-    return [];
-}
-
 impl no_action(program: JacProgram, module: Module) -> bool {
     return True;
 }
@@ -150,10 +146,6 @@ impl lint_passes(request: ProductRequest) -> PassSchedule {
 
 impl python_ast_passes(request: ProductRequest) -> PassSchedule {
     return [PyastBuildPass];
-}
-
-impl python_symbols_passes(request: ProductRequest) -> PassSchedule {
-    return [SymTabBuildPass];
 }
 
 impl grammar_passes(request: ProductRequest) -> PassSchedule {

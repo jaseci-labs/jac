@@ -614,12 +614,6 @@ impl ProjectHost.compile_module(
     );
 }
 
-impl ProjectHost.build_module(
-    program: JacProgram, file_path: str, use_str: (str | None)
-) -> Module {
-    return self.compiler_for(program).build(file_path, program, use_str);
-}
-
 impl ProjectHost.native_session_active(program: JacProgram) -> bool {
     natives = program._natives;
     return natives is not None and natives.session is not None;

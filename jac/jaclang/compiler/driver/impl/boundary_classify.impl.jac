@@ -1,15 +1,3 @@
-impl _coerce_module(module: uni.Module, context: CodeContext) {
-    module.set_code_context(context);
-}
-
-impl _coerce_client_module(module: uni.Module) {
-    _coerce_module(module, context=CodeContext.CLIENT);
-}
-
-impl _coerce_native_module(module: uni.Module) {
-    _coerce_module(module, context=CodeContext.NATIVE);
-}
-
 impl _stamp_context_element(elem: uni.UniNode, context: CodeContext) {
     if not isinstance(elem, uni.ContextAwareNode) {
         return;
@@ -357,10 +345,6 @@ impl module_app(module: (uni.Module | None)) -> (str | None) {
     return module.app;
 }
 
-impl import_consumer_app(nd: uni.Import) -> (str | None) {
-    return module_app(nd.find_parent_of_type(uni.Module));
-}
-
 impl same_workspace(consumer_path: str, provider_path: str) -> bool {
     host = active_host();
     cws = host.workspace(consumer_path);
@@ -405,8 +389,7 @@ impl import_provider_route(nd: uni.Import) -> str {
 }
 
 impl import_crosses_apps(nd: uni.Import) -> bool {
-    provider = import_provider_app(nd);
-    return provider is not None and provider != import_consumer_app(nd);
+    return import_provider_app(nd) is not None;
 }
 
 impl is_service_bridge_import(nd: uni.Import) -> bool {

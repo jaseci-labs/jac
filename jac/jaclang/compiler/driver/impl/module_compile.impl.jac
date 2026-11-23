@@ -157,7 +157,8 @@ impl drop_products_on_error(program: JacProgram, mod: uni.Module) -> bool {
     if not mod_path {
         return False;
     }
-    blocked = program.count_module_blocking_errors(os.path.normpath(mod_path)) > 0;
+    norm_path = os.path.normpath(mod_path);
+    blocked = program.count_module_errors(norm_path, blocking=True) > 0;
     if not blocked
         and (
             mod.decided_codespace != 'native'
@@ -186,12 +187,6 @@ impl report_missing_native_ir(program: JacProgram, mod: uni.Module) -> None {
         return;
     }
     reason = unavailable(CompilationProduct.NATIVE_LOWER);
-    if not reason {
-        (available, why) = active_host().native_pipeline_available();
-        if not available {
-            reason = why;
-        }
-    }
     if reason {
         detail = f"the native codegen schedule could not be built ({reason})";
     } elif not ModuleFacts.has_native_context_stmts(mod) {
@@ -222,25 +217,6 @@ impl report_missing_native_ir(program: JacProgram, mod: uni.Module) -> None {
     );
 }
 
-impl analyze_for_compile(
-    program: JacProgram, path: str, options: CompileOptions, source: str | None
-) -> ModuleAnalysis {
-    return analyze_module(program, path, options, source);
-}
-
-impl compile_task(
-    session: SessionHooks,
-    program: JacProgram,
-    path: str,
-    options: CompileOptions,
-    source: str | None = None
-) -> ModuleAnalysis {
-    analysis = analyze_for_compile(program, path, options, source);
-    analysis.session = session;
-    run_plan(analysis, CODEGEN_PLAN);
-    return analysis;
-}
-
 impl compile_module(
     session: SessionHooks,
     program: JacProgram,
@@ -248,5 +224,8 @@ impl compile_module(
     options: CompileOptions,
     source: str | None = None
 ) -> uni.Module {
-    return compile_task(session, program, path, options, source).module;
+    analysis = analyze_module(program, path, options, source);
+    analysis.session = session;
+    run_plan(analysis, CODEGEN_PLAN);
+    return analysis.module;
 }
