@@ -107,6 +107,30 @@ def write_runtime_support(work: Path, runtime_path: str) {
     }
 }
 
+"""Compile one runtime core into `work` beside the modules it imports, with its
+npm imports stubbed, and return the path node should load."""
+def write_runtime_core(work: Path, core_name: str) -> Path {
+    runtime_path = resolve_client_runtime_cl_path("react");
+    write_runtime_support(work, runtime_path);
+    js = wire_jac_runtime(
+        compile_react(str(Path(runtime_path).parent / f"{core_name}.jac"))
+    );
+    for npm_module in ["react", "react-hook-form", "@hookform/resolvers/zod"] {
+        js = js.replace(f'"{npm_module}"', '"./npm_stub.js"');
+    }
+    (work / "jac_runtime.js").write_text(
+        "export function __jacJsx() { return null; }\n", encoding="utf-8"
+    );
+    (work / "npm_stub.js").write_text(
+        "export const useForm = () => null;\nexport const zodResolver = () => null;\n",
+        encoding="utf-8"
+    );
+    (work / "package.json").write_text('{"type": "module"}', encoding="utf-8");
+    core = work / f"{core_name}.js";
+    core.write_text(js, encoding="utf-8");
+    return core;
+}
+
 """`bun install` a dep set into `work`; defaults to the shared one.
 
 `deps` lets a suite install exactly the versions the client pipeline pins
