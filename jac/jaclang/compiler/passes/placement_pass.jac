@@ -25,13 +25,11 @@ obj NativeLegality {
         owners: dict[int, UniNode] = {},
         refs: dict[int, set[int]] = {},
         anchored_by: dict[int, set[int]] = {},
-        tops: dict[int, UniNode] = {},
         elements: dict[int, NativeRefusal] = {},
         blockers: list[NativeRefusal] = [],
         module: list[NativeRefusal] = [],
         reach: list[NativeRefusal] = [],
         reached: dict[int, int] = {},
-        late: dict[str, list[NativeRefusal]] = {},
         requires: dict[int, NativeRefusal] = {},
         module_requires: list[NativeRefusal] = [],
         preferences: dict[int, NativeRefusal] = {};
@@ -45,8 +43,6 @@ obj NativeLegality {
     def unit_refused(owner: UniNode) -> bool;
     def module_refused -> bool;
     def settle -> None;
-    def static_units -> int;
-    def late_units -> int;
     def unmet -> list[tuple[NativeRefusal, NativeRefusal]];
 }
 

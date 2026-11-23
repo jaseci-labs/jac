@@ -1229,7 +1229,7 @@ impl wiring_annex_for(file_path: str) -> (WovenAnnex | None) {
     if not text {
         return None;
     }
-    return WovenAnnex(source=text, path=spec.path, consumer=spec.import_name(consumer));
+    return WovenAnnex(source=text, path=spec.path);
 }
 
 impl wiring_digest_for(file_path: str) -> str {

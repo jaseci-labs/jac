@@ -166,11 +166,6 @@ impl CompileContext.ice(msg: str = 'Something went horribly wrong!') -> str {
     return f"Internal Compiler Error: Pass {self.pass_name} - {msg}";
 }
 
-impl CompileContext.log_info(msg: str) -> None {
-    import logging;
-    logging.getLogger(self.pass_name).info(msg);
-}
-
 impl CompileContext.enter_node(nd: UniNode) -> None {
     if nd.ct_pruned or self.is_canceled() {
         import from jaclang.runtime.osp_kernel { osp_skip_rest }

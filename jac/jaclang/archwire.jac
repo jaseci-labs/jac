@@ -7192,7 +7192,6 @@ graph import compiler {
             AtomTrailer,
             BinaryExpr,
             Bool,
-            BuiltinType,
             ContextAwareNode,
             DictVal,
             Enum,
@@ -11164,7 +11163,6 @@ graph import compiler.passes {
     ]
     dataflow ++> [
         ownership_check_pass {
-            DataflowTransfer,
             SymId,
             is_scope_exit,
             solve_backward,

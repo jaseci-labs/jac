@@ -614,19 +614,6 @@ impl OwnershipCheckPass._nogc_is_container_expr(expr: Expr | None) -> bool {
     return False;
 }
 
-impl OwnershipCheckPass._nogc_is_list_expr(expr: Expr | None) -> bool {
-    if not isinstance(expr, Expr) or expr.type is None {
-        return False;
-    }
-    _tk = "";
-    try {
-        _tk = expr.type.mangle();
-    } except Exception {
-        return False;
-    }
-    return _tk == "list" or _tk.startswith("list[");
-}
-
 impl OwnershipCheckPass._nogc_container_grow_method(call: FuncCall) -> (str | None) {
     _tgt = call.target;
     if not isinstance(_tgt, AtomTrailer) or not _tgt.is_attr {
