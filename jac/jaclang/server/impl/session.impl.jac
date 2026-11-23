@@ -367,6 +367,7 @@ impl Session.postinit -> None {
     self._hop_groups_token = None;
     self._queued = [];
     self._last_conflict = set();
+    self._txn_open = False;
     self._scan_clean = False;
     self._scan_sealed = False;
     self._scan_safe = True;
@@ -480,12 +481,8 @@ impl Session.`has(id: UUID) -> bool {
         self.read_barrier();
         return id in self.store.existing([id]);
     } except Exception as e {
-        if not _is_serialization_conflict(e) {
-            raise;
-        }
-        self._replay_txn(e);
-        self.read_barrier();
-        return id in self.store.existing([id]);
+        self._lose_on_conflict(e);
+        raise;
     }
 }
 
@@ -530,24 +527,19 @@ impl Session.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
         }
     }
     if missing and self.store is not None {
-        for attempt in range(2) {
-            try {
-                self.read_barrier();
-                loaded = self.store.load_full(missing);
-                self._foreign_refs.difference_update(missing);
-                for (rid, row) in loaded.items() {
-                    anchor = self._materialize(row);
-                    if anchor is not None {
-                        self._fetch_count += 1;
-                        out[rid] = anchor;
-                    }
-                }
-                break;
-            } except Exception as e {
-                if attempt == 1 or not _is_serialization_conflict(e) {
-                    raise;
-                }
-                self._replay_txn(e);
+        try {
+            self.read_barrier();
+            loaded = self.store.load_full(missing);
+        } except Exception as e {
+            self._lose_on_conflict(e);
+            raise;
+        }
+        self._foreign_refs.difference_update(missing);
+        for (rid, row) in loaded.items() {
+            anchor = self._materialize(row);
+            if anchor is not None {
+                self._fetch_count += 1;
+                out[rid] = anchor;
             }
         }
     }
@@ -567,36 +559,27 @@ impl Session.commit(anchor: (Anchor | None) = None) -> None {
                 self._rollback_txn();
                 raise TransactionLost(anchor_id=UUID(int=0));
             }
-            attempt = 0;
-            while True {
-                try {
-                    self.flush(full=True);
-                    wrote = self._rows.in_flight();
-                    self._commit_txn();
-                    self._leave_queue();
-                    if wrote and self._active_units > 0 and self._ro_units > 0 {
-                        self._register_ro_writers();
-                    }
-                    break;
-                } except Exception as e {
-                    if not _is_serialization_conflict(e) {
-                        self._rollback_txn();
-                        if isinstance(e, WriteConflict) and self._active_units == 0 {
-                            self._dirty.pop(e.anchor_id, None);
-                            self._ensure_txn();
-                            for row in self._store.load_full([e.anchor_id]).values() {
-                                self._materialize(row);
-                            }
-                        }
-                        raise;
-                    }
-                    self._replay_txn(e, exhausted=attempt >= MAX_RETRIES);
-                    attempt += 1;
-                    logger.info(
-                        "serialization conflict at commit; replaying the write set "
-                        f"(attempt {attempt}/{MAX_RETRIES})"
-                    );
+            try {
+                self.flush(full=True);
+                wrote = self._rows.in_flight();
+                self._commit_txn();
+                self._leave_queue();
+                if wrote and self._active_units > 0 and self._ro_units > 0 {
+                    self._register_ro_writers();
                 }
+            } except Exception as e {
+                self._lose_on_conflict(e);
+                self._rollback_txn();
+                if isinstance(e, WriteConflict)
+                    and not self._lost
+                    and self._active_units == 0 {
+                    self._dirty.pop(e.anchor_id, None);
+                    self._ensure_txn();
+                    for row in self._store.load_full([e.anchor_id]).values() {
+                        self._materialize(row);
+                    }
+                }
+                raise;
             }
         } else {
             self._dirty.clear();
@@ -873,6 +856,7 @@ impl Session._commit_txn -> None {
         self._store.commit();
         self._rows.promote();
     }
+    self._txn_open = False;
     self._txn_gen += 1;
 }
 
@@ -885,6 +869,7 @@ impl Session._rollback_txn -> None {
             logger.debug(f"rollback failed: {type(e).__name__}: {e}");
         }
     }
+    self._txn_open = False;
     self._txn_gen += 1;
     lost = self._rows.discard();
     if lost.joined {
@@ -907,21 +892,29 @@ impl Session._rollback_txn -> None {
 }
 
 
-impl Session._replay_txn(cause: Exception, exhausted: bool = False) -> None {
+impl Session._lose_on_conflict(cause: (Exception | None)) -> None {
+    if cause is None or not _is_serialization_conflict(cause) {
+        return;
+    }
     self._rollback_txn();
-    if exhausted {
-        self._lost = True;
-    }
-    if self._lost {
-        raise TransactionLost(anchor_id=UUID(int=0)) from cause;
-    }
+    self._last_conflict = {
+        id
+        for id in self._last_conflict | set(self._dirty) | self._deleted
+        if self._rows.current(id) is not None
+    };
+    self._lost = True;
+    logger.info(f"serialization conflict; the unit will re-run: {cause}");
+    raise TransactionLost(anchor_id=UUID(int=0)) from cause;
 }
 
 
 impl Session._reclaim_dead_txn -> None {
-    if not self._rows.in_flight() or self._store is None or self._store.in_txn() {
+    if self._store is None
+        or self._store.in_txn()
+        or not (self._txn_open or self._rows.in_flight()) {
         return;
     }
+    self._lose_on_conflict(self._store.last_error);
     self._rollback_txn();
     if self._lost {
         raise TransactionLost(anchor_id=UUID(int=0));
@@ -937,12 +930,8 @@ impl Session.read_barrier -> None {
         self._ensure_txn();
         self.flush();
     } except Exception as e {
-        if not _is_serialization_conflict(e) {
-            raise;
-        }
-        self._replay_txn(e);
-        self._ensure_txn();
-        self.flush();
+        self._lose_on_conflict(e);
+        raise;
     }
 }
 
@@ -1024,10 +1013,13 @@ impl Session._flush_locked(full: bool) -> None {
             self._last_conflict = {wc.anchor_id};
             raise;
         } except Exception as e {
-            if self._queued or not _is_lock_timeout(e) {
+            if not _is_serialization_conflict(e) {
                 raise;
             }
             self._last_conflict = {row.id for row in rows};
+            if self._queued or not _is_lock_timeout(e) {
+                raise;
+            }
             raise WriteConflict(anchor_id=rows[0].id) from e;
         }
         for (row, u) in zip(rows, unflushed) {
@@ -1304,6 +1296,7 @@ impl Session._begin_txn(isolation: TxnIsolation) -> None {
         return;
     }
     backing.begin(isolation);
+    self._txn_open = True;
     if not self._queued and isolation is TxnIsolation.SERIALIZABLE {
         backing.lock_wait(FIRST_LOCK_WAIT);
     }
@@ -1337,6 +1330,7 @@ impl Session.wait_turn -> None {
             backing.begin(TxnIsolation.SERIALIZABLE);
             try {
                 backing.lock_rows(pinned);
+                self._txn_open = True;
                 return;
             } except Exception as e {
                 if not _is_serialization_conflict(e) {
@@ -1439,6 +1433,7 @@ impl Session.close -> None {
     self._deleted.clear();
     self._rows.clear();
     self._lost = False;
+    self._txn_open = False;
     self._drop_hop_state();
 
     sv_store_closed(self);
