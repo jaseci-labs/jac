@@ -2085,6 +2085,10 @@ impl BaseLLM._stream_steps(
                 (non_finish_calls, finish_tc, skipped_calls) = _split_at_finish(
                     resp.tool_calls
                 );
+                if shown and finish_tc is None {
+                    yield from _drop_answer(retractable);
+                    shown = "";
+                }
 
                 if non_finish_calls {
                     max_result_len = int(

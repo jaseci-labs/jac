@@ -1170,6 +1170,9 @@ impl CatalogWriter.encode_type(idx: int) -> bytes {
         }
         put_uvar(out, TY_CLASS);
         put_uvar(out, flags);
+        if self._shared_ident(shared) not in self.shared_ids {
+            self._settle_ancestry(t);
+        }
         put_ref(out, self.ref_shared(shared));
         put_refs(out, self.ref_types(t.private.type_args));
         put_uvar(out, self.sid(t.private.alias_name or ""));
@@ -1295,6 +1298,28 @@ impl CatalogWriter.encode_type(idx: int) -> bytes {
     put_uvar(out, 1 if is_diagnosed else 0);
     put_uvar(out, 1 if is_incomplete else 0);
     return bytes(out);
+}
+
+impl CatalogWriter._settle_ancestry(cls: ClassType) -> None {
+    home = module_of(cls.shared.symbol_table)
+        if cls.shared.symbol_table is not None
+        else None;
+    if self.boundary is None or home is None or not self.in_boundary(home) {
+        return;
+    }
+    self.evaluator._heal_ancestry(cls);
+    for ancestor in [cls] + list(cls.shared.mro or []) {
+        if ancestor.shared._provisional {
+            self.failures += 1;
+            if len(self.failure_log) < 200 {
+                self.failure_log.append(
+                    f"{cls.shared.class_name}: a base of "
+                    f"{ancestor.shared.class_name} is not resolved yet"
+                );
+            }
+            return;
+        }
+    }
 }
 
 impl CatalogWriter.note_orphan(sh: ClassDetailsShared) {

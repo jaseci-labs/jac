@@ -30,6 +30,7 @@ obj ServiceProcessManager {
     def _prepare_ports(service_entry: ServiceEntry) -> None;
     def _boot_order -> list[str];
     def _await_lead(name: str) -> None;
+    def child_env(name: str, parent_env: dict[str, str]) -> dict[str, str];
     def start_service(name: str) -> bool;
     def start_all -> None;
     def stop_service(name: str) -> bool;

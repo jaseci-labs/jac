@@ -2,7 +2,29 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.40.0 (Latest Release)
+## jaclang 0.40.1 (Latest Release)
+
+### New Features
+
+- **`current_request()` carries the raw request body**: `current_request().body` is the bytes the client sent, exactly as received, so an endpoint can verify a webhook signed its own way (Shopify's base64 `X-Shopify-Hmac-Sha256` with a per-store secret, Stripe's `t.payload`). A `multipart/form-data` upload keeps an empty `body`; its parts arrive as `UploadFile` parameters.
+
+### Bug Fixes
+
+- **Fix: unknown admin routes answer 404**: a `GET /admin/...` that matches no admin route and no console file now answers a JSON 404, or the console page with status 404 for a browser navigation, instead of the console page with 200. The server and the gateway register the admin API from one roster, so a route added to one is served by both, and the gateway serves console files from the same code as the server. A trailing-slash request a catch-all route would have answered (`/admin/users/`, or `/graph/` on an app) now redirects to the declared route like any other trailing-slash miss.
+- **Fix: `match` captures are now typed and checked**: a name bound by `case str() as s`, a bare `case s`, or `*rest` was never declared, so it read as Unknown and nothing using it was checked. Captures are now declared like any other binding. `case str() as s` binds `str`, and a bare capture binds the subject without what earlier unguarded cases matched. A capture that rebinds a local, such as `case str() as title` after `title = Label()`, is reported as E1001.
+- **Fix: metaclass methods on a class object**: `len(Foo)`, `Foo()` and `Foo[key] = value` now use the metaclass's `__len__`, `__call__` and `__setitem__`, as Python does, instead of being reported as type errors. A class is also accepted wherever an instance of its metaclass is expected, so it can be passed as its metaclass or as a protocol such as `Sized` or `Hashable` that the metaclass implements; every class counts as `Hashable`.
+- **Fix: jac-scale no longer swaps the pod image when Docker Hub is unreachable**: any failed check against Docker Hub used to move pods to `python:3.12-slim`, so experimental deploys ran `dev` instead of the PR's build. Now only a "not published" answer falls back (with a warning), an unpublished experimental image stops the deploy, and an unreachable Docker Hub keeps the official image.
+- **Fix: a deploy under another `JAC_PROFILE` no longer reuses the previous profile's bundle**: `jac scale deploy` now seals the app and builds the client again when `JAC_PROFILE` changes between deploys, instead of reusing the bundle and client built under the old profile.
+- **Fix: a Kubernetes deploy that can't list the cluster's nodes stops instead of guessing their architecture**: `jac scale deploy` used to fall back silently to the deploying machine's architecture, so deploying from an arm64 machine to x86_64 nodes shipped a runtime whose pods crash-looped. It now stops before building and asks you to set `JAC_NODE_ARCH` (`x86_64` or `aarch64`) or grant `list` on `nodes`, even when your machine happens to match the nodes.
+- **Fix: jac-scale no longer falls back to the pod's own cluster when the configured one fails to load**: a `kube_context` or `kubeconfig` that does not load is now an error naming it, instead of a silent deploy or destroy on the cluster the pod runs in.
+- **Fix: a failed dependency download no longer sticks to later deploys**: when `jac scale deploy` could not pack the app's Python packages into the bundle and shipped a thin bundle instead, the next deploy of the same code now tries again instead of reusing that thin bundle from the seal cache.
+- **Fix: `jac check` and `jac test` warn with the `[project] jac-version` pin of the project that owns each file**: checking or testing files of another project now reports that project's unmet pin, once per project, instead of the pin of the project the shell is in.
+- **Fix: looking up an enum member by name stays in native code**: `Color["RED"]` and `Color[name]` on a Jac `enum` or an enum class such as `StrEnum` used to fall back to Python. They now compile natively, and a name that matches no member raises `KeyError` as in Python.
+- **Fix: single-worker `/metrics` includes app metrics**: metrics an app records with `prometheus_client` now show up in `/metrics` when the server runs one worker, as on every `jac scale deploy` pod, not only with several workers.
+- **Fix: classes in modules that import each other keep their base classes in the check cache**: when two modules imported each other and a class in one inherited from a class in the other, checking against the cache could report false errors such as `Type "C" has no attribute "f"`. Such classes now keep their full set of base classes, so cached and uncached checks agree.
+- **Fix: Prometheus scrapes every app pod**: With `[scale.monitoring]` enabled, Prometheus now scrapes every app replica at the configured metrics `endpoint` and every gateway replica at `/metrics`, so per-route request and walker metrics from the app pods reach Prometheus instead of only the gateway's.
+
+## jaclang 0.40.0
 
 ### Breaking Changes
 
@@ -80,6 +102,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: using a possibly-`None` value in an operator is caught at check time**: `x + 1` where `x` is typed `int | None` used to pass `jac check` and then raise `TypeError` at runtime whenever `x` was `None`. The checker now reports it as `E1160`, mirroring how it already rejects attribute access on an un-narrowed optional. Arithmetic, bitwise, and shift operators are covered, in both plain (`x + 1`) and augmented (`x += 1`) form; guard the value with `if x is not None { ... }` (or an early return on the `None` case) first. Comparisons to `None` (`==`, `!=`, `is`) are unaffected.
 - **Runtime: a recreated database gets its tables again**: When a database was dropped and created again under the same name while a Jac process kept running, the process skipped creating its tables and the first query failed with `relation "anchors" does not exist`. Creating a database now always leads to its tables being set up.
 - **Client: dependency installs skip versions published in the last day**: every npm install Jac runs (client builds, `jac install --npm --global`, desktop and mobile setup) now skips package versions less than one day old by default and installs an older matching version instead, so a version npm cannot serve yet no longer fails the build with a registry 404. An exact pin to a version released today now fails until it is a day old or its package name is listed in `min_release_age_excludes` under `[client.npm]` in `jac.toml`; set `min_release_age_days = 0` there to turn the age limit off.
+- **Fix: the Linux arm64 binary's bundled Python no longer crashes when run directly**: the build stripped debug information from the bundled `python3.14`, and on Linux arm64 the stripped interpreter crashed on start, which broke `jac install` and the Docker image there. A build now checks that the stripped interpreter still runs and ships it unstripped if it does not. The Docker image for each architecture is also built on its own native runner.
 
 ## jaclang 0.39.2
 

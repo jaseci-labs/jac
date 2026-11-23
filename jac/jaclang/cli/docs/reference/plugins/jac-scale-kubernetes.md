@@ -11,6 +11,8 @@
 | **Deploy** | `jac scale deploy app.jac` | Ship the project source into the cluster and deploy |
 | **Preview** | `jac scale deploy app.jac --dry-run` | Print the manifests that would be applied; change nothing |
 | **Enable HTTPS** | `jac scale deploy app.jac --enable-tls` | Enable TLS on a live deployment (no redeploy, run after CNAME propagates) |
+| **Build only** | `jac scale build app.jac --out build --arch amd64` | Seal the app into `build/` without contacting the cluster |
+| **Deploy a build** | `jac scale deploy app.jac --from-build build` | Apply a build without building anything |
 
 There is no image-build step. `jac-scale` does not build, tag, or push a Docker
 image, and it needs no registry and no registry credentials: pods run a stock
@@ -619,6 +621,11 @@ postgres_storage = "10Gi"  # under [scale.database]
 - **Decrease**: Attempting to set a smaller value than the current PVC size raises an explicit error and aborts the deploy. Shrinking a PVC is not supported by Kubernetes.
 - **No change**: If the value matches the current size, no action is taken.
 
+**Postgres disk usage:**
+
+- `jac scale status` shows how much of the Postgres data PVC is in use and warns once it passes 80%. Raise `postgres_storage` and redeploy before it fills: a full volume stops every write.
+- Not all of `postgres_storage` holds your data. Postgres keeps its write-ahead log on the same volume and lets it grow toward 2GB between checkpoints, plus some space for the empty database itself. On the `2Gi` default, your data gets much less than 2Gi.
+
 > **Note:** Postgres PVC resize requires the cluster's StorageClass to have `allowVolumeExpansion: true`. Most cloud providers (AWS EBS, GCE PD, Azure Disk) and MicroK8s enable this by default. Verify with `kubectl get storageclass`.
 > **Note:** The application bundle PVC has a fixed size (1Gi) and is created once, never resized. Bundle contents are content-addressed, so an unchanged app is not re-uploaded on redeploy.
 
@@ -755,7 +762,7 @@ On AWS clusters, the NGINX Ingress controller is exposed via a Network Load Bala
 When enabled, two additional components are deployed:
 
 - **Loki** - single-process log store (port 3100, ClusterIP). Uses filesystem/TSDB storage backed by an `emptyDir` volume; logs are ephemeral and reset on pod restart. Suitable for dev and staging environments.
-- **Grafana Alloy** - DaemonSet deployed on every node (tolerates `NoSchedule` taints). Tails `/var/log/pods`, labels each stream with `namespace`, `pod`, and `container`, and pushes to Loki via Kubernetes service discovery. Configured in River syntax. (Alloy is the OpenTelemetry-compatible successor to Promtail, which went EOL on 2026-03-02.)
+- **Grafana Alloy** - DaemonSet deployed on every node (tolerates `NoSchedule` taints). Tails `/var/log/pods` for the pods in the app namespace only, labels each stream with `namespace`, `pod`, and `container`, and pushes to Loki via Kubernetes service discovery. Configured in River syntax. (Alloy is the OpenTelemetry-compatible successor to Promtail, which went EOL on 2026-03-02.)
 
 A **Pod Logs** dashboard is automatically added to Grafana with two panels: log volume (lines/min by namespace/pod) and a live log viewer.
 
@@ -1341,7 +1348,7 @@ enabled = true
 When enabled, `jac scale deploy` deploys:
 
 - **Loki** -- single-process log store (port 3100, ClusterIP). Uses filesystem/TSDB storage backed by `emptyDir` (logs are ephemeral and reset on pod restart; suitable for dev and staging).
-- **Grafana Alloy** -- DaemonSet on every node (tolerates `NoSchedule`). Tails `/var/log/pods`, labels each stream with `namespace`, `pod`, and `container`, and pushes to Loki via Kubernetes service discovery. River-syntax config; supersedes Promtail (EOL 2026-03-02).
+- **Grafana Alloy** -- DaemonSet on every node (tolerates `NoSchedule`). Tails `/var/log/pods` for the pods in the app namespace only, labels each stream with `namespace`, `pod`, and `container`, and pushes to Loki via Kubernetes service discovery. River-syntax config; supersedes Promtail (EOL 2026-03-02).
 - **Prometheus + Grafana** -- the full monitoring stack comes along because the Pod Logs dashboard view lives inside Grafana. Equivalent to setting `[scale.monitoring] enabled = true` plus `[scale.kubernetes] loki_enabled = true` on the monolith target.
 
 A **Pod Logs** dashboard is added to Grafana automatically, with two panels: log volume (lines/min by namespace/pod) and a live log viewer.
@@ -1360,7 +1367,7 @@ A **Pod Logs** dashboard is added to Grafana automatically, with two panels: log
 
 <!-- -->
 
-> **Multi-tenant note.** Alloy's ClusterRole reads pods cluster-wide and the default Pod Logs dashboard query is `{namespace=~".+"}`, so anyone with Grafana access sees logs from every namespace -- change the default Grafana password and only enable on clusters where that exposure is acceptable. Persistent multi-tenancy is planned.
+> **Multi-tenant note.** Each app's Alloy collects only the logs of its own namespace, so its Loki and Grafana do not show other apps on the cluster. Apps deployed into the same namespace share that namespace's logs; give each tenant its own `[scale.kubernetes] namespace` to keep them apart. An app deployed before this scoping keeps the other namespaces' logs its Loki already stored until the Loki pod restarts; `kubectl rollout restart deployment/<app>-loki -n <namespace>` clears them, along with the app's own earlier logs.
 
 ---
 
@@ -1472,6 +1479,55 @@ kubectl get pvc                     # the bundle PVC must be Bound
   identity.
 - `ImagePullBackOff` on the base image means the cluster cannot reach
   `jaseci/jaclang`; set `python_image` to a base it can pull.
+
+### Building and Deploying Separately
+
+`jac scale deploy` builds the app (the client build, `jac install`, the seal)
+and applies it in one process. To run the two halves in different places, for
+example an unprivileged CI runner that builds and a trusted step that holds the
+kubeconfig and applies, split them:
+
+```bash
+jac scale build app.jac --out build --arch amd64     # no cluster access
+jac scale deploy app.jac --from-build build --plan-out plan.json
+```
+
+`jac scale build` never loads cluster config, so it takes the node architecture
+from `--arch` or `JAC_NODE_ARCH` and refuses when neither is set. It writes
+the sealed bundle as `build/bundle-<sha256 prefix>.jab` and then
+`build/build.json`, which names that file and records the jac version,
+channel, node architecture, app name, the bundle's object key, sha256 and size,
+the pod runtime's sha256 and one sha256 over every `jac.toml` sealed into the
+bundle (the root one and each nested one). `build.json` is replaced last, so a
+deploy reading the directory always finds the bundle it names; older bundle
+files are removed afterwards. The output directory holds only these files: the
+build refuses a directory with anything else in it, or a symlink.
+
+`--from-build` never builds. It refuses a build whose bundle does not match its
+recorded sha256, or that was made by another jac version, for another app,
+node architecture or jac channel, or whose sealed `jac.toml` files differ from
+the ones this deploy would ship (the refusal names each file and key that
+differs, never the values). It fetches the
+pod runtime the usual way and refuses when its sha256 differs from the one the
+build recorded. `--plan-out` writes the rendered Deployments as JSON
+(`{expect, parked, deployments}`, where `parked` lists the ones that may sit at
+zero replicas) before anything is applied; with `--dry-run` it writes the plan
+and applies nothing.
+
+### Node Architecture
+
+The pod runtime is built for the nodes' architecture, which the deploy reads by
+listing the cluster's nodes. A kubeconfig bound to a namespace-scoped Role
+cannot list them, so the deploy stops with `Could not read the cluster's node
+architectures (HTTP 403 Forbidden)`. Grant the deploy identity `list` on `nodes`
+through a ClusterRole, or name the architecture:
+
+```bash
+JAC_NODE_ARCH=x86_64 jac scale deploy    # or aarch64; amd64 and arm64 also work
+```
+
+Set it too when the nodes report several architectures or none, or when a
+`jac-bootstrap` log shows `Exec format error` (the pods got the wrong one).
 
 ### General Debugging
 

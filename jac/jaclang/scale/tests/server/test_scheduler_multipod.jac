@@ -9,6 +9,7 @@ APScheduler installed) a due job fires exactly once while DELETE stops it
 on every pod without a restart.
 """
 
+import json;
 import time;
 import datetime;
 import socket;
@@ -226,6 +227,8 @@ test "a static task runs on one pod at a time, and a dead pod's hold expires" {
         pod.claim = claim;
         pod.hold = hold;
         pod.release = release;
+        pod.record = store.kv_put_record;
+        pod.recall = store.kv_get_record;
         pod.register("slow_fn", slow, ScheduleSpec(interval=0.2), False);
         pods.append(pod);
     }
@@ -245,6 +248,18 @@ test "a static task runs on one pod at a time, and a dead pod's hold expires" {
     assert state["first"] >= 0.9 , f"ran {state[
         'first'
     ]:.2f}s after a dead pod's 1s hold";
+    seen = [pod.last_run_of("slow_fn") for pod in pods];
+    assert seen[0] is not None and seen[0] == seen[1] , f"pods disagree on the last run: {seen}";
+    assert seen[0]["status"] == "ok" , seen;
+    for (tick, replaces) in [
+        ("2000-01-01T00:00:00+00:00", False),
+        ("9999-01-01T00:00:00+00:00", True)
+    ] {
+        late = json.dumps({** seen[0], "worker": "stalled", "tick": tick});
+        store_b.kv_put_record("sched-last:overlap:slow_fn", late);
+        assert (store_a.kv_get_record("sched-last:overlap:slow_fn") == late)
+            == replaces , f"a record for the {tick} tick must replace the stored one: {replaces}";
+    }
 }
 
 
