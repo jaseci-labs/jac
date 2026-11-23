@@ -83,37 +83,6 @@ impl JacCompiler.get_native_interop_setup(
     return (None, None);
 }
 
-impl JacCompiler.get_native_layout(
-    full_target: str, target_program: JacProgram
-) -> (NativeModuleLayout | None) {
-    actual_program = self.product_program(full_target, target_program);
-    _layout: NativeModuleLayout | None = None;
-    if (full_target in actual_program.hub.artifacts) {
-        gen = actual_program.hub.artifacts[full_target];
-        _layout = gen.native_layout;
-    } elif (full_target in actual_program.mod.hub) {
-        mod = actual_program.mod.hub[full_target];
-        _layout = mod.gen.native_layout;
-    }
-    if _layout is not None {
-        JacCompiler._check_native_abi(_layout, full_target);
-    }
-    return _layout;
-}
-
-impl JacCompiler._check_native_abi(
-    layout: NativeModuleLayout, full_target: str
-) -> None {
-    stamped = layout.abi_version;
-    if stamped is not None and stamped != NATIVE_ABI_VERSION {
-        import logging as _abi_log;
-        _abi_log.getLogger(__name__).warning(
-            f"native ABI mismatch for {full_target}: layout abi_version="
-            f"{stamped} but this compiler emits {NATIVE_ABI_VERSION}; recompile."
-        );
-    }
-}
-
 impl JacCompiler.get_bytecode(
     full_target: str, target_program: JacProgram, skip_analysis: bool = False
 ) -> (types.CodeType | None) {
@@ -134,7 +103,7 @@ impl JacCompiler._get_bytecode(
     full_target: str, target_program: JacProgram, skip_analysis: bool = False
 ) -> (types.CodeType | None) {
     actual_program = self.selfhost.resolve(full_target, target_program);
-    (rebuild, no_precompile) = cache_mode();
+    (rebuild, _) = cache_mode();
     symtab_only_recovery = False;
 
     if (
@@ -235,8 +204,7 @@ impl JacCompiler._get_bytecode(
         } except Exception {}
     }
 
-    allow_unsealed = (not rebuild) and (not no_precompile);
-    precompiled = self._get_precompiled_jir_bytecode(full_target, allow_unsealed);
+    precompiled = self._get_precompiled_jir_bytecode(full_target);
     if precompiled is not None {
         (precompiled_bc, precompiled_ctdeps) = precompiled;
         try {
@@ -289,7 +257,7 @@ impl JacCompiler._get_bytecode(
             file_path=full_target, target_program=actual_program, options=options
         );
         if result.gen.py_bytecode {
-            actual_program.hub_cache_stamp(full_target);
+            actual_program.hub.stamp(full_target);
             self._persist_module_cache(full_target, result, actual_program);
             if is_internal {
                 note_compiler_source_failure(full_target, '');
@@ -347,8 +315,7 @@ impl JacCompiler._wants_native_engine(full_target: str, program: JacProgram) -> 
 impl JacCompiler._load_native_from_cache(
     full_target: str,
     target_program: JacProgram,
-    cached_interop: (dict[str, any] | None),
-    options: (CompileOptions | None) = None
+    cached_interop: (dict[str, any] | None)
 ) -> None {
     engine: ExecutionEngine | SharedNativeEngine | None = self._sealed_native_engine(
         full_target
@@ -358,7 +325,7 @@ impl JacCompiler._load_native_from_cache(
         engine = jit_engine_for_cached(
             target_program,
             full_target,
-            options or target_program.options or CompileOptions()
+            target_program.options or CompileOptions()
         );
     }
     if engine is None {
@@ -461,39 +428,45 @@ impl JacCompiler._restore_sections(
     }
 }
 
-impl JacCompiler._sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None) {
-    import from pathlib { Path as _Path }
+impl JacCompiler._precompiled_location(
+    full_target: str
+) -> (tuple[str, str, str, str] | None) {
     norm_file = os.path.normpath(os.path.abspath(full_target));
     d = os.path.dirname(norm_file);
-    pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
-    while True {
-        bundle_dir = os.path.join(d, '_precompiled');
-        if os.path.isdir(bundle_dir) {
-            if _sealed.image_for_bundle_dir(bundle_dir) is None {
-                return None;
-            }
-            norm_root = os.path.normpath(d);
-            if not norm_file.startswith(norm_root + os.sep) {
-                return None;
-            }
-            rel_path = norm_file[len(norm_root) + 1:];
-            jir_path = os.path.join(
-                bundle_dir, pyver, os.path.splitext(rel_path)[0] + '.jir'
-            );
-            if os.path.isfile(jir_path) {
-                try {
-                    return (_Path(jir_path).read_bytes(), d);
-                } except OSError {
-                    return None;
-                }
-            }
-            return None;
-        }
+    while not os.path.isdir(os.path.join(d, '_precompiled')) {
         parent = os.path.dirname(d);
         if parent == d {
             return None;
         }
         d = parent;
+    }
+    if not norm_file.startswith(d + os.sep) {
+        return None;
+    }
+    rel_path = norm_file[len(d) + 1:];
+    bundle_dir = os.path.join(d, '_precompiled');
+    pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
+    jir_path = os.path.join(bundle_dir, pyver, os.path.splitext(rel_path)[0] + '.jir');
+    return (norm_file, d, bundle_dir, jir_path);
+}
+
+impl JacCompiler._sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None) {
+    located = JacCompiler._precompiled_location(full_target);
+    if located is None {
+        return None;
+    }
+    (_, root, bundle_dir, jir_path) = located;
+    if not os.path.isfile(jir_path) {
+        return None;
+    }
+    if _sealed.image_for_bundle_dir(bundle_dir) is None {
+        return None;
+    }
+    import from pathlib { Path as _Path }
+    try {
+        return (_Path(jir_path).read_bytes(), root);
+    } except OSError {
+        return None;
     }
 }
 
@@ -512,112 +485,58 @@ impl JacCompiler._precompiled_jir_data(full_target: str) -> (tuple[bytes, str] |
     if rebuild_flag or no_precompile {
         return None;
     }
-    norm_file = os.path.normpath(os.path.abspath(full_target));
-    d = os.path.dirname(norm_file);
-    pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
-    while True {
-        bundle_dir = os.path.join(d, '_precompiled');
-        if os.path.isdir(bundle_dir) {
-            if not bundle_dir_allowed(bundle_dir) {
-                return None;
-            }
-            norm_root = os.path.normpath(d);
-            if not norm_file.startswith(norm_root + os.sep) {
-                return None;
-            }
-            rel_path = norm_file[len(norm_root) + 1:];
-            jir_path = os.path.join(
-                bundle_dir, pyver, os.path.splitext(rel_path)[0] + '.jir'
-            );
-            if not os.path.isfile(jir_path) {
-                return None;
-            }
-            try {
-                data = _Path(jir_path).read_bytes();
-                if precompiled_jir_matches_source(
-                    data, norm_file, package_root=norm_root
-                ) {
-                    return (data, norm_root);
-                }
-            } except Exception {}
-            return None;
-        }
-        parent = os.path.dirname(d);
-        if parent == d {
-            return None;
-        }
-        d = parent;
+    located = JacCompiler._precompiled_location(full_target);
+    if located is None {
+        return None;
     }
+    (norm_file, root, bundle_dir, jir_path) = located;
+    if not bundle_dir_allowed(bundle_dir) or not os.path.isfile(jir_path) {
+        return None;
+    }
+    try {
+        data = _Path(jir_path).read_bytes();
+        if precompiled_jir_matches_source(data, norm_file, package_root=root) {
+            return (data, root);
+        }
+    } except Exception {}
+    return None;
 }
 
 impl JacCompiler._get_precompiled_jir_bytecode(
-    full_target: str, allow_unsealed: bool = True
+    full_target: str
 ) -> (tuple[bytes, bytes] | None) {
-    import from pathlib { Path as _Path }
     (rebuild_flag, no_precompile) = cache_mode();
     if rebuild_flag or no_precompile {
         return None;
     }
-    norm_file = os.path.normpath(os.path.abspath(full_target));
-    d = os.path.dirname(norm_file);
-    pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
-    while True {
-        bundle_dir = os.path.join(d, '_precompiled');
-        if os.path.isdir(bundle_dir) {
-            if not bundle_dir_allowed(bundle_dir) {
-                break;
-            }
-            norm_root = os.path.normpath(d);
-            if not norm_file.startswith(norm_root + os.sep) {
-                break;
-            }
-            rel_path = norm_file[len(norm_root) + 1:];
-            jir_rel = os.path.splitext(rel_path)[0] + '.jir';
-            jir_path = os.path.join(bundle_dir, pyver, jir_rel);
-
-            sealed_img = _sealed.image_for_bundle_dir(bundle_dir);
-            if sealed_img is None and not allow_unsealed {
-                break;
-            }
-            if os.path.isfile(jir_path) {
-                served: (tuple[bytes, bytes] | None) = None;
-                try {
-                    jir_data = _Path(jir_path).read_bytes();
-                    trusted = (
-                        sealed_img is not None
-                        or (
-                            precompiled_jir_matches_source(
-                                jir_data, norm_file, package_root=norm_root
-                            )
-                        )
-                    );
-                    if trusted {
-                        bc = read_bytecode_only(jir_data);
-                        if bc is not None {
-                            _ct_raw = read_section_bytes(jir_data, SEC_CTDEPS);
-                            served = (
-                                patch_co_filenames_bytes(bc, PRECOMPILE_SENTINEL, d),
-                                absolutize_ct_deps_section(_ct_raw, norm_root)
-                                    if _ct_raw
-                                    else b"",
-
-                            );
-                        }
-                    }
-                } except Exception {}
-                if served is not None {
-                    return served;
-                }
-            }
-            break;
-        }
-        parent = os.path.dirname(d);
-        if parent == d {
-            break;
-        }
-        d = parent;
+    located = JacCompiler._precompiled_location(full_target);
+    if located is None {
+        return None;
     }
-    return None;
+    (norm_file, root, bundle_dir, jir_path) = located;
+    if not bundle_dir_allowed(bundle_dir) or not os.path.isfile(jir_path) {
+        return None;
+    }
+    import from pathlib { Path as _Path }
+    try {
+        jir_data = _Path(jir_path).read_bytes();
+        trusted = _sealed.image_for_bundle_dir(bundle_dir) is not None
+            or precompiled_jir_matches_source(jir_data, norm_file, package_root=root);
+        if not trusted {
+            return None;
+        }
+        bc = read_bytecode_only(jir_data);
+        if bc is None {
+            return None;
+        }
+        ct_raw = read_section_bytes(jir_data, SEC_CTDEPS);
+        return (
+            patch_co_filenames_bytes(bc, PRECOMPILE_SENTINEL, root),
+            absolutize_ct_deps_section(ct_raw, root) if ct_raw else b""
+        );
+    } except Exception {
+        return None;
+    }
 }
 
 impl JacCompiler._restore_native_clibs(
@@ -648,7 +567,7 @@ impl JacCompiler.enter_compile(ctx: SessionContext) -> CompileFrame {
         and not target_program.internal {
         self.ensure_stub_catalog();
     }
-    frame = HostCompileFrame(
+    frame = CompileFrame(
         nested=self._reentrant_depth > 0, depth_prev=self._reentrant_depth
     );
     self._reentrant_depth += 1;
@@ -698,9 +617,7 @@ impl JacCompiler.assemble_native(
 }
 
 impl JacCompiler.leave_compile(ctx: SessionContext, frame: CompileFrame) {
-    self._reentrant_depth = max(self._reentrant_depth - 1, 0)
-        if isinstance(frame, HostCompileFrame)
-        else 0;
+    self._reentrant_depth = max(self._reentrant_depth - 1, 0);
     if self._reentrant_depth == 0 {
         self._closure_opts = None;
         if ctx.caller is not ctx.target {
@@ -710,9 +627,6 @@ impl JacCompiler.leave_compile(ctx: SessionContext, frame: CompileFrame) {
 }
 
 impl JacCompiler.finish_compile(frame: CompileFrame) {
-    if not isinstance(frame, HostCompileFrame) {
-        return;
-    }
     if frame.gc_prev is not None {
         import gc;
         gc.set_threshold(*frame.gc_prev);
@@ -862,16 +776,6 @@ impl JacCompiler._compile_pipeline(
     options: CompileOptions = CompileOptions()
 ) -> uni.Module {
     return compile_module(self, actual_program, file_path, options, use_str);
-}
-
-impl JacCompiler.build(
-    file_path: str, target_program: JacProgram, use_str: (str | None) = None
-) -> uni.Module {
-    actual_program = target_program;
-    mod_targ = self.compile(
-        file_path, actual_program, use_str, options=CompileOptions()
-    );
-    return mod_targ;
 }
 
 impl JacCompiler._prepare_tool_program(
@@ -1211,14 +1115,6 @@ impl unit_sections(
             products.ct_body_deps,
             definitions=definition_deps(products)
         );
-    }
-    if products.iface_jir {
-        import base64;
-        sections[SEC_IFACE] = base64.b64decode(products.iface_jir);
-        sections[SEC_PATH_ROOT] = JirPaths(
-            base_dir=os.path.dirname(os.path.realpath(products.path))
-        ).to_bytes();
-        sections[SEC_DEPS] = deps_section([DepRow(path=products.path, digest="")]);
     }
     return sections;
 }

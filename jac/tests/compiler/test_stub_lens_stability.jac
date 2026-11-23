@@ -122,7 +122,10 @@ test "a compiler-tree compile activates the catalog instead of parsing stub tree
     try {
         state.deactivate_catalog();
         target = os.path.join(
-            compiler.selfhost.jaclang_root(), "compiler", "driver", "log.jac"
+            compiler.selfhost.jaclang_root(),
+            "compiler",
+            "driver",
+            "dependency_graph.jac"
         );
         assert os.path.isfile(target) , f"missing fixture {target}";
         prog.compile(file_path=target, options=CompileOptions(no_cgen=True));

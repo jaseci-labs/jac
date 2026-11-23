@@ -34,12 +34,7 @@ def native_layout_from_dict(raw: any) -> NativeModuleLayout;
 
 glob NIFACE_FORMAT: int = 5,
      NIFACE_HASH_LEN: int = 64,
-     EXPORT_FUNCTION: str = "function",
-     EXPORT_METHOD: str = "method",
-     EXPORT_GLOBAL: str = "global",
-     EXPORT_STATIC: str = "static",
-     EXPORT_VTABLE: str = "vtable",
-     EXPORT_TEST: str = "test";
+     EXPORT_FUNCTION: str = "function";
 
 obj NativeExport {
     has name: str,

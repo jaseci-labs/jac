@@ -36,8 +36,7 @@ obj DiagLedger {
 }
 
 obj BuildScratch {
-    has boundary_parse_memo: dict[str, any] = {},
-        compile_depth: int = 0;
+    has compile_depth: int = 0;
 
     def clear;
 }

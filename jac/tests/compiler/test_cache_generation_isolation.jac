@@ -144,10 +144,7 @@ test "a zero TTL disables the sweep" {
 test "the wiring file is part of the producing compiler identity" {
     # Every module under jaclang/ takes its imports from archwire.jac, so the
     # same sources wired differently are a different compiler.
-    import from jaclang.compiler.driver.jir {
-        compiler_source_digest,
-        _manifest_compiler_digest
-    }
+    import from jaclang.compiler.driver.jir { compiler_source_digest }
     with tempfile.TemporaryDirectory() as pkg {
         src = Path(pkg) / "compiler" / "module.jac";
         src.parent.mkdir(parents=True, exist_ok=True);
@@ -157,7 +154,6 @@ test "the wiring file is part of the producing compiler identity" {
         before = compiler_source_digest(pkg);
         wiring.write_text("graph import compiler {\n    module --> other { f }\n}\n");
         assert compiler_source_digest(pkg) != before;
-        assert _manifest_compiler_digest(pkg) != before;
     }
 }
 
@@ -191,10 +187,7 @@ test "compiler identity excludes applications tests and generated artifacts" {
 }
 
 test "native-only units join the compiler identity by path, not by content" {
-    import from jaclang.compiler.driver.jir {
-        compiler_source_digest,
-        _manifest_compiler_digest
-    }
+    import from jaclang.compiler.driver.jir { compiler_source_digest }
     with tempfile.TemporaryDirectory() as pkg {
         unit = Path(pkg) / "runtime/na_stdlib/fnmatch.jac";
         unit.parent.mkdir(parents=True);
@@ -203,12 +196,10 @@ test "native-only units join the compiler identity by path, not by content" {
         compiler.parent.mkdir(parents=True);
         compiler.write_text("def f -> int { return 1; }\n");
         before = compiler_source_digest(pkg);
-        assert _manifest_compiler_digest(pkg) == before;
         unit.write_text("def f -> int { return 2; }\n");
         assert compiler_source_digest(pkg) == before , (
             "an edit to a native-only unit changed the compiler identity"
         );
-        assert _manifest_compiler_digest(pkg) == before;
         added = Path(pkg) / "runtime/na_stdlib/glob.jac";
         added.write_text("def g -> int { return 1; }\n");
         assert compiler_source_digest(pkg) != before , (

@@ -6,10 +6,6 @@ impl unavailable_schedule(request: ProductRequest) -> (PassSchedule | None) {
     return None;
 }
 
-impl empty_schedule(request: ProductRequest) -> (PassSchedule | None) {
-    return [];
-}
-
 impl no_action(program: JacProgram, module: Module) -> bool {
     return True;
 }
@@ -150,10 +146,6 @@ impl lint_passes(request: ProductRequest) -> PassSchedule {
 
 impl python_ast_passes(request: ProductRequest) -> PassSchedule {
     return [PyastBuildPass];
-}
-
-impl python_symbols_passes(request: ProductRequest) -> PassSchedule {
-    return [SymTabBuildPass];
 }
 
 impl grammar_passes(request: ProductRequest) -> PassSchedule {
@@ -310,11 +302,6 @@ impl resolve(
     }
     if spec.blocker() {
         return (spec.bootstrap(req), False, False);
-    }
-    if req.native and PRODUCTS[CompilationProduct.NATIVE_LOWER].blocker() {
-        req = ProductRequest(
-            gen_mtir=req.gen_mtir, native=False, endpoint_effects=req.endpoint_effects
-        );
     }
     spec.precheck();
     token = _LOADING.set(_LOADING.get() + [product]);

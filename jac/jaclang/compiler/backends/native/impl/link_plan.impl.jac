@@ -1376,7 +1376,7 @@ impl unresolved_unit_symbols(plan: LinkPlan, objects: list[bytes]) -> list[str] 
             ),
             None
         );
-        demoted = (symbol + ".__jac_demoted") in defined;
+        demoted = (symbol + DEMOTED_SUFFIX) in defined;
         if owner is None and not demoted {
             continue;
         }

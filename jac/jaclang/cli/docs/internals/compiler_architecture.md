@@ -213,14 +213,13 @@ native placement comes from a forced codespace or the placement solver's
 verdict. Every other plain `.jac` module goes through placement inference
 instead.
 
-The coercion helpers live in
-[`compiler.jac:_coerce_module`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/pipeline.jac#L250)
-and two wrappers around it:
+`JacProgram.parse_source` applies a declared codespace by calling
+`Module.set_code_context`:
 
-| Helper | Triggered by | What it does |
-|--------|--------------|--------------|
-| `_coerce_client_module` | `.jac` extension | Marks the module's nodes `CodeContext.CLIENT` |
-| `_coerce_native_module` | Forced placement (`CompileOptions(force_codespace='native')` -- set by `jac build <file> --native` -- or an AOT build under the native default codespace), else a passing placement-solver verdict | Marks the module's nodes `CodeContext.NATIVE` |
+| Codespace | Triggered by | What it does |
+|-----------|--------------|--------------|
+| `client` | `.jac` extension | Marks the module's nodes `CodeContext.CLIENT` |
+| `native` | Forced placement (`CompileOptions(force_codespace='native')` -- set by `jac build <file> --native` -- or an AOT build under the native default codespace), else a passing placement-solver verdict | Marks the module's nodes `CodeContext.NATIVE` |
 
 From this point on, every declaration carries a `CodeContext` enum value that
 downstream passes use to dispatch to the correct backend.

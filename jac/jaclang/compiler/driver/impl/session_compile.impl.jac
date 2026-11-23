@@ -6,29 +6,6 @@ impl SessionContext.merge_alerts {
     self.caller.warnings_had.extend(self.target.warnings_had[self.warnings_mark:]);
 }
 
-impl SessionHooks.enter_compile(ctx: SessionContext) -> CompileFrame {
-    return CompileFrame(nested=True);
-}
-
-impl SessionHooks.leave_compile(ctx: SessionContext, frame: CompileFrame) {}
-
-impl SessionHooks.finish_compile(frame: CompileFrame) {}
-
-impl SessionHooks.check_crash(crash: Exception, file_path: str) {}
-
-impl SessionHooks.closure_options -> (CompileOptions | None) {
-    return None;
-}
-
-impl SessionHooks.compile(
-    file_path: str,
-    target_program: JacProgram,
-    use_str: (str | None),
-    options: CompileOptions
-) -> uni.Module {
-    return compile_in_session(self, file_path, target_program, use_str, options);
-}
-
 impl SessionHooks.compile_attempt(
     file_path: str,
     target_program: JacProgram,
@@ -37,12 +14,6 @@ impl SessionHooks.compile_attempt(
 ) -> uni.Module {
     return compile_once(self, file_path, target_program, use_str, options);
 }
-
-impl SessionHooks.assemble_python(program: JacProgram, module: uni.Module) {}
-
-impl SessionHooks.assemble_native(
-    program: JacProgram, module: uni.Module, checking: bool
-) {}
 
 impl select_context(
     file_path: str, program: JacProgram, options: CompileOptions
@@ -131,7 +102,14 @@ impl compile_in_session(
                 if frame.nested {
                     outer_options = target.options;
                 }
-                return compile_attempts(hooks, file_path, target, use_str, ctx.options);
+                try {
+                    return hooks.compile_attempt(
+                        file_path, target, use_str, ctx.options
+                    );
+                } except Exception as err {
+                    hooks.check_crash(err, file_path);
+                    raise;
+                }
             } finally {
                 ctx.merge_alerts();
                 reset_native_unit_compile(native_token);
@@ -152,21 +130,6 @@ impl compile_in_session(
                 hooks.finish_compile(frame);
             }
         }
-    }
-}
-
-impl compile_attempts(
-    hooks: SessionHooks,
-    file_path: str,
-    program: JacProgram,
-    use_str: (str | None),
-    options: CompileOptions
-) -> uni.Module {
-    try {
-        return hooks.compile_attempt(file_path, program, use_str, options);
-    } except Exception as err {
-        hooks.check_crash(err, file_path);
-        raise;
     }
 }
 

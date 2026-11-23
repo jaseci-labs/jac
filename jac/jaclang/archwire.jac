@@ -4708,6 +4708,9 @@ graph import compiler {
     type backends.native.llvm.binding ++> driver.compiler.JacCompiler._load_native_from_cache
         | frontend.codeinfo { ExecutionEngine }
     type backends.native.llvm.ir ++> frontend.codeinfo { Module as IRModule }
+    backends.native.lowering ++> driver.nativecache.NativeBuildSession.unbound_symbols {
+        DEMOTED_SUFFIX
+    }
     backends.native.lowering ++> tests.test_prim_equivalence { native_lowering_issues }
     type backends.native.lowering ++> frontend.codeinfo { NativeFallbacks }
     backends.native.na_compile_pass ++> [
@@ -5257,7 +5260,6 @@ graph import compiler {
         },
         tools.jac_formatter_pass.unparse_module { run_utility },
     ]
-    driver.pipeline_runner ++> backends.native.wasm_build.compile_to_wasm { build_wasm }
     driver.pipeline_types ++> [
         backends.es.esast_gen_pass
             | backends.native.na_compile_pass
@@ -5321,7 +5323,6 @@ graph import compiler {
     ]
     driver.program ++> [
         backends.es.client_kernel_cache._lower
-            | backends.native.wasm_build.compile_to_wasm
             | placement.placement_facts.discover_spaces
             | placement.placement_solver._native_dep_scan
             | tests.test_batch_decl_identity
@@ -5687,7 +5688,6 @@ graph import compiler {
             ClientManifest
         },
         driver.compiler.JacCompiler._cached_client_artifact { ClientArtifact },
-        driver.compiler.JacCompiler._check_native_abi { NATIVE_ABI_VERSION },
         driver.compiler.JacCompiler._load_native_from_cache { CodeGenTarget },
         driver.compiler.JacCompiler._wants_native_engine
             | driver.program.JacProgram.toolchain_dependency
@@ -5879,7 +5879,7 @@ graph import compiler {
         backends.native.na_ir_gen_pass { NativeModuleLayout },
         driver.boundary_classify { InteropManifest },
         driver.client_graph { ClientArtifact, ClientManifest },
-        driver.compiler { CodeGenTarget, NativeModuleLayout },
+        driver.compiler { CodeGenTarget },
         driver.progstate { ClientArtifact, CodeGenTarget },
     ]
     frontend.const_fold ++> [
@@ -6560,7 +6560,6 @@ graph import compiler {
             | driver.module_analysis
             | driver.module_compile
             | driver.pipeline
-            | driver.program.JacProgram.build
             | driver.progstate.DiagLedger._owned
             | driver.session_compile
             | driver.unit_products.dependency_span_rows
@@ -9883,6 +9882,7 @@ graph import compiler.backends.native {
             native_fallbacks_in_ir
         },
         link_plan.LinkPlan.lowering_failures { native_lowering_issues },
+        link_plan.unresolved_unit_symbols { DEMOTED_SUFFIX },
         na_ir_gen_pass {
             DEMOTED_SUFFIX,
             NativeLoweringIssue,
@@ -10181,10 +10181,6 @@ graph import compiler.driver {
             python_side_name_refs
         },
     ]
-    boundary_classify --> program.JacProgram.parse_source {
-        _coerce_client_module,
-        _coerce_native_module
-    }
     compilation_context ++> [
         application._sections | ifacecache.artifact_cache_path {
             cache_scope,
@@ -10337,14 +10333,6 @@ graph import compiler.driver {
             get_module_cache_path,
             is_module_cache_valid
         },
-        compiler.unit_sections {
-            DepRow,
-            JirPaths,
-            SEC_DEPS,
-            SEC_IFACE,
-            SEC_PATH_ROOT,
-            deps_section
-        },
         ifacecache {
             DepRow,
             JirPaths,
@@ -10390,7 +10378,6 @@ graph import compiler.driver {
             read_jir,
             read_native_dep_hashes,
             read_section_bytes,
-            running_compiler_digest,
             stale_ct_dep_rows,
             write_module_cache
         },
@@ -10443,7 +10430,6 @@ graph import compiler.driver {
         jir.native_deps_section { native_unit_ref },
         jir.parse_native_dep_rows { resolve_native_unit_ref },
         nativecache { NativeIface },
-        unit_products.native_products { native_layout_to_dict },
     ]
     nativecache ++> program.JacProgram.native_units { NativeUnitRegistry }
     type nativecache ++> program { NativeUnitRegistry }
