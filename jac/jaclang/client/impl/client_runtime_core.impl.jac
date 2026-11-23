@@ -460,6 +460,7 @@ impl __jacResetRejectedSession(sent: str) -> None {
     profile = str(profiles["active"] or "") if profiles else "";
     store: any = globalThis.sessionStorage if profile else None;
     if store
+        and sent
         and store.getItem("jac_session_reset") == profile
         and not __jacTokenExpired(sent) {
         return;

@@ -188,6 +188,8 @@ with a `Bearer` token from `localStorage["jac_token"]` and a
 reloads the page, whichever app answered. Desktop profiles put a fresh token
 back on every load, so a profile gets one such reset: after it, a rejection
 leaves the session alone until the token has expired or the profile changes.
+A call that went out with no token still reloads, which is what fetches a
+fresh session once an expired one has been dropped.
 Calls route
 through `__cachedEndpointCall`, an LRU+TTL cache driven by compiler-emitted
 `__jacEndpointEffects__` metadata: endpoints tagged *reader* are cached and
