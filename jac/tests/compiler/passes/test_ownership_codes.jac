@@ -46,6 +46,30 @@ glob OWNERSHIP_CASES: list[tuple[any, ...]] = [
          ),
          (
              "managed borrows",
+             "an append to another list releases nothing",
+             "managed_borrow_other_append.jac",
+             []
+         ),
+         (
+             "managed borrows",
+             "an insert into the borrowed list releases nothing",
+             "managed_borrow_insert_call.jac",
+             []
+         ),
+         (
+             "managed borrows",
+             "a pop from the borrowed list may release the path",
+             "managed_borrow_pop_call.jac",
+             ["E1322"]
+         ),
+         (
+             "managed borrows",
+             "clearing a list that may alias the path",
+             "managed_borrow_clear_call.jac",
+             ["E1322"]
+         ),
+         (
+             "managed borrows",
              "assigning through a shared borrow",
              "managed_borrow_shared_write.jac",
              ["E1320"]
