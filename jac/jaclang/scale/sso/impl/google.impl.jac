@@ -28,7 +28,8 @@ impl GoogleSSOProvider.fetch_user(
     resp = await arequest(
         'GET',
         'https://www.googleapis.com/oauth2/v3/userinfo',
-        headers={'Authorization': f"Bearer {access_token}"}
+        headers={'Authorization': f"Bearer {access_token}"},
+        keep_alive=True
     );
     if not resp.ok() {
         raise RuntimeError(f"Google userinfo request failed: HTTP {resp.status_code}");

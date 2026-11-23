@@ -320,7 +320,7 @@ impl _mask_uri(uri: str) -> str {
 impl _http_ready(base: str, path: str) -> bool {
     url = base.rstrip("/") + path;
     try {
-        resp = await arequest("GET", url, timeout=_PROBE_TIMEOUT_S);
+        resp = await arequest("GET", url, timeout=_PROBE_TIMEOUT_S, keep_alive=True);
         return resp.status_code < 500;
     } except Exception as e {
         logger.debug(f"ready probe {url} failed: {e}");
@@ -338,7 +338,8 @@ impl _tempo_recent_count -> int {
             "GET",
             base.rstrip("/") + "/api/search",
             params=params,
-            timeout=_PROBE_TIMEOUT_S
+            timeout=_PROBE_TIMEOUT_S,
+            keep_alive=True
         );
         if not resp.ok() {
             raise ConnectionError(f"tempo returned {resp.status_code}");
@@ -368,7 +369,8 @@ impl _loki_recent_count -> int {
             "GET",
             base.rstrip("/") + "/loki/api/v1/query_range",
             params=params,
-            timeout=_PROBE_TIMEOUT_S
+            timeout=_PROBE_TIMEOUT_S,
+            keep_alive=True
         );
         if not resp.ok() {
             raise ConnectionError(f"loki returned {resp.status_code}");

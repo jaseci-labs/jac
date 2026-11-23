@@ -22,7 +22,8 @@ impl GithubSSOProvider._api_get(path: str, access_token: str) -> any {
             'Authorization': f"Bearer {access_token}",
             'Accept': 'application/vnd.github+json',
             'User-Agent': 'jac-sso'
-        }
+        },
+        keep_alive=True
     );
     if not resp.ok() {
         raise RuntimeError(f"GitHub API {path} failed: HTTP {resp.status_code}");

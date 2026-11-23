@@ -104,7 +104,8 @@ impl OAuth2CodeProvider._token_request(fields: dict[str, str]) -> dict[str, any]
             'Content-Type': 'application/x-www-form-urlencoded',
             'Accept': 'application/json'
         },
-        data=urlencode(fields)
+        data=urlencode(fields),
+        keep_alive=True
     );
     if not resp.ok() {
         body: any = None;
@@ -147,7 +148,8 @@ impl OAuth2CodeProvider.revoke_token(token: str) -> bool {
         'POST',
         url,
         headers={'Content-Type': 'application/x-www-form-urlencoded'},
-        data=urlencode({'token': token})
+        data=urlencode({'token': token}),
+        keep_alive=True
     );
     return resp.ok();
 }
