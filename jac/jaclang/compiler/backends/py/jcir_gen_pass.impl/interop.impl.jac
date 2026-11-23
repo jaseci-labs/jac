@@ -38,7 +38,7 @@ impl JcirGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
         }
     }
     if parts {
-        self.set_out(nd, [CgSplice(src='\n'.join(parts), offset=0, bound_names=names)]);
+        self.set_out(nd, [CgSplice(src='\n'.join(parts), bound_names=names)]);
     }
 }
 
@@ -57,7 +57,7 @@ impl JcirGenPass._native_import_registration_map -> dict[str, list[CgSplice]] {
             + f"and '{local_name}' in globals():\n"
             + f"    __jac_interop_py_funcs__['{binding.symbol}'] = {local_name}"
         );
-        reg_map[local_name] = [CgSplice(src=src, offset=0)];
+        reg_map[local_name] = [CgSplice(src=src)];
     }
     return reg_map;
 }
@@ -127,7 +127,7 @@ impl JcirGenPass._native_test_shim_stmts(nd: Test) -> list[CgItem] {
             + test_name
             + "')"
     ];
-    return [CgSplice(src='\n'.join(src_lines), offset=0)];
+    return [CgSplice(src='\n'.join(src_lines))];
 }
 
 impl JcirGenPass._generate_sv_to_sv_stubs(nd: Import) -> bool {
@@ -200,7 +200,7 @@ impl JcirGenPass._generate_sv_to_sv_stubs(nd: Import) -> bool {
     if (len(parts) <= 1) {
         return False;
     }
-    self.set_out(nd, [CgSplice(src='\n\n'.join(parts), offset=0, bound_names=names)]);
+    self.set_out(nd, [CgSplice(src='\n\n'.join(parts), bound_names=names)]);
     return True;
 }
 
@@ -393,7 +393,6 @@ impl JcirGenPass._gen_py_sv_boundary_types -> None {
     self.preamble.append(
         CgSplice(
             src='\n\n'.join(parts),
-            offset=0,
             bound_names=[self._sv_serializer, self._sv_boundary_registry]
                 + list(self._sv_boundary_names.values())
         )

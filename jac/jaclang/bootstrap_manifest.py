@@ -83,7 +83,6 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/frontend/unitree.jac",
     "compiler/driver/",
     "compiler/placement/",
-    "compiler/backends/py/codegen_ir.jac",
     "compiler/backends/py/codegen_shim.jac",
     "compiler/backends/py/impl/",
     "compiler/backends/py/jcir_bc_gen_pass.jac",

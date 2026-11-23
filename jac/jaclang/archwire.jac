@@ -10098,46 +10098,11 @@ graph import compiler.backends.native.llvm.ir {
 }
 
 graph import compiler.backends.py {
-    codegen_ir ++> [
-        codegen_shim {
-            CirContainer,
-            CirDiag,
-            CirModule,
-            CodegenIrFormatError,
-            CodegenIrVersionError,
-            DIAG_ERROR,
-            OP_BYTES,
-            OP_ELLIPSIS,
-            OP_END,
-            OP_FALSE,
-            OP_FLOAT,
-            OP_INT,
-            OP_INT_BIG,
-            OP_LIST,
-            OP_LOC,
-            OP_NODE,
-            OP_NONE,
-            OP_PARSE_SPLICE,
-            OP_STR,
-            OP_TRUE,
-            OP_TUPLE,
-            _r_svarint,
-            _r_varint,
-            read_container
-        },
-        jcir_gen_pass { CodegenIrWriter, int_literal_magnitude },
-    ]
-    codegen_shim ++> jcir_bc_gen_pass.JcirBytecodeGenPass.transcribe_module {
-        compile_ir
+    jcir_facts ++> jcir_gen_pass {
+        JCIR_AMBIENT_TYPING_NAMES,
+        JCIR_BUILTIN_NAMES,
+        jcir_is_test_path
     }
-    jcir_facts ++> [
-        codegen_ir { jcir_python_version },
-        jcir_gen_pass {
-            JCIR_AMBIENT_TYPING_NAMES,
-            JCIR_BUILTIN_NAMES,
-            jcir_is_test_path
-        },
-    ]
 }
 
 graph import compiler.driver {
