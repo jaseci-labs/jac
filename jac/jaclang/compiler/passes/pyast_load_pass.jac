@@ -82,9 +82,12 @@ walker PyastBuildPass(CompilerPass) {
     def proc_continue(nd: py_ast.Continue) -> CtrlStmt;
     def proc_dict(nd: py_ast.Dict) -> DictVal;
     def proc_dict_comp(nd: py_ast.DictComp) -> DictCompr;
+    def proc_ellipsis(nd: py_ast.Constant);
     def proc_except_handler(nd: py_ast.ExceptHandler) -> Except;
     def proc_expr(nd: py_ast.Expr) -> ExprStmt;
     def proc_formatted_value(nd: py_ast.FormattedValue) -> FormattedValue;
+    def proc_function_type(nd: py_ast.FunctionType);
+    def proc_interactive(nd: py_ast.Interactive);
     def proc_template_str(nd: py_ast.AST) -> UniNode;
     def proc_interpolation(nd: py_ast.AST) -> UniNode;
     def proc_generator_exp(nd: py_ast.GeneratorExp) -> GenCompr;
