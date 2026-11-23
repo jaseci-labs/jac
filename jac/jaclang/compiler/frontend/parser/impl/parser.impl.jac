@@ -1654,8 +1654,7 @@ impl Parser.parse_multistring -> Expr | None {
     strings: list[String | FString] = [];
 
     if self.check(TokenKind.NAME)
-        and self.current().value
-            in ["r", "b", "rb", "br", "R", "B", "rB", "Rb", "bR", "Br", "BR", "RB"]
+        and is_string_prefix(self.current().value)
         and self.check_peek(TokenKind.STRING) {
         prefix_tok = self.expect(TokenKind.NAME);
         str_tok = self.expect(TokenKind.STRING);
@@ -1693,8 +1692,7 @@ impl Parser.parse_multistring -> Expr | None {
         )
         or (
             self.check(TokenKind.NAME)
-            and self.current().value
-                in ["r", "b", "rb", "br", "R", "B", "rB", "Rb", "bR", "Br", "BR", "RB"]
+            and is_string_prefix(self.current().value)
             and self.check_peek(TokenKind.STRING)
         ) {
         if self.check(TokenKind.NAME) and self.check_peek(TokenKind.STRING) {
@@ -1848,8 +1846,7 @@ impl Parser.parse_atom -> Expr {
         )
         or (
             self.check(TokenKind.NAME)
-            and self.current().value
-                in ["r", "b", "rb", "br", "R", "B", "rB", "Rb", "bR", "Br", "BR", "RB"]
+            and is_string_prefix(self.current().value)
             and self.check_peek(TokenKind.STRING)
         ) {
         ms_val = self.parse_multistring();
@@ -3483,6 +3480,13 @@ impl Parser.parse_code_block_stmts -> list[CodeBlockStmt] {
     flagged_at: list[int] = [];
     while not self.check(TokenKind.RBRACE) and not self.at_end() {
         before = self.pos;
+        if self._view_body_depth == 0 {
+            stray = self._take_stray_docstring();
+            if stray is not None {
+                stmts.append(stray);
+                continue;
+            }
+        }
         stmt = self.parse_statement();
         if stmt is not None {
             is_docstring = False;
@@ -3559,6 +3563,69 @@ impl Parser.parse_code_block_stmts -> list[CodeBlockStmt] {
         );
     }
     return stmts;
+}
+
+impl Parser._take_stray_docstring -> (ExprStmt | None) {
+    if not self._docstring_runs_on() {
+        return None;
+    }
+    start = self.current().loc;
+    doc = self.parse_multistring();
+    if doc is None {
+        return None;
+    }
+    self.emit_diag(
+        "A docstring goes before the declaration, not inside the body",
+        "E0111",
+        loc=start.span_to(self.previous().loc),
+        help="This string has no ';', so it would be read together with the next line. Move it above the declaration, or write the note as a # comment."
+    );
+    return ExprStmt(expr=doc, in_fstring=False, kid=[doc]);
+}
+
+impl Parser._docstring_runs_on -> bool {
+    i = self.pos;
+    while i < self._tokens_len - 1 {
+        tok = self.tokens[i];
+        if tok.kind == TokenKind.STRING {
+            i += 1;
+        } elif tok.kind == TokenKind.NAME
+            and is_string_prefix(tok.value)
+            and self.tokens[i + 1].kind == TokenKind.STRING {
+            i += 2;
+        } else {
+            break;
+        }
+    }
+    if i == self.pos or i >= self._tokens_len {
+        return False;
+    }
+    nxt = self.tokens[i];
+    if nxt.loc.line <= self.tokens[i - 1].loc.end_line
+        or not starts_new_statement(nxt.kind) {
+        return False;
+    }
+    if nxt.kind == TokenKind.KW_IF {
+        if i not in self._ternary_at {
+            save_pos = self.pos;
+            saved_error_count = self.error_count;
+            saved_diags_len = len(self.diags);
+            self.pos = i + 1;
+            self.parse_expression();
+            self._ternary_at[i] = self.check(TokenKind.KW_ELSE);
+            self._rewind(save_pos, saved_error_count, saved_diags_len);
+        }
+        return not self._ternary_at[i];
+    }
+    return True;
+}
+
+impl Parser._rewind(pos: int, error_count: int, diags_len: int) {
+    self.pos = pos;
+    self.error_count = error_count;
+    while len(self.diags) > diags_len {
+        self.diags.pop();
+    }
 }
 
 impl Parser._apply_implicit_return(body: list[CodeBlockStmt]) -> list[CodeBlockStmt] {
@@ -3671,11 +3738,7 @@ impl Parser.parse_statement -> CodeBlockStmt | None {
             return ExprStmt(expr=inner_expr, in_fstring=False, kid=expr_kid);
         }
 
-        self.pos = save_pos;
-        self.error_count = saved_error_count;
-        while len(self.diags) > saved_diags_len {
-            self.diags.pop();
-        }
+        self._rewind(save_pos, saved_error_count, saved_diags_len);
     }
 
     if self.is_keyword_token()

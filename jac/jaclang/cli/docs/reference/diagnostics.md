@@ -176,6 +176,7 @@ A `with entry` block runs as module code, not as a function, so `return` and `yi
 | `E0097` | `return tail` needs a function call |
 | `E0098` | An edge rule's patterns name modules under this archwire.jac; 'any' is not a pattern |
 | `E0099` | Wiring blocks are written 'graph import'; 'impl import' was removed |
+| `E0111` | A docstring goes before the declaration, not inside the body |
 
 ### Parser Warnings
 
