@@ -316,8 +316,19 @@ impl _link_elf(job: NativeLinkJob, work: str) -> list[str] {
         ];
     }
     args.append("--no-as-needed");
+    system = [
+        lib
+        for lib in job.needed_libs
+        if os.path.basename(lib) in ELF_SYSTEM_LIBS
+    ];
+    ordered = [
+        lib
+        for lib in job.needed_libs
+        if lib not in system
+    ]
+        + system;
     index = 0;
-    for lib in job.needed_libs {
+    for lib in ordered {
         args.append(_elf_stub_library(work, job.triple, lib, index));
         index += 1;
     }

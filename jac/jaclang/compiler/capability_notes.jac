@@ -2,8 +2,7 @@ import os;
 
 glob TARGET_NATIVE: str = "native",
      TARGET_CLIENT: str = "client",
-     TARGET_SERVER: str = "server",
-     TARGET_HEADERLESS: str = "headerless";
+     TARGET_SERVER: str = "server";
 
 obj CapabilityNote {
     has site: UniNode,
@@ -25,7 +24,5 @@ def note_capability(
 def capability_notes_of(
     prog: JacProgram, mod_path: str, target: str = ""
 ) -> list[CapabilityNote];
-
-def forget_capability_notes(prog: JacProgram, mod_path: str);
 
 def placement_neutral(nd: UniNode) -> bool;

@@ -254,12 +254,6 @@ impl HostServices.compile_module(
     raise RuntimeError("no compiler host is installed");
 }
 
-impl HostServices.build_module(
-    program: JacProgram, file_path: str, use_str: (str | None)
-) -> Module {
-    raise RuntimeError("no compiler host is installed");
-}
-
 impl HostServices.internal_program(program: JacProgram) -> (JacProgram | None) {
     return None;
 }

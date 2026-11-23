@@ -18,6 +18,13 @@ glob ELF_INTERPRETERS: dict[str, list[str]] = {
          "x86_64": "x86_64"
      },
      MACHO_MIN_VERSION: dict[str, str] = {"arm64": "11.0", "x86_64": "10.15"},
+     ELF_SYSTEM_LIBS: tuple[str, ...] = (
+         "libc.so.6",
+         "libm.so.6",
+         "libdl.so.2",
+         "libpthread.so.0",
+         "librt.so.1"
+     ),
      MACHO_SYSTEM_DYLIB: str = "/usr/lib/libSystem.B.dylib",
      PE_MACHINE: dict[str, int] = {"x86_64": 0x8664, "aarch64": 0xAA64},
      PE_LINK_MACHINE: dict[str, str] = {"x86_64": "x64", "aarch64": "arm64"},

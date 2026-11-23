@@ -55,7 +55,6 @@ enum CompilationProduct {
     FORMAT_LINTFIX = "format-lintfix",
     LINT = "lint",
     PYTHON_AST = "python-ast",
-    PYTHON_SYMBOLS = "python-symbols",
     GRAMMAR = "grammar",
     CFG_DOT = "cfg-dot",
     NORMALIZE = "normalize",

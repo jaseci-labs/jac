@@ -1,7 +1,5 @@
 impl native_unit_ref(path: str) -> str {
-    rp = os.path.realpath(path);
-    ident = native_unit_identity(rp);
-    return ident if ident != rp else rp;
+    return native_unit_identity(os.path.realpath(path));
 }
 
 impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
@@ -13,7 +11,7 @@ impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
         return ref;
     }
     if root_name == "jaclang" {
-        return os.path.join(os.path.dirname(target_pkg_root()), ref);
+        return os.path.join(os.path.dirname(jaclang_pkg_root()), ref);
     }
     if anchor {
         anchor_root = native_unit_root(os.path.dirname(os.path.realpath(anchor)));

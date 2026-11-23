@@ -108,10 +108,6 @@ obj ProjectHost(HostServices) {
         options: CompileOptions
     ) -> Module;
 
-    def build_module(
-        program: JacProgram, file_path: str, use_str: (str | None)
-    ) -> Module;
-
     def native_session_active(program: JacProgram) -> bool;
     def internal_program(program: JacProgram) -> (JacProgram | None);
     def bind_context_program(context_root: JacProgram, program: JacProgram);

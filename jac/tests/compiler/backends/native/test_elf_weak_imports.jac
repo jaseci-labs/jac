@@ -33,8 +33,10 @@ def _link(
 
 
 def _weak_probe(shared: bool, provided: bool = False) {
-    if sys.platform != "linux" or shutil.which("cc") is None {
-        raise SkipTest("requires Linux and a C compiler");
+    if sys.platform != "linux"
+        or shutil.which("cc") is None
+        or shutil.which("readelf") is None {
+        raise SkipTest("requires Linux, a C compiler and readelf");
     }
     with tempfile.TemporaryDirectory() as directory {
         temp_dir = Path(directory);
@@ -85,6 +87,20 @@ def _weak_probe(shared: bool, provided: bool = False) {
             needed_libs,
             ["probe"] if shared else []
         );
+        if provided {
+            dynamic = subprocess.run(
+                ["readelf", "-d", str(output)],
+                capture_output=True,
+                text=True,
+                check=True
+            ).stdout;
+            needed = [
+                line.split("[")[1].rstrip("]")
+                for line in dynamic.splitlines()
+                if "(NEEDED)" in line
+            ];
+            assert needed[-1] == "libc.so.6" , needed;
+        }
         if shared {
             library = ctypes.CDLL(str(output));
             assert library.probe() == expected;

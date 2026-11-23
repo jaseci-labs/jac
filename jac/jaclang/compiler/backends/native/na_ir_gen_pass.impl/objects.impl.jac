@@ -1206,9 +1206,6 @@ impl NaIRGenPass._demote_method_if_unlowerable(
 
     _own = list(self.ctx.errors_had[local_mark:]);
     _refusals = [refusal_from_alert(_diag) for _diag in _own];
-    if self._legality is not None {
-        self._legality.late[full_name] = _refusals;
-    }
     required = self.prog.options.native_required_for(self.module.loc.mod_path)
         or self._owner_required(full_name);
     if not required and not self._lacks_python_body(full_name) {

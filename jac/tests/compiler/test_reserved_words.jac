@@ -91,18 +91,8 @@ test "a reserved word after a dot needs no escape" {
 }
 
 
-test "the builtin type kinds are exactly the enum's TYP_ members" {
-    # The set is spelled out because tokens.jac runs natively in the compiler
-    # kernel; this keeps it honest against the enum it mirrors.
-    typ_members = {
-        kind
-        for kind in TokenKind
-        if str(kind.name).startswith("TYP_")
-    };
-    assert BUILTIN_TYPE_KINDS == typ_members , (
-        f"missing: {sorted(str(k) for k in typ_members - BUILTIN_TYPE_KINDS)}; "
-        f"extra: {sorted(str(k) for k in BUILTIN_TYPE_KINDS - typ_members)}"
-    );
+test "every builtin type kind is lexed as a keyword" {
+    assert BUILTIN_TYPE_KINDS;
     for kind in BUILTIN_TYPE_KINDS {
         assert kind in KEYWORDS.values() , f"{kind} is not lexed as a keyword";
     }

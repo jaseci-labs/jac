@@ -9,23 +9,25 @@ import from "libcef.so" {
 }
 
 import from "libc.so.6" {
-    def setenv(name: str, value: str, overwrite: i32) -> i32;  def getenv(
-        name: str
-    ) -> int;  def readlink(path: str, buf: int, bufsiz: int) -> int;  def access(
-        path: str, mode: i32
-    ) -> i32;  def strlen(s: str) -> int;  def strcpy(dst: int, src: str) -> int;  def strcat(
+    def strdup(s: int) -> int;  def setenv(
+        name: str, value: str, overwrite: i32
+    ) -> i32;  def getenv(name: str) -> int;  def readlink(
+        path: str, buf: int, bufsiz: int
+    ) -> int;  def access(path: str, mode: i32) -> i32;  def strlen(s: str) -> int;  def strcpy(
         dst: int, src: str
-    ) -> int;  def strrchr(s: int, c: i32) -> int;  def calloc(
-        n: int, size: int
-    ) -> int;  def malloc(size: int) -> int;  def free(ptr: int) -> None;  def write(
-        fd: i32, buf: int, count: int
-    ) -> int;  def memset(s: int, c: i32, n: int) -> int;  def memcpy(
-        dst: int, src: int, n: int
-    ) -> int;  def strncpy(dst: int, src: str, n: int) -> int;  def abort -> None;  def signal(
-        signum: i32, handler: int
-    ) -> int;  def open(path: str, flags: i32) -> i32;  def read(
-        fd: i32, buf: int, count: int
-    ) -> int;  def close(fd: i32) -> i32;
+    ) -> int;  def strcat(dst: int, src: str) -> int;  def strrchr(
+        s: int, c: i32
+    ) -> int;  def calloc(n: int, size: int) -> int;  def malloc(size: int) -> int;  def free(
+        ptr: int
+    ) -> None;  def write(fd: i32, buf: int, count: int) -> int;  def memset(
+        s: int, c: i32, n: int
+    ) -> int;  def memcpy(dst: int, src: int, n: int) -> int;  def strncpy(
+        dst: int, src: str, n: int
+    ) -> int;  def abort -> None;  def signal(signum: i32, handler: int) -> int;  def open(
+        path: str, flags: i32
+    ) -> i32;  def read(fd: i32, buf: int, count: int) -> int;  def close(
+        fd: i32
+    ) -> i32;
 }
 
 import from "libdl.so.2" { def dlsym(handle: int, symbol: str) -> int;  }
@@ -325,8 +327,8 @@ import from "libcef.so" {
     }
 }
 
-glob g_pending_url: str = "",
-     g_pending_title: str = "",
+glob g_pending_url: int = 0,
+     g_pending_title: int = 0,
      g_pending_w: int = 800,
      g_pending_h: int = 600,
      g_browser_pending: int = 0,
@@ -380,27 +382,29 @@ def _init_vtables;
 
 def:pub cef_dispatch_main_args_create -> int;
 
-def:pub cef_dispatch_settings_create(no_sandbox: i32, cache_path: str) -> int;
+def:pub cef_dispatch_settings_create(no_sandbox: i32, cache_path: int) -> int;
 
-def:pub cef_dispatch_window_info_create(title: str, width: int, height: int) -> int;
+def:pub cef_dispatch_window_info_create(title: int, width: int, height: int) -> int;
 
 def:pub cef_dispatch_browser_settings_create -> int;
 
+def _clear_pending_browser;
+
 def:pub cef_dispatch_set_pending_browser(
-    url: str, title: str, width: int, height: int
+    url: int, title: int, width: int, height: int
 );
 
-def:pub cef_dispatch_open_browser(url: str, title: str, width: int, height: int);
+def:pub cef_dispatch_open_browser(url: int, title: int, width: int, height: int);
 
 def:pub cef_dispatch_execute_process -> i32;
 
-def:pub cef_dispatch_startup(cache_path: str, no_sandbox: int) -> i32;
+def:pub cef_dispatch_startup(cache_path: int, no_sandbox: int) -> i32;
 
 def:pub cef_dispatch_browser_get_main_frame(browser: int) -> int;
 
 def:pub cef_dispatch_frame_is_main(frame: int) -> i32;
 
-def:pub cef_dispatch_frame_load_url(frame: int, url: str);
+def:pub cef_dispatch_frame_load_url(frame: int, url: int);
 
 def:pub cef_dispatch_frame_execute_js(
     frame: int, code: str, script_url: str, start_line: i32
@@ -413,7 +417,7 @@ def:pub cef_dispatch_cmdline_append_switch_value(cmd: int, name: str, value: str
 def:pub cef_dispatch_base_release(handle: int);
 
 def:pub cef_dispatch_create_browser(
-    window_info: int, client: int, url: str, settings: int
+    window_info: int, client: int, url: int, settings: int
 ) -> i32;
 
 def _x11_parent(dpy: int, w: int) -> int;

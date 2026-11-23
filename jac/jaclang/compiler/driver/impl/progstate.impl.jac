@@ -218,7 +218,6 @@ impl DiagLedger.clear {
 }
 
 impl BuildScratch.clear {
-    self.boundary_parse_memo.clear();
     self.compile_depth = 0;
 }
 

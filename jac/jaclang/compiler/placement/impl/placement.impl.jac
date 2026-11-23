@@ -98,35 +98,6 @@ impl _resolve_import_path(nd: (uni.ModulePath | uni.ModuleItem)) -> (str | None)
     return None;
 }
 
-impl _fill_import_facts(es: ElementSummary, imp: uni.Import) {
-    es.import_eco = imp.ecosystem;
-    es.sv_import = imp.is_service_import;
-    if imp.from_loc is not None {
-        for item in imp.items {
-            if isinstance(item, uni.ModuleItem) and isinstance(item.name, uni.Name) {
-                es.import_items.append(item.name.value);
-            }
-        }
-        resolved = _resolve_import_path(imp.from_loc);
-        if resolved is not None and resolved.endswith('.jac') {
-            es.import_jac_target = os.path.abspath(resolved);
-        } elif es.import_eco == 'py' {
-            es.import_py_targets.append(imp.from_loc.dot_path_str);
-        }
-    } else {
-        for item in imp.items {
-            if isinstance(item, uni.ModulePath) {
-                resolved = _resolve_import_path(item);
-                if resolved is not None and resolved.endswith('.jac') {
-                    es.import_jac_target = os.path.abspath(resolved);
-                } elif es.import_eco == 'py' {
-                    es.import_py_targets.append(item.dot_path_str);
-                }
-            }
-        }
-    }
-}
-
 impl module_has_root_access(stmt: uni.UniNode) -> bool {
     mod = stmt
         if isinstance(stmt, uni.Module)
@@ -196,103 +167,6 @@ impl _element_reqs(stmt: uni.UniNode) -> list[list[str]] {
         reqs.append(['ENDPOINT', endpoint]);
     }
     return reqs;
-}
-
-impl _element_ref_ids(module: uni.Module, elem: uni.UniNode) -> set[int] {
-    refs: set[int] = set();
-    for nm in elem.element_sub_nodes(uni.Name) {
-        par = nm.parent;
-        if (isinstance(par, uni.AtomTrailer) and par.is_attr and par.right is nm) {
-            continue;
-        }
-        tab = nm?.sym_tab;
-        if tab is None {
-            continue;
-        }
-        sym = tab.lookup(name=nm.value, deep=True);
-        if sym is None {
-            continue;
-        }
-        decl = sym.decl;
-        if decl is None {
-            continue;
-        }
-        top = decl.element_in(module);
-        if (top is None or top is elem) {
-            continue;
-        }
-        refs.add(id(top));
-    }
-    return refs;
-}
-
-impl _escape_kind(nm: uni.Name, elem: uni.UniNode) -> str {
-    prev: uni.UniNode = nm;
-    cur = nm.parent;
-    while cur is not None and cur is not elem {
-        if isinstance(cur, uni.FuncCall) {
-            if cur.target is prev {
-                return '';
-            }
-            return 'call-arg';
-        }
-        if isinstance(cur, uni.ReturnStmt) {
-            return 'returned';
-        }
-        if isinstance(cur, (uni.ListVal, uni.TupleVal, uni.SetVal, uni.DictVal)) {
-            return 'container';
-        }
-        if isinstance(cur, uni.Assignment) {
-            if any(t is prev for t in cur.target) {
-                return '';
-            }
-            return 'assigned';
-        }
-        prev = cur;
-        cur = cur.parent;
-    }
-    return '';
-}
-
-impl _element_escape_edges(
-    module: uni.Module, elem: uni.UniNode
-) -> list[tuple[int, str]] {
-    edges: list[tuple[int, str]] = [];
-    seen: set[tuple[int, str]] = set();
-    for nm in elem.element_sub_nodes(uni.Name) {
-        par = nm.parent;
-        if (isinstance(par, uni.AtomTrailer) and par.is_attr and par.right is nm) {
-            continue;
-        }
-        tab = nm?.sym_tab;
-        if tab is None {
-            continue;
-        }
-        sym = tab.lookup(name=nm.value, deep=True);
-        if sym is None or sym.decl is None {
-            continue;
-        }
-        top = sym.decl.element_in(module);
-        if (
-            top is None
-            or top is elem
-            or not isinstance(top, uni.Ability)
-            or top.is_method
-        ) {
-            continue;
-        }
-        kind = _escape_kind(nm, elem);
-        if not kind {
-            continue;
-        }
-        key = (id(top), kind);
-        if key in seen {
-            continue;
-        }
-        seen.add(key);
-        edges.append((id(top), kind));
-    }
-    return edges;
 }
 
 impl _element_glob_write_ids(module: uni.Module, elem: uni.UniNode) -> set[int] {
@@ -484,21 +358,12 @@ impl _scan_blockers_under(
 ) {
     deps = scan.deps;
     skip_tests = scope_node is module;
-    for (nd_name, typ) in PLACEMENT_SV_SIGNAL_NODES {
+    for typ in PLACEMENT_SV_SIGNAL_NODES {
         for found in scope_node.get_all_sub_nodes(typ) {
             if skip_tests and ModuleFacts.is_test_code(found) {
                 continue;
             }
-            scan.sites.append((found, f"contains {nd_name}"));
-        }
-    }
-
-    for (nd_name, typ) in PLACEMENT_NATIVE_REJECT_NODES {
-        for found in scope_node.get_all_sub_nodes(typ) {
-            if skip_tests and ModuleFacts.is_test_code(found) {
-                continue;
-            }
-            scan.sites.append((found, f"native-unsupported {nd_name}"));
+            scan.sites.append((found, f"contains {typ.__name__}"));
         }
     }
     for svr in scope_node.get_all_sub_nodes(uni.SpecialVarRef) {
@@ -706,7 +571,6 @@ impl summarize_module(
         }
         es = ElementSummary();
         es.index = idx;
-        es.kind = type(stmt).__name__;
         es.name = element_display_name(stmt);
         es.pinned = '';
         if ps.mod_path {
@@ -723,11 +587,7 @@ impl summarize_module(
                 es.pinned = config_element_pin(ps.mod_path, es.name);
             }
         }
-        es.is_pub = _endpoint_evidence(stmt) == 'pub access';
         es.reqs = _element_reqs(stmt);
-        if isinstance(stmt, uni.Import) {
-            _fill_import_facts(es, stmt);
-        }
         if with_refs {
             if (
                 not server_anchored
@@ -739,13 +599,6 @@ impl summarize_module(
                     es.reqs.append(['DOM', f"browser global '{seed_global}'"]);
                 }
             }
-            for rid in _element_ref_ids(module, stmt) {
-                ridx = index_by_id.get(rid);
-                if ridx is not None {
-                    es.refs.append(ridx);
-                }
-            }
-            es.refs.sort();
             for wid in _element_glob_write_ids(module, stmt) {
                 widx = index_by_id.get(wid);
                 if widx is not None {
@@ -753,18 +606,10 @@ impl summarize_module(
                 }
             }
             es.glob_writes.sort();
-            for esc in _element_escape_edges(module, stmt) {
-                eidx = index_by_id.get(esc[0]);
-                if eidx is not None {
-                    es.escapes.append((eidx, esc[1]));
-                }
-            }
         }
         ps.elements.append(es);
     }
     ps.client_declared = module.declares_codespace(CodeContext.CLIENT);
-    ps.native_declared = module.declares_codespace(CodeContext.NATIVE);
-    ps.native_anchor = module_own_native_anchor(module);
     return ps;
 }
 
@@ -780,31 +625,6 @@ impl record_decided(prog: JacProgram, module: uni.Module) {
     if held is not None {
         held.decided = module.decided_codespace or '';
     }
-}
-
-impl jac_import_targets(module: uni.Module) -> list[str] {
-    targets: list[str] = [];
-    for imp in module.get_all_sub_nodes(uni.Import) {
-        nodes: list[(uni.ModulePath | uni.ModuleItem)] = [];
-        if imp.from_loc is not None {
-            nodes.append(imp.from_loc);
-        }
-        for item in imp.items {
-            if isinstance(item, (uni.ModulePath, uni.ModuleItem)) {
-                nodes.append(item);
-            }
-        }
-        for nd in nodes {
-            path = _resolve_import_path(nd);
-            if path is not None and path.endswith('.jac') {
-                real = os.path.realpath(path);
-                if real not in targets {
-                    targets.append(real);
-                }
-            }
-        }
-    }
-    return targets;
 }
 
 impl record_placement_evidence(prog: JacProgram, mod_path: str, index: int, note: str) {

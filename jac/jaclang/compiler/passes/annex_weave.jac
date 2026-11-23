@@ -1,7 +1,6 @@
 obj WovenAnnex {
     has source: str,
-        path: str,
-        consumer: str = "";
+        path: str;
 }
 
 def merge_annex_into(nd: Module, annex_mod: Module) -> None;

@@ -997,7 +997,12 @@ test "internal get_bytecode evicts unit AST after compile" {
     # resolve to the self-host program). Force a fresh compile so we exercise the
     # post-compile eviction path rather than a disk-cache hit.
     samples = [
-        os.path.join(compiler.selfhost.jaclang_root(), "compiler", "driver", "log.jac"),
+        os.path.join(
+            compiler.selfhost.jaclang_root(),
+            "compiler",
+            "driver",
+            "dependency_graph.jac"
+        ),
         os.path.join(
             compiler.selfhost.jaclang_root(), "compiler", "frontend", "constant.jac"
         )

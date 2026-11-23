@@ -37,18 +37,6 @@ glob CODEGEN_PLAN: tuple[PlanStep, ...] = (
          PlanStep(name="CODEGEN", admit=admits_codegen, run=run_codegen)
      );
 
-def analyze_for_compile(
-    program: JacProgram, path: str, options: CompileOptions, source: str | None
-) -> ModuleAnalysis;
-
-def compile_task(
-    session: SessionHooks,
-    program: JacProgram,
-    path: str,
-    options: CompileOptions,
-    source: str | None = None
-) -> ModuleAnalysis;
-
 def compile_module(
     session: SessionHooks,
     program: JacProgram,

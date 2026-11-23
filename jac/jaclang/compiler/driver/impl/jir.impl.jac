@@ -2,21 +2,6 @@ import struct;
 import sys;
 import zlib;
 
-impl JirHeader.to_bytes -> bytes {
-    return struct.pack(
-        HEADER_FMT,
-        self.magic,
-        self.format_version,
-        self.python_version,
-        self.jaclang_version_hash,
-        self.source_content_hash,
-        self.node_count,
-        self.symbol_count,
-        self.string_pool_size,
-        self.flags
-    );
-}
-
 impl JirHeader.is_compatible -> bool {
     expected_py = (sys.version_info.major << 8) | sys.version_info.minor;
     if self.python_version != expected_py {
@@ -81,11 +66,9 @@ impl NativeStamp.matches(other: NativeStamp) -> bool {
     return self.key() == other.key();
 }
 
-impl current_native_stamp(
-    codegen_identity: str, triple: str, producer: str = ""
-) -> NativeStamp {
+impl current_native_stamp(codegen_identity: str, triple: str) -> NativeStamp {
     return NativeStamp(
-        compiler_digest=producer or running_compiler_digest(),
+        compiler_digest=running_compiler_digest(),
         codegen_identity=codegen_identity,
         triple=triple
     );
@@ -274,7 +257,7 @@ impl is_compiler_tree_path(source_path: str) -> bool {
 }
 
 impl _module_codespace_mode(source_path: str) -> str {
-    if is_package_keyed_path(source_path) {
+    if is_compiler_source_path(source_path) {
         return "internal";
     }
     try {
@@ -323,9 +306,6 @@ impl compiler_source_files(pkg_dir: str) -> list[str] {
                 rel = os.path.relpath(os.path.join(walk_dir, name), base).replace(
                     os.sep, "/"
                 );
-                if rel in COMPILER_DIGEST_SKIP {
-                    continue;
-                }
                 rels.append(rel);
             }
         }
@@ -355,14 +335,6 @@ impl compiler_source_digest(pkg_dir: str) -> str {
     rows = [
         (rel, resolve_compiler_input(base, rel)) for rel in compiler_source_files(base)
     ];
-    return fold_compiler_digest(rows);
-}
-
-impl _manifest_compiler_digest(pkg_dir: str) -> str {
-    base = str(Path(pkg_dir));
-    rows = [
-        (rel, resolve_compiler_input(base, rel)) for rel in compiler_source_files(base)
-    ];
     digest = fold_compiler_digest(rows);
     _COMPILER_INPUT_ROWS[digest] = rows;
     return digest;
@@ -370,7 +342,7 @@ impl _manifest_compiler_digest(pkg_dir: str) -> str {
 
 impl running_compiler_digest -> str {
     if not _COMPILER_DIGEST_CACHE {
-        _COMPILER_DIGEST_CACHE.append(_manifest_compiler_digest(_jaclang_pkg_dir));
+        _COMPILER_DIGEST_CACHE.append(compiler_source_digest(_jaclang_pkg_dir));
     }
     return _COMPILER_DIGEST_CACHE[0];
 }
@@ -387,13 +359,12 @@ impl py_emitter_digest -> str {
     }
     rows = _COMPILER_INPUT_ROWS.get(current);
     if rows is None {
-        _manifest_compiler_digest(_jaclang_pkg_dir);
+        compiler_source_digest(_jaclang_pkg_dir);
         rows = _COMPILER_INPUT_ROWS.get(current, []);
     }
     h = hashlib.sha256();
     for (rel, sha) in rows {
-        if _rel_under(rel, PY_EMITTER_ROOTS)
-            and not _rel_under(rel, PY_EMITTER_EXCLUDED) {
+        if _rel_under(rel, PY_EMITTER_ROOTS) {
             h.update(rel.encode());
             h.update(b"\x00");
             h.update(sha.encode());
@@ -538,7 +509,7 @@ impl _full_env_fingerprint(source_path: str) -> str {
 }
 
 impl _env_fingerprint_for(source_path: str) -> str {
-    if is_stub_like_path(source_path) or is_package_keyed_path(source_path) {
+    if is_stub_like_path(source_path) or is_compiler_source_path(source_path) {
         return _toolchain_env_fingerprint();
     }
     return _full_env_fingerprint(source_path);
@@ -698,7 +669,7 @@ impl _compute_module_key_uncached(source_path: str) -> str {
     stat_note("key_compute");
     h = hashlib.sha256();
     projection = ''
-        if is_package_keyed_path(source_path)
+        if is_compiler_source_path(source_path)
         else _module_projection(source_path);
     h.update(projection.encode());
     h.update(_env_fingerprint_for(source_path).encode());
@@ -794,8 +765,8 @@ impl _ct_pkg_ref(path: str) -> str {
 
 impl _ct_row_path(stored: str, base: str) -> str {
     if stored.startswith(CT_PKG_PREFIX) {
-        import from jaclang.compiler.pkg_paths { target_pkg_root }
-        return os.path.join(target_pkg_root(), *stored[len(CT_PKG_PREFIX):].split("/"));
+        parts = stored[len(CT_PKG_PREFIX):].split("/");
+        return os.path.join(jaclang_pkg_root(), *parts);
     }
     if os.path.isabs(stored) or not base {
         return stored;
@@ -1253,7 +1224,7 @@ impl _module_cache_root(source_path: str) -> Path {
     resolved_str = str(resolved);
 
     if resolved_str.startswith(_jaclang_pkg_dir + os.sep)
-        or is_package_keyed_path(resolved_str) {
+        or is_compiler_source_path(resolved_str) {
         return get_jir_cache_dir() / 'modules';
     }
     try {
@@ -1290,7 +1261,7 @@ impl get_module_cache_path(source_path: str) -> Path {
     cache_dir = _get_module_cache_dir(source_path);
     source = Path(source_path).resolve();
     projection = ''
-        if is_package_keyed_path(str(source))
+        if is_compiler_source_path(str(source))
         else _module_projection(source_path);
     path_hash = hashlib.sha256((str(source) + projection).encode()).hexdigest()[:8];
     (major, minor) = (sys.version_info.major, sys.version_info.minor);

@@ -1690,9 +1690,7 @@ impl Module.init(
     name: str,
     source: Source,
     body: Sequence[ElementStmt | String | EmptyToken],
-    terminals: list[Token],
     stub_only: bool = False,
-    src_terminals: list[Token] = [],
     is_raised_from_py: bool = False,
     parse_failed: bool = False,
     mobui_enforced_root: (str | None) = None,
@@ -1705,9 +1703,7 @@ impl Module.init(
 ) -> None {
     self.name = name;
     self.source = source;
-    self.terminals = terminals;
     self.stub_only = stub_only;
-    self.src_terminals = src_terminals;
     self.is_raised_from_py = is_raised_from_py;
     self.parse_failed = parse_failed;
     self.mobui_enforced_root = mobui_enforced_root;
@@ -2467,7 +2463,6 @@ impl Assignment.init(
     type: (TypeBase | None) = None,
     target: Sequence[Expr],
     value: Expr | YieldExpr | None,
-    mutable: bool = True,
     aug_op: (Token | None) = None,
     na_move_lowerable: bool = False,
     na_overwrite_consumed: bool = False,
@@ -2477,7 +2472,6 @@ impl Assignment.init(
 ) -> None {
     self.is_enum_stmt = is_enum_stmt;
     self.type = type;
-    self.mutable = mutable;
     self.na_move_lowerable = na_move_lowerable;
     self.na_overwrite_consumed = na_overwrite_consumed;
     self.na_flow_reduce = na_flow_reduce;
@@ -2804,12 +2798,10 @@ impl JsxElement.init(
     name: (JsxElementName | None),
     attributes: (Sequence[JsxAttribute] | None),
     children: (Sequence[(JsxChild | JsxElement)] | None),
-    is_self_closing: bool,
     is_fragment: bool,
     dynamic_tag: (Expr | None) = None,
     kid: Sequence[UniNode] = []
 ) -> None {
-    self.is_self_closing = is_self_closing;
     self.is_fragment = is_fragment;
     self._link(
         kid,
