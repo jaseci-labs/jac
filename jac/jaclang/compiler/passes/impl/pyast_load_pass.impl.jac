@@ -2238,12 +2238,6 @@ impl PyastBuildPass.run_walk with PythonModuleAst entry {
     self.module = self._run_impl(here);
 }
 
-impl PyastBuildPass.proc_ellipsis(nd: py_ast.Constant) {}
-
-impl PyastBuildPass.proc_function_type(nd: py_ast.FunctionType) {}
-
-impl PyastBuildPass.proc_interactive(nd: py_ast.Interactive) {}
-
 impl PyastBuildPass.proc_param_spec(nd: py_ast.ParamSpec) {}
 
 impl PyastBuildPass.proc_type_alias(nd: py_ast.TypeAlias) {}

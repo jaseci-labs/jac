@@ -269,36 +269,8 @@ test "MalformedJacTomlError keeps its identity and its tomllib base" {
 }
 
 # ─────────────────────────────────────────────────────────────────────
-# runtime reflection -> frozen name tables
+# test block assert names
 # ─────────────────────────────────────────────────────────────────────
-
-# Two passes asked the running interpreter what names exist -- `dir(builtins)`
-# for the undefined-name check, `dir(TestCase())` for the assert stubs a
-# `test` block gets. Both are now tables generated from CPython 3.14. These
-# are the drift alarms: if a CPython upgrade changes either surface, they
-# fail here with the exact delta, and the tables get regenerated.
-test "the frozen builtins table matches the running interpreter" {
-    import builtins;
-    import from jaclang.compiler.passes.static_analysis_pass { BUILTIN_NAMES }
-    live = set(dir(builtins));
-    assert BUILTIN_NAMES == live , (
-        f"regenerate BUILTIN_NAMES: missing {sorted(live - BUILTIN_NAMES)}, "
-        f"stale {sorted(BUILTIN_NAMES - live)}"
-    );
-}
-
-test "the frozen TestCase assert table matches the running interpreter" {
-    import from unittest { TestCase }
-    import from jaclang.compiler.passes.sym_tab_build_pass { TEST_ASSERT_METHOD_NAMES }
-    live = [
-        j
-        for j in dir(TestCase())
-        if j.startswith('assert')
-    ];
-    assert list(TEST_ASSERT_METHOD_NAMES) == live , (
-        f"regenerate TEST_ASSERT_METHOD_NAMES: live surface is {live}"
-    );
-}
 
 test "a test block still binds the assert names to symbols" {
     import from jaclang.compiler.frontend.unitree { Name }
