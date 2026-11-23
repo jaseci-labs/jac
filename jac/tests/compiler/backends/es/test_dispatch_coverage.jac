@@ -1,9 +1,9 @@
 """The ES backend reaches every node class and every builtin it emits.
 
-The unparser finds a gen method by node class name and the builtin emitter
-routes by the emit methods its interface declares. A node class whose gen
-method is misnamed, or an emit method only the ES builtin emitter defines,
-would silently stop being generated.
+The unparser routes each node class to its gen method and the builtin emitter
+routes by the emit methods its interface declares. A node class the unparser
+does not route, or an emit method only the ES builtin emitter defines, would
+silently stop being generated.
 """
 import inspect;
 import jaclang.compiler.backends.es.estree as es;
