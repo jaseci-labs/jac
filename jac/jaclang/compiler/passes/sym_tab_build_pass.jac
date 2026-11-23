@@ -1,7 +1,9 @@
 import from unittest { TestCase }
 
 glob TEST_ASSERT_METHOD_NAMES: tuple[str, ...] = tuple(
-         name for name in dir(TestCase) if name.startswith("assert")
+         name
+         for name in dir(TestCase)
+         if name.startswith("assert")
      );
 
 walker SymTabBuildPass(TreePass) {
