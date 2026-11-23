@@ -633,6 +633,23 @@ glob STR_NA_GAPS: list[any] = [
              ["na"]
          ),
          (
+             "configparser bundled",
+             "prim_configparser.jac",
+             "configparser_py",
+             "configparser_cl",
+             "configparser_na",
+             ["na"]
+         ),
+         (
+             "tomllib bundled",
+             "prim_tomllib.jac",
+             "tomllib_py",
+             "tomllib_cl",
+             "tomllib_na",
+             ["na"],
+             ["custom_float"]
+         ),
+         (
              "pprint bundled",
              "prim_pprint.jac",
              "pprint_py",
@@ -966,6 +983,11 @@ test "native reduce tells an explicit None initializer from an omitted one" {
     assert empty_none == 1 , (
         "reduce(f, [], None) answers None instead of raising, as on CPython"
     );
+}
+
+test "tomllib Python parse_float callback receives the raw float text" {
+    result = run_py_fixture("prim_tomllib", "tomllib_py");
+    assert result["custom_float"] == "float:1.25";
 }
 
 test "exception hierarchy" {
