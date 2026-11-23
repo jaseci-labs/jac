@@ -1750,7 +1750,6 @@ impl PyastBuildPass.proc_ann_assign(nd: py_ast.AnnAssign) -> Assignment {
             target=[target],
             value=assign_value,
             type_tag=annotation_subtag,
-            mutable=False,
             kid=kid
         );
     } else {
@@ -1771,7 +1770,6 @@ impl PyastBuildPass.proc_aug_assign(nd: py_ast.AugAssign) -> Assignment {
         return Assignment(
             target=[target],
             type_tag=None,
-            mutable=False,
             aug_op=op,
             value=value,
             kid=[target, op, value]
@@ -1794,7 +1792,7 @@ impl PyastBuildPass.proc_assign(nd: py_ast.Assign) -> Assignment {
     }
     if isinstance(value, Expr) {
         return Assignment(
-            target=valid, value=value, type_tag=None, mutable=False, kid=[*valid, value]
+            target=valid, value=value, type_tag=None, kid=[*valid, value]
         );
     } else {
         raise RuntimeError(self.ctx.ice());
@@ -2057,7 +2055,6 @@ impl PyastBuildPass.proc_module(nd: py_ast.Module) -> Module {
         source=Source('', mod_path=self.mod_path),
         doc=doc_str,
         body=valid[1:] if (valid and isinstance(valid[0], String)) else valid,
-        terminals=[],
         kid=valid
     );
     ret.is_raised_from_py = True;

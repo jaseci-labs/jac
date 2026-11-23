@@ -32,7 +32,6 @@ node UniNode {
     def structure_thawed -> StructureThaw;
     def _attach(child: UniNode, role: type[Edge]) -> None;
     def _role_clear(role: type[Edge]) -> None;
-    def _as_node_list(value: any) -> list[UniNode];
     def _children -> list[UniNode];
     def _role_shaped(role: type[Role], found: list[UniNode]) -> any;
     def _role_set(role: type[Role], value: any) -> None;
@@ -238,7 +237,6 @@ node AstSymbolStubNode(AstSymbolNode) {
 node AstAccessNode(UniNode) {
     has access: (SubTag[Token] | None) { getter; }
     has access_type: SymbolAccess { getter; }
-    has public_access: bool { getter; }
     has exposure: SymbolAccess { getter; }
 
     def init(
@@ -356,8 +354,7 @@ node Expr(UniNode) {
         ct_value: CtValue | None = None,
         coerce_to: (str | None) = None,
         fw: (str | None) = None,
-        fw_safe: bool = False,
-        attached_tokens: (list[Token] | None) = None;
+        fw_safe: bool = False;
 
     def init(*, kid: Sequence[UniNode] = []) -> None;
     def postinit -> None;
@@ -491,9 +488,7 @@ node Module(AstDocNode, UniScopeNode) {
 
     has name: str,
         source: Source,
-        terminals: list[Token],
         stub_only: bool = False,
-        src_terminals: list[Token] = [],
         is_raised_from_py: bool = False,
         parse_failed: bool = False,
         mobui_enforced_root: (str | None) = None,
@@ -525,9 +520,7 @@ node Module(AstDocNode, UniScopeNode) {
         name: str,
         source: Source,
         body: Sequence[ElementStmt | String | EmptyToken],
-        terminals: list[Token],
         stub_only: bool = False,
-        src_terminals: list[Token] = [],
         is_raised_from_py: bool = False,
         parse_failed: bool = False,
         mobui_enforced_root: (str | None) = None,
@@ -1451,7 +1444,6 @@ node DeleteStmt(CodeBlockStmt) {
     static def is_location(target: Expr) -> bool;
     static def type_has_graph_member(t: (TypeBase | None)) -> bool;
     static def type_may_hold_graph(t: (TypeBase | None)) -> bool;
-    static def target_may_hold_graph(target: Expr) -> bool;
 }
 
 node ReportStmt(CodeBlockStmt) {
@@ -1520,8 +1512,7 @@ node CastExpr(Expr) {
 }
 
 node Assignment(AstTypedVarNode, EnumBlockStmt, CodeBlockStmt) {
-    has mutable: bool = True,
-        na_move_lowerable: bool = False,
+    has na_move_lowerable: bool = False,
         na_overwrite_consumed: bool = False,
         na_flow_reduce: str = "",
         is_comptime: bool = False;
@@ -1537,7 +1528,6 @@ node Assignment(AstTypedVarNode, EnumBlockStmt, CodeBlockStmt) {
         type: (TypeBase | None) = None,
         target: Sequence[Expr],
         value: Expr | YieldExpr | None,
-        mutable: bool = True,
         aug_op: (Token | None) = None,
         na_move_lowerable: bool = False,
         na_overwrite_consumed: bool = False,
@@ -2014,8 +2004,7 @@ node AssignCompr(AtomExpr) {
 }
 
 node JsxElement(AtomExpr) {
-    has is_self_closing: bool,
-        is_fragment: bool;
+    has is_fragment: bool;
 
     has name: (JsxElementName | None) { getter; }
     has attributes: (Sequence[JsxAttribute] | None) { getter; }
@@ -2027,15 +2016,12 @@ node JsxElement(AtomExpr) {
         name: (JsxElementName | None),
         attributes: (Sequence[JsxAttribute] | None),
         children: (Sequence[(JsxChild | JsxElement)] | None),
-        is_self_closing: bool,
         is_fragment: bool,
         dynamic_tag: (Expr | None) = None,
         kid: Sequence[UniNode] = []
     ) -> None;
 
     def postinit -> None;
-    def get_body_start_line -> (int | None);
-    def get_body_end_line -> (int | None);
     def __repr__ -> str;
 }
 
@@ -2585,8 +2571,6 @@ def resolved_decl_of(sym: Symbol) -> (NameAtom | None);
 def kind_has_runtime_binding(
     kind: BindingKind, decl: (NameAtom | None), space: CodeContext
 ) -> bool;
-
-def has_runtime_binding(sym: Symbol, space: CodeContext) -> bool;
 
 def is_client_destined(nd: UniNode) -> bool;
 

@@ -63,7 +63,6 @@ impl OwnershipCheckPass._nogc_resolve_provenance -> (str | None) {
 impl OwnershipCheckPass._nogc_setup -> None {
     self.nogc_prov = self._nogc_resolve_provenance();
     self.module.gen.nogc_enforced = self.nogc_prov is not None;
-    self.module.gen.nogc_provenance = self.nogc_prov or '';
     if self.nogc_prov is not None {
         self._nogc_infer_locals();
         self._stamp_view_borrows();

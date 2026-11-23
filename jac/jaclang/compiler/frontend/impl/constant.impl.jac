@@ -6,18 +6,6 @@ impl JacSemTokenModifier.as_str_list -> list[str] {
     ];
 }
 
-impl CodeContext.is_server.getter -> bool {
-    return (self == CodeContext.SERVER);
-}
-
-impl CodeContext.is_client.getter -> bool {
-    return (self == CodeContext.CLIENT);
-}
-
-impl CodeContext.is_native.getter -> bool {
-    return (self == CodeContext.NATIVE);
-}
-
 impl client_state_setter_name(var_name: str) -> str {
     if not var_name {
         return "";

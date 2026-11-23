@@ -109,7 +109,6 @@ impl CatModule.init(
         name=name,
         source=tok.orig_src,
         body=[],
-        terminals=[],
         stub_only=True,
         kid=[tok]
     );

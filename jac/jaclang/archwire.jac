@@ -5534,7 +5534,7 @@ graph import compiler {
             STR_LEN_PAYLOAD_MASK,
             STR_LEN_TAG_BIT,
             STR_LEN_TAG_SHIFT,
-            is_package_keyed_path,
+            is_compiler_source_path,
             native_unit_identity,
             real_path,
             str_len_tag
@@ -5680,7 +5680,7 @@ graph import compiler {
         driver.build_services.CompilerBuildServices.prepare_application {
             set_effective_default_codespace
         },
-        driver.compilation_context { is_package_keyed_path },
+        driver.compilation_context { is_compiler_source_path },
         driver.compile_options.pop_native_target { _native_target_ctx },
         driver.compile_options.push_native_target { set_native_target_override },
         driver.compiler | tests.xbackend_equiv.run_js_module_fixture {
@@ -5700,7 +5700,7 @@ graph import compiler {
             is_compiler_source_path,
             is_native_by_location
         },
-        driver.jir { is_compiler_source_path, is_package_keyed_path },
+        driver.jir { is_compiler_source_path },
         driver.native_iface {
             NATIVE_ABI_VERSION,
             NativeEnumLayout,
@@ -5759,7 +5759,7 @@ graph import compiler {
         passes.layout_pass { real_path },
         passes.layout_pass._archetype_native_name { native_arch_name },
         passes.layout_pass.interface_class_native_name { native_arch_name },
-        pkg_paths.binds_bare_arch_names { kernel_unit_rels },
+        pkg_paths.binds_bare_arch_names { KERNEL_UNIT_REL },
         pkg_paths.scope_allows_inferred_path { native_unit_compile_active },
         placement.placement._scan_blockers_under {
             NATIVE_SUPPORTED_STDLIB,
@@ -11110,16 +11110,14 @@ graph import compiler.frontend {
 
 graph import compiler.frontend.parser {
     lexer ++> [
-        frontend { Lexer },
+        frontend { Lexer, tokenize_full },
         parser { tokenize_full },
     ]
-    lexer as na_lexer ++> frontend;
     parser ++> frontend { Parser, parse_expression as _parse_expression }
     tokens ++> [
         frontend { CommentData, SrcDiag },
         lexer { CommentData, LexToken, SourceLoc, SrcDiag, TokenKind, lookup_keyword },
         parser {
-            CommentData,
             LexToken,
             SourceLoc,
             SrcDiag,

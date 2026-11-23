@@ -257,7 +257,7 @@ impl is_compiler_tree_path(source_path: str) -> bool {
 }
 
 impl _module_codespace_mode(source_path: str) -> str {
-    if is_package_keyed_path(source_path) {
+    if is_compiler_source_path(source_path) {
         return "internal";
     }
     try {
@@ -509,7 +509,7 @@ impl _full_env_fingerprint(source_path: str) -> str {
 }
 
 impl _env_fingerprint_for(source_path: str) -> str {
-    if is_stub_like_path(source_path) or is_package_keyed_path(source_path) {
+    if is_stub_like_path(source_path) or is_compiler_source_path(source_path) {
         return _toolchain_env_fingerprint();
     }
     return _full_env_fingerprint(source_path);
@@ -669,7 +669,7 @@ impl _compute_module_key_uncached(source_path: str) -> str {
     stat_note("key_compute");
     h = hashlib.sha256();
     projection = ''
-        if is_package_keyed_path(source_path)
+        if is_compiler_source_path(source_path)
         else _module_projection(source_path);
     h.update(projection.encode());
     h.update(_env_fingerprint_for(source_path).encode());
@@ -1224,7 +1224,7 @@ impl _module_cache_root(source_path: str) -> Path {
     resolved_str = str(resolved);
 
     if resolved_str.startswith(_jaclang_pkg_dir + os.sep)
-        or is_package_keyed_path(resolved_str) {
+        or is_compiler_source_path(resolved_str) {
         return get_jir_cache_dir() / 'modules';
     }
     try {
@@ -1261,7 +1261,7 @@ impl get_module_cache_path(source_path: str) -> Path {
     cache_dir = _get_module_cache_dir(source_path);
     source = Path(source_path).resolve();
     projection = ''
-        if is_package_keyed_path(str(source))
+        if is_compiler_source_path(str(source))
         else _module_projection(source_path);
     path_hash = hashlib.sha256((str(source) + projection).encode()).hexdigest()[:8];
     (major, minor) = (sys.version_info.major, sys.version_info.minor);
