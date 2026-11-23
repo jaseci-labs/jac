@@ -1963,15 +1963,6 @@ impl ESBuiltinEmitter.static_names(self: ESBuiltinEmitter) -> list[str] {
     return super.static_names() + ["__import__"];
 }
 
-impl ESBuiltinEmitter.dispatch_static(
-    self: ESBuiltinEmitter, name: str, ctx: ESEmitCtx, args: list[str]
-) -> (str | None) {
-    if name == "__import__" {
-        return self.emit___import__(ctx, args);
-    }
-    return super.dispatch_static(name, ctx, args);
-}
-
 impl ESBuiltinEmitter.emit_unsafe_html(
     self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
@@ -2294,43 +2285,8 @@ impl _min_max_call(rt_name: str, ctx: ESEmitCtx, args: list[str]) -> (str | None
 }
 
 impl es_primitive_emitter(suffix: str) -> (PrimitiveEmitter[(str, ESEmitCtx)] | None) {
-    if suffix == "IntEmitter" {
-        return ESIntEmitter();
-    }
-    if suffix == "FloatEmitter" {
-        return ESFloatEmitter();
-    }
-    if suffix == "ComplexEmitter" {
-        return ESComplexEmitter();
-    }
-    if suffix == "BoolEmitter" {
-        return ESBoolEmitter();
-    }
-    if suffix == "StrEmitter" {
-        return ESStrEmitter();
-    }
-    if suffix == "BytesEmitter" {
-        return ESBytesEmitter();
-    }
-    if suffix == "ListEmitter" {
-        return ESListEmitter();
-    }
-    if suffix == "DictEmitter" {
-        return ESDictEmitter();
-    }
-    if suffix == "SetEmitter" {
-        return ESSetEmitter();
-    }
-    if suffix == "FrozensetEmitter" {
-        return ESFrozensetEmitter();
-    }
-    if suffix == "TupleEmitter" {
-        return ESTupleEmitter();
-    }
-    if suffix == "RangeEmitter" {
-        return ESRangeEmitter();
-    }
-    return None;
+    factory = globals().get("ES" + suffix);
+    return factory() if factory is not None else None;
 }
 
 impl es_sized_cast(name: str, args: list[str]) -> str {

@@ -2634,44 +2634,6 @@ impl _source_param_names(func: ir.Function) -> list[str] {
 }
 
 impl _native_emitter_of(suffix: str) -> (object | None) {
-    if suffix == "IntEmitter" {
-        return _pn.NativeIntEmitter();
-    }
-    if suffix == "FloatEmitter" {
-        return _pn.NativeFloatEmitter();
-    }
-    if suffix == "BoolEmitter" {
-        return _pn.NativeBoolEmitter();
-    }
-    if suffix == "ComplexEmitter" {
-        return _pn.NativeComplexEmitter();
-    }
-    if suffix == "StrEmitter" {
-        return _pn.NativeStrEmitter();
-    }
-    if suffix == "BytesEmitter" {
-        return _pn.NativeBytesEmitter();
-    }
-    if suffix == "ListEmitter" {
-        return _pn.NativeListEmitter();
-    }
-    if suffix == "DictEmitter" {
-        return _pn.NativeDictEmitter();
-    }
-    if suffix == "SetEmitter" {
-        return _pn.NativeSetEmitter();
-    }
-    if suffix == "FrozensetEmitter" {
-        return _pn.NativeFrozensetEmitter();
-    }
-    if suffix == "TupleEmitter" {
-        return _pn.NativeTupleEmitter();
-    }
-    if suffix == "RangeEmitter" {
-        return _pn.NativeRangeEmitter();
-    }
-    if suffix == "BuiltinEmitter" {
-        return _pn.NativeBuiltinEmitter();
-    }
-    return None;
+    factory = getattr(_pn, "Native" + suffix, None);
+    return factory() if factory is not None else None;
 }

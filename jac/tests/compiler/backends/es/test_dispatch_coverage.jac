@@ -1,15 +1,12 @@
-"""The ES backend's static dispatch tables cover what they route to.
+"""The ES backend reaches every node class and every builtin it emits.
 
-The unparser picks a gen method per node class and the primitive emitters are
-reached through dispatch/dispatch_static rather than through getattr, because
-the ES backend runs in the native compiler kernel. A node class without an
-unparser arm, or an emit method missing from its interface's name lists,
-would silently stop being generated, so these compare the tables with the
-classes they route to.
+The unparser finds a gen method by node class name and the builtin emitter
+routes by the emit methods its interface declares. A node class whose gen
+method is misnamed, or an emit method only the ES builtin emitter defines,
+would silently stop being generated.
 """
 import inspect;
 import jaclang.compiler.backends.es.estree as es;
-import jaclang.compiler.backends.common.primitives as prim;
 import jaclang.compiler.backends.es.primitives_es as pes;
 import from jaclang.compiler.backends.es.es_unparse { JSCodeGenerator }
 
@@ -44,22 +41,6 @@ test "the unparser has an arm for every ESTree node class" {
         checked += 1;
     }
     assert checked > 60 , checked;
-}
-
-test "every primitive emitter interface names each of its emit methods" {
-    checked = 0;
-    for (name, cls) in inspect.getmembers(prim, inspect.isclass) {
-        if cls.__module__ != prim.__name__
-            or not issubclass(cls, prim.PrimitiveEmitter)
-            or cls is prim.PrimitiveEmitter {
-            continue;
-        }
-        instance: any = cls.__new__(cls);
-        assert set(instance.method_names()) == emit_names(cls, 4) , name;
-        assert set(instance.static_names()) == emit_names(cls, 3) , name;
-        checked += 1;
-    }
-    assert checked == 12 , checked;
 }
 
 test "the ES builtin emitter names its own builtins too" {

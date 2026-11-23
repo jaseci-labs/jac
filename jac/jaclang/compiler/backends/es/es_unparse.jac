@@ -1,3 +1,5 @@
+glob _GEN_METHODS: dict[type, str] = {};
+
 obj EmitFrame {
     has nd: es.Node,
         text: str = "",
@@ -94,6 +96,7 @@ def es_to_js_with_map(
 def _line_starts(code: str) -> list[int];
 def _offset_to_pos(line_starts: list[int], offset: int) -> tuple[int, int];
 def _segment_name(nd: es.Node) -> str;
+def _gen_method_name(cls: type) -> str;
 def _property_text(
     key: str, value: str, kind: str, shorthand: bool, computed: bool
 ) -> str;
