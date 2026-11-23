@@ -7,7 +7,9 @@ name: Deploy jaclang.org
 #
 # The site's [project] jac-version pin picks the jac release for this runner
 # and for the pods, so bumping the pin is what moves jaclang.org, and the docs
-# it bundles at /docs/latest, to a new release.
+# it bundles at /docs/latest, to a new release. A release PR's pin bump lands
+# on main well before Release publishes that version's binary and image, so
+# its push run stands down and the finished Release run deploys it instead.
 #
 # Editing this workflow does not deploy. To deploy without a site change, run
 # it from the Actions tab; tick dry_run to render the plan and apply nothing.
@@ -18,6 +20,9 @@ on:
     paths:
       - "jac/examples/jaclang_org/**"
       - ".github/jaclang_org/**"
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -43,8 +48,45 @@ env:
   AWS_REGION: us-east-2
 
 jobs:
+  resolve:
+    if: >-
+      github.repository == 'jaseci-labs/jac' && (
+        github.event_name != 'workflow_run' || (
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'pull_request'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      pin: ${{ steps.pin.outputs.pin }}
+      ready: ${{ steps.pin.outputs.ready }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read the pin and check its release is out
+        id: pin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pin=$(sed -n 's/^jac-version = "==\([0-9][0-9.]*\)"$/\1/p' "$SITE_DIR/jac.toml")
+          if [ -z "$pin" ]; then
+            echo "::error file=$SITE_DIR/jac.toml::jaclang.org deploys need an exact pin: jac-version = \"==X.Y.Z\""
+            exit 1
+          fi
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
+          draft=$(gh release view "v$pin" --repo jaseci-labs/jac --json isDraft --jq .isDraft 2>/dev/null || true)
+          if [ "$draft" = false ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          elif [ "$GITHUB_EVENT_NAME" = push ]; then
+            echo "::notice::jac v$pin is not published yet; the Release run deploys it when it finishes."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::jac v$pin has no published release to deploy."
+            exit 1
+          fi
+
   deploy:
-    if: github.repository == 'jaseci-labs/jac'
+    needs: resolve
+    if: needs.resolve.outputs.ready == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     environment:
@@ -59,22 +101,16 @@ jobs:
       - name: Stage the deploy copy
         id: stage
         run: |
-          pin=$(sed -n 's/^jac-version = "==\([0-9][0-9.]*\)"$/\1/p' "$SITE_DIR/jac.toml")
-          if [ -z "$pin" ]; then
-            echo "::error file=$SITE_DIR/jac.toml::jaclang.org deploys need an exact pin: jac-version = \"==X.Y.Z\""
-            exit 1
-          fi
           stage="$RUNNER_TEMP/jaclang_org"
           cp -R "$SITE_DIR" "$stage"
           awk '/^\[/ { skip = ($0 == "[dev]") } !skip' "$SITE_DIR/jac.toml" > "$stage/jac.toml"
           cat .github/jaclang_org/deploy.toml >> "$stage/jac.toml"
-          echo "pin=$pin" >> "$GITHUB_OUTPUT"
           echo "dir=$stage" >> "$GITHUB_OUTPUT"
 
-      - name: Install jac ${{ steps.stage.outputs.pin }}
+      - name: Install jac ${{ needs.resolve.outputs.pin }}
         env:
           GH_TOKEN: ${{ github.token }}
-          PIN: ${{ steps.stage.outputs.pin }}
+          PIN: ${{ needs.resolve.outputs.pin }}
         run: |
           mkdir -p "$HOME/.local/bin" && cd "$RUNNER_TEMP"
           gh release download "v$PIN" --repo jaseci-labs/jac \
@@ -84,7 +120,7 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/jac" --version
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: arn:aws:iam::776241927220:role/GitHubActionsJaseciDeployRole
           aws-region: ${{ env.AWS_REGION }}
@@ -126,7 +162,7 @@ jobs:
       - name: Wait for the rollout
         if: ${{ !inputs.dry_run }}
         env:
-          PIN: ${{ steps.stage.outputs.pin }}
+          PIN: ${{ needs.resolve.outputs.pin }}
         run: |
           for d in $(kubectl -n "$NAMESPACE" get deploy -l 'jac-scale.role in (gateway,microservice)' -o name); do
             kubectl -n "$NAMESPACE" rollout status "$d" --timeout=15m
@@ -139,7 +175,7 @@ jobs:
       - name: Check the live site
         if: ${{ !inputs.dry_run }}
         env:
-          PIN: ${{ steps.stage.outputs.pin }}
+          PIN: ${{ needs.resolve.outputs.pin }}
         run: |
           failed=0
           for path in / /docs/latest /jacyac /install.sh; do
