@@ -127,6 +127,9 @@ impl ASTValidationPass._imports_itself(mod: UniNode, stmt: Import) -> bool {
     if source.level == 1 and source.dot_path_str == f".{stem}" {
         return True;
     }
+    if source.dot_path_str.split(".")[-1] != stem {
+        return False;
+    }
     resolved = source.resolve_relative_path();
     return bool(resolved)
         and os.path.realpath(resolved) == os.path.realpath(mod.loc.mod_path);
