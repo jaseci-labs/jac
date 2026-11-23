@@ -17,7 +17,7 @@ impl source_workspace(source: Path, name: str) -> Path {
     real_source = source.resolve();
     files: list[Path] = [];
     for p in sorted(source.iterdir()) {
-        if p.is_file() and p.name == "cef_sums.lock" {
+        if p.is_file() and p.name in {"cef_sums.lock", "minimal-fonts.conf"} {
             files.append(p);
         } elif p.is_file()
             and p.suffix == ".jac"
