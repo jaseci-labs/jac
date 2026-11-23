@@ -515,6 +515,7 @@ test "E2036: an import after the local definition still collides" {
         "with entry { import from b { A } } import from c { A }",
         "def f(x: bool) -> None { import from b { A } if x { import from c { A } } }",
         "def f(x: bool) -> None { if x { import from c { A } } import from b { A } }",
+        "def join -> int { return 1; } def f(x: bool) -> None { import from .test { join } if x { import from shlex { join } } }",
         "def join -> int { return 1; } with entry { if True { import from shlex { join } } }"
     ];
     # The self-import is the local join, so it clashes with shlex as the def does.

@@ -63,7 +63,7 @@ impl ASTValidationPass._import_bindings(
                 direct_only
                 and not (stmt.parent is scope or isinstance(stmt.parent, ModuleCode))
             )
-            or self._imports_itself(scope, stmt) {
+            or (not direct_only and self._imports_itself(scope, stmt)) {
             continue;
         }
         for item in stmt.items {
