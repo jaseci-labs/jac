@@ -5,8 +5,8 @@
 `import mod;` spelling -- ever produced one, so under forced-native placement
 every `from` import was waved through without being classified at all.
 
-That is the silent-miscompile class. `import from threading { Event }` with
-`obj Holder(Event)` over it passed the gate, and the base is dropped by
+That is the silent-miscompile class. `import from queue { Queue }` with
+`obj Holder(Queue)` over it passed the gate, and the base is dropped by
 `LayoutPass` on the way to a layout, so the module lowered to a `Holder` with
 everything it inherits quietly missing. A refusal is the right answer, and it
 is the answer the bare spelling of the same module already gave.
@@ -135,7 +135,7 @@ def _seams_of(coverage: dict[str, any], fixture: str) -> list[str] {
 
 
 test "a from-imported Python base is classified, not waved through" {
-    assert _rejected_imports("from_import_retained_base.jac") == ["threading"] , (
+    assert _rejected_imports("from_import_retained_base.jac") == ["queue"] , (
         "the capability gate read the `from` import's items and found no "
         "module to classify, so an unlowerable Python base reached codegen "
         "unchallenged"
@@ -151,7 +151,7 @@ test "the from-imported Python base refuses instead of lowering" {
             str(e) for e in prog.errors_had
         ]}"
     );
-    assert any("threading" in str(e) for e in prog.errors_had) , (
+    assert any("queue" in str(e) for e in prog.errors_had) , (
         f"the diagnostic must name the module it refuses: {[
             str(e) for e in prog.errors_had
         ]}"
@@ -164,8 +164,8 @@ test "the from-imported Python base refuses instead of lowering" {
 
 
 test "the inferred-placement verdict on that import is unchanged" {
-    assert _scan_verdict(_module_with("import from threading { Event }"))
-        == "unresolved import 'threading'" , (
+    assert _scan_verdict(_module_with("import from queue { Queue }"))
+        == "unresolved import 'queue'" , (
         "`scan_native_blockers` already refused this import through "
         "`imp.from_loc`; closing the forced-native hole must not move the "
         "inferred path at all"

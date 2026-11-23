@@ -338,6 +338,14 @@ glob STR_NA_GAPS: list[any] = [
              ["na"]
          ),
          ("math", "prim_math.jac", "math_py", "math_cl", "math_na", ["na"]),
+         (
+             "threading",
+             "prim_threading.jac",
+             "threading_py",
+             "threading_cl",
+             "threading_na",
+             ["na"]
+         ),
          ("time", "prim_time.jac", "time_py", "time_cl", "time_na", ["na"]),
          ("sys", "prim_sys.jac", "sys_py", "sys_cl", "sys_na", ["na"]),
          ("os", "prim_os.jac", "os_py", "os_cl", "os_na", ["na"]),
