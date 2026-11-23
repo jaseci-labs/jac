@@ -1,14 +1,20 @@
+glob _EMIT_NAMES: dict[tuple[type, int], tuple[list[str], frozenset[str]]] = {};
+
 class PrimitiveEmitter[V, C] {
-    def method_names(self: PrimitiveEmitter) -> list[str] abst;
-    def static_names(self: PrimitiveEmitter) -> list[str] abst;
+    def method_names(self: PrimitiveEmitter) -> list[str];
+    def static_names(self: PrimitiveEmitter) -> list[str];
     def dispatch(
         self: PrimitiveEmitter, name: str, ctx: C, target: V, args: list[V]
-    ) -> (V | None) abst;
+    ) -> (V | None);
 
     def dispatch_static(
         self: PrimitiveEmitter, name: str, ctx: C, args: list[V]
-    ) -> (V | None) abst;
+    ) -> (V | None);
 }
+
+def interface_emit_names(cls: type, arity: int) -> list[str];
+def emit_name_set(cls: type, arity: int) -> frozenset[str];
+def _emit_names_entry(cls: type, arity: int) -> tuple[list[str], frozenset[str]];
 
 class IntEmitter[V, C](PrimitiveEmitter[V, C]) {
     def emit_bit_length(
@@ -115,16 +121,6 @@ class IntEmitter[V, C](PrimitiveEmitter[V, C]) {
     def emit_op_invert(
         self: IntEmitter, ctx: C, target: V, args: list[V]
     ) -> (V | None) abst;
-
-    def method_names(self: IntEmitter) -> list[str];
-    def static_names(self: IntEmitter) -> list[str];
-    def dispatch(
-        self: IntEmitter, name: str, ctx: C, target: V, args: list[V]
-    ) -> (V | None);
-
-    def dispatch_static(
-        self: IntEmitter, name: str, ctx: C, args: list[V]
-    ) -> (V | None);
 }
 
 class FloatEmitter[V, C](PrimitiveEmitter[V, C]) {
@@ -204,16 +200,6 @@ class FloatEmitter[V, C](PrimitiveEmitter[V, C]) {
     def emit_op_pos(
         self: FloatEmitter, ctx: C, target: V, args: list[V]
     ) -> (V | None) abst;
-
-    def method_names(self: FloatEmitter) -> list[str];
-    def static_names(self: FloatEmitter) -> list[str];
-    def dispatch(
-        self: FloatEmitter, name: str, ctx: C, target: V, args: list[V]
-    ) -> (V | None);
-
-    def dispatch_static(
-        self: FloatEmitter, name: str, ctx: C, args: list[V]
-    ) -> (V | None);
 }
 
 class ComplexEmitter[V, C](PrimitiveEmitter[V, C]) {
@@ -256,16 +242,6 @@ class ComplexEmitter[V, C](PrimitiveEmitter[V, C]) {
     def emit_op_pos(
         self: ComplexEmitter, ctx: C, target: V, args: list[V]
     ) -> (V | None) abst;
-
-    def method_names(self: ComplexEmitter) -> list[str];
-    def static_names(self: ComplexEmitter) -> list[str];
-    def dispatch(
-        self: ComplexEmitter, name: str, ctx: C, target: V, args: list[V]
-    ) -> (V | None);
-
-    def dispatch_static(
-        self: ComplexEmitter, name: str, ctx: C, args: list[V]
-    ) -> (V | None);
 }
 
 class StrEmitter[V, C](PrimitiveEmitter[V, C]) {
@@ -493,16 +469,6 @@ class StrEmitter[V, C](PrimitiveEmitter[V, C]) {
     def emit_op_contains(
         self: StrEmitter, ctx: C, target: V, args: list[V]
     ) -> (V | None) abst;
-
-    def method_names(self: StrEmitter) -> list[str];
-    def static_names(self: StrEmitter) -> list[str];
-    def dispatch(
-        self: StrEmitter, name: str, ctx: C, target: V, args: list[V]
-    ) -> (V | None);
-
-    def dispatch_static(
-        self: StrEmitter, name: str, ctx: C, args: list[V]
-    ) -> (V | None);
 }
 
 class BytesEmitter[V, C](PrimitiveEmitter[V, C]) {
@@ -707,16 +673,6 @@ class BytesEmitter[V, C](PrimitiveEmitter[V, C]) {
     def emit_op_contains(
         self: BytesEmitter, ctx: C, target: V, args: list[V]
     ) -> (V | None) abst;
-
-    def method_names(self: BytesEmitter) -> list[str];
-    def static_names(self: BytesEmitter) -> list[str];
-    def dispatch(
-        self: BytesEmitter, name: str, ctx: C, target: V, args: list[V]
-    ) -> (V | None);
-
-    def dispatch_static(
-        self: BytesEmitter, name: str, ctx: C, args: list[V]
-    ) -> (V | None);
 }
 
 class ListEmitter[V, C](PrimitiveEmitter[V, C]) {
@@ -807,16 +763,6 @@ class ListEmitter[V, C](PrimitiveEmitter[V, C]) {
     def emit_op_imul(
         self: ListEmitter, ctx: C, target: V, args: list[V]
     ) -> (V | None) abst;
-
-    def method_names(self: ListEmitter) -> list[str];
-    def static_names(self: ListEmitter) -> list[str];
-    def dispatch(
-        self: ListEmitter, name: str, ctx: C, target: V, args: list[V]
-    ) -> (V | None);
-
-    def dispatch_static(
-        self: ListEmitter, name: str, ctx: C, args: list[V]
-    ) -> (V | None);
 }
 
 class DictEmitter[V, C](PrimitiveEmitter[V, C]) {
@@ -880,16 +826,6 @@ class DictEmitter[V, C](PrimitiveEmitter[V, C]) {
     def emit_op_ior(
         self: DictEmitter, ctx: C, target: V, args: list[V]
     ) -> (V | None) abst;
-
-    def method_names(self: DictEmitter) -> list[str];
-    def static_names(self: DictEmitter) -> list[str];
-    def dispatch(
-        self: DictEmitter, name: str, ctx: C, target: V, args: list[V]
-    ) -> (V | None);
-
-    def dispatch_static(
-        self: DictEmitter, name: str, ctx: C, args: list[V]
-    ) -> (V | None);
 }
 
 class SetEmitter[V, C](PrimitiveEmitter[V, C]) {
@@ -1020,16 +956,6 @@ class SetEmitter[V, C](PrimitiveEmitter[V, C]) {
     def emit_op_ixor(
         self: SetEmitter, ctx: C, target: V, args: list[V]
     ) -> (V | None) abst;
-
-    def method_names(self: SetEmitter) -> list[str];
-    def static_names(self: SetEmitter) -> list[str];
-    def dispatch(
-        self: SetEmitter, name: str, ctx: C, target: V, args: list[V]
-    ) -> (V | None);
-
-    def dispatch_static(
-        self: SetEmitter, name: str, ctx: C, args: list[V]
-    ) -> (V | None);
 }
 
 class FrozensetEmitter[V, C](PrimitiveEmitter[V, C]) {
@@ -1108,16 +1034,6 @@ class FrozensetEmitter[V, C](PrimitiveEmitter[V, C]) {
     def emit_op_contains(
         self: FrozensetEmitter, ctx: C, target: V, args: list[V]
     ) -> (V | None) abst;
-
-    def method_names(self: FrozensetEmitter) -> list[str];
-    def static_names(self: FrozensetEmitter) -> list[str];
-    def dispatch(
-        self: FrozensetEmitter, name: str, ctx: C, target: V, args: list[V]
-    ) -> (V | None);
-
-    def dispatch_static(
-        self: FrozensetEmitter, name: str, ctx: C, args: list[V]
-    ) -> (V | None);
 }
 
 class TupleEmitter[V, C](PrimitiveEmitter[V, C]) {
@@ -1164,16 +1080,6 @@ class TupleEmitter[V, C](PrimitiveEmitter[V, C]) {
     def emit_op_contains(
         self: TupleEmitter, ctx: C, target: V, args: list[V]
     ) -> (V | None) abst;
-
-    def method_names(self: TupleEmitter) -> list[str];
-    def static_names(self: TupleEmitter) -> list[str];
-    def dispatch(
-        self: TupleEmitter, name: str, ctx: C, target: V, args: list[V]
-    ) -> (V | None);
-
-    def dispatch_static(
-        self: TupleEmitter, name: str, ctx: C, args: list[V]
-    ) -> (V | None);
 }
 
 class RangeEmitter[V, C](PrimitiveEmitter[V, C]) {
@@ -1196,16 +1102,6 @@ class RangeEmitter[V, C](PrimitiveEmitter[V, C]) {
     def emit_op_contains(
         self: RangeEmitter, ctx: C, target: V, args: list[V]
     ) -> (V | None) abst;
-
-    def method_names(self: RangeEmitter) -> list[str];
-    def static_names(self: RangeEmitter) -> list[str];
-    def dispatch(
-        self: RangeEmitter, name: str, ctx: C, target: V, args: list[V]
-    ) -> (V | None);
-
-    def dispatch_static(
-        self: RangeEmitter, name: str, ctx: C, args: list[V]
-    ) -> (V | None);
 }
 
 class BuiltinEmitter[V, C](PrimitiveEmitter[V, C]) {
@@ -1295,16 +1191,6 @@ class BuiltinEmitter[V, C](PrimitiveEmitter[V, C]) {
     def emit_unsafe_html(
         self: BuiltinEmitter, ctx: C, args: list[V]
     ) -> (V | None) abst;
-
-    def method_names(self: BuiltinEmitter) -> list[str];
-    def static_names(self: BuiltinEmitter) -> list[str];
-    def dispatch(
-        self: BuiltinEmitter, name: str, ctx: C, target: V, args: list[V]
-    ) -> (V | None);
-
-    def dispatch_static(
-        self: BuiltinEmitter, name: str, ctx: C, args: list[V]
-    ) -> (V | None);
 }
 
 class ExceptionEmitter[V, C] {

@@ -14,7 +14,7 @@ this file is the map of the tree and the rules that keep it organized.
 | `types/` | The type system and evaluator, compile-time values, the stub catalog, and the ambient `.pyi` surfaces | `frontend` |
 | `placement/` | The placement solver: which module runs where, pins, workspaces | `frontend`, `passes` |
 | `driver/` | `JacProgram`, `JacCompiler`, the schedules, module resolution, the caches (bytecode, interface, JIR), compile options | everything |
-| `backends/common/` | What the generators share: the primitive emitter interfaces and their dispatch tables, the runtime unit lists, the format kernel | `frontend`, `passes` |
+| `backends/common/` | What the generators share: the primitive emitter interfaces and their reflective dispatch, the runtime unit lists, the format kernel | `frontend`, `passes` |
 | `backends/py/` | Jac to Python `ast` to CPython bytecode | `backends/common` |
 | `backends/es/` | Jac to ESTree to JavaScript, the client framework backends, view IR | `backends/common` |
 | `backends/native/` | Jac to LLVM IR, the linkers (ELF, Mach-O, PE, wasm), the wasm runtime, and the in-tree LLVM binding (`llvm/`, a translation of llvmlite, see `llvm/LICENSE.llvmlite`) | `backends/common` |
