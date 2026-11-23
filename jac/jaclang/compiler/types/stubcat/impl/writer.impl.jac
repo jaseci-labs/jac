@@ -1606,10 +1606,7 @@ impl module_iface_body(
     path_mapper: (PathMapper | None)
 ) -> bytes {
     writer = CatalogWriter(
-        evaluator=evaluator,
-        pkg_dir=pkg_dir,
-        boundary=mod,
-        path_mapper=path_mapper
+        evaluator=evaluator, pkg_dir=pkg_dir, boundary=mod, path_mapper=path_mapper
     );
     dotted = mod.name or "";
     writer.add_module(mod, dotted);
