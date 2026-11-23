@@ -25,6 +25,9 @@ impl ClientResponse.aiter_raw -> AsyncIterator[bytes] {
         }
         return;
     }
+    if self.bodiless {
+        return;
+    }
     if self.chunked {
         while True {
             size_line: bytes = await self.reader.readline();
@@ -231,7 +234,11 @@ impl arequest(
     transfer = (resp_headers.get('Transfer-Encoding') or '').lower();
     chunked = 'chunked' in transfer;
     response = ClientResponse(
-        status_code=status, reason=reason, headers=resp_headers, chunked=chunked
+        status_code=status,
+        reason=reason,
+        headers=resp_headers,
+        chunked=chunked,
+        bodiless=method.upper() == 'HEAD' or status in (204, 304)
     );
     if stream {
         response.reader = reader;
