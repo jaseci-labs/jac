@@ -13,7 +13,8 @@ import from urllib.parse { urlencode, urlsplit }
 glob DEFAULT_TIMEOUT: float = 30.0,
      IDLE_TIMEOUT: float = 30.0,
      MAX_CONNECTION_AGE: float = 120.0,
-     MAX_IDLE_PER_ORIGIN: int = 32;
+     MAX_IDLE_PER_ORIGIN: int = 32,
+     _SAFE_METHODS: set[str] = {'GET', 'HEAD', 'OPTIONS'};
 
 
 obj ClientConnectionError(Exception) {
@@ -79,6 +80,10 @@ async def _connect(origin: tuple[str, str, int], timeout: float) -> _PooledConn;
 
 async def _read_response_head(
     reader: any, timeout: float
+) -> tuple[str, int, str, Headers];
+
+async def _exchange(
+    conn: _PooledConn, payload: bytes, timeout: float
 ) -> tuple[str, int, str, Headers];
 
 async def arequest(
