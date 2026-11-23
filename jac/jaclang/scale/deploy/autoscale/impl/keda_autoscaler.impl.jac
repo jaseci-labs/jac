@@ -64,11 +64,11 @@ impl KEDAAutoscaler.preflight {
             return install_warning;
         }
         if e.status == 403 {
-            return [
+            raise ValueError(
                 "Permission denied (403) discovering KEDA core "
                 f"(keda.sh/v1alpha1 ScaledObject) in namespace '{namespace}'. "
                 "Grant the deploying identity list on scaledobjects there."
-            ];
+            );
         }
         raise;
     }

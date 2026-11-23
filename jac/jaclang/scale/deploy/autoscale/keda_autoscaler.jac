@@ -90,7 +90,7 @@ obj KEDAAutoscaler(Autoscaler) {
     def apply_http_activation(spec: HTTPActivationSpec) -> bool;
     def destroy_http_activation(target: str, namespace: str) -> None;
     def discover_capabilities(
-        refresh: bool = False, namespace: str = "default"
+        namespace: str, refresh: bool = False
     ) -> KEDACapabilities;
 
     def invalidate_capabilities -> None;

@@ -790,7 +790,7 @@ test "redeploy patches the ScaledObject instead of duplicating it, prunes a drop
     assert len(kept_prune_calls) == 0;
 }
 
-test "switching the autoscaler engine to keda deletes a competing HPA (a no-op when none exists), and a missing CRD skips creation with a cached, logged diagnostic" {
+test "switching the autoscaler engine to keda deletes a competing HPA (a no-op when none exists), a missing CRD skips creation with a cached, logged diagnostic, and a denied list fails the deploy" {
     (mock_api, mock_v2) = _keda_apply_mocks();
     mock_logger = unittest.mock.MagicMock();
     keda = KEDAAutoscaler(
@@ -846,6 +846,19 @@ test "switching the autoscaler engine to keda deletes a competing HPA (a no-op w
     assert "keda.sh/docs" in warn_msg;
     keda3.preflight("default");
     assert missing_crd_api.list_namespaced_custom_object.call_count == 1 , "the missing-CRD result must be cached, not re-queried";
+
+    KEDAAutoscaler._preflight_cache.clear();
+    denied_api = unittest.mock.MagicMock();
+    denied_api.list_namespaced_custom_object.side_effect = ApiException(status=403);
+    keda_denied = KEDAAutoscaler(_custom_api=denied_api, _v2_api=mock_v2);
+    denied = False;
+    try {
+        keda_denied.apply(spec);
+    } except ValueError {
+        denied = True;
+    }
+    assert denied , "a 403 in the deploy namespace must fail the deploy, not skip the autoscaler";
+    denied_api.create_namespaced_custom_object.assert_not_called();
 }
 
 test "destroy sweeps the ScaledObject and every TriggerAuthentication it owns, tolerating an already-gone resource or an absent TriggerAuthentication CRD; destroy_collection also sweeps competing HPAs and is silent when KEDA itself is not installed" {
@@ -1365,7 +1378,7 @@ test "discover_capabilities produces a distinct diagnostic for every install/per
     ];
     for (label, custom_api, core_api) in scenarios {
         keda = _keda_for(custom_api=custom_api, core_api=core_api);
-        caps = keda.discover_capabilities();
+        caps = keda.discover_capabilities("default");
         msg = f"scenario '{label}' produced: warnings={caps.warnings} errors={caps.errors}";
 
         if label == "namespace-scoped-deployer" {
@@ -1428,13 +1441,13 @@ test "discover_capabilities produces a distinct diagnostic for every install/per
 test "discover_capabilities caches per (cluster, namespace, service-address, client-identity) and only re-queries on refresh=True or invalidate_capabilities(); format_capabilities and preflight agree with the underlying state, and FQDN service addresses resolve to name and namespace" {
     custom_api = _custom_api_for();
     keda = _keda_for(custom_api=custom_api, core_api=_core_api_for());
-    keda.discover_capabilities();
-    keda.discover_capabilities();
+    keda.discover_capabilities("default");
+    keda.discover_capabilities("default");
     assert custom_api.list_namespaced_custom_object.call_count == 2 , "a second call must hit the cache (2 calls = one discovery round: core + http)";
-    keda.discover_capabilities(refresh=True);
+    keda.discover_capabilities("default", refresh=True);
     assert custom_api.list_namespaced_custom_object.call_count == 4 , "refresh=True must bypass the cache";
     keda.invalidate_capabilities();
-    keda.discover_capabilities();
+    keda.discover_capabilities("default");
     assert custom_api.list_namespaced_custom_object.call_count == 6 , "invalidate_capabilities must force the next call to requery";
 
     ns_api = unittest.mock.MagicMock();
@@ -1446,24 +1459,24 @@ test "discover_capabilities caches per (cluster, namespace, service-address, cli
     }
     ns_api.list_namespaced_custom_object.side_effect = denied_in_default;
     ns_keda = _keda_for(custom_api=ns_api, core_api=_core_api_for());
-    assert ns_keda.discover_capabilities().errors != [];
-    assert ns_keda.discover_capabilities(namespace="team-a").errors == [] , "a 403 cached for one namespace must not block a check in another";
+    assert ns_keda.discover_capabilities("default").errors != [];
+    assert ns_keda.discover_capabilities("team-a").errors == [] , "a 403 cached for one namespace must not block a check in another";
 
     ready_keda = _keda_for(custom_api=_custom_api_for(), core_api=_core_api_for());
-    ready_caps = ready_keda.discover_capabilities();
+    ready_caps = ready_keda.discover_capabilities("default");
     assert "ready" in ready_keda.format_capabilities(ready_caps).lower();
 
     not_ready_keda = _keda_for(
         custom_api=_custom_api_for(http_v1beta1=404, legacy_v1alpha1=404),
         core_api=_core_api_for()
     );
-    not_ready_caps = not_ready_keda.discover_capabilities();
+    not_ready_caps = not_ready_keda.discover_capabilities("default");
     assert "helm" in not_ready_keda.format_capabilities(not_ready_caps).lower();
 
     core_missing_keda = _keda_for(
         custom_api=_custom_api_for(core=404), core_api=_core_api_for()
     );
-    core_missing_caps = core_missing_keda.discover_capabilities();
+    core_missing_caps = core_missing_keda.discover_capabilities("default");
     assert core_missing_caps.http_addon_available == True;
     assert "not ready"
         in core_missing_keda.format_capabilities(core_missing_caps).lower() , (
@@ -1473,24 +1486,24 @@ test "discover_capabilities caches per (cluster, namespace, service-address, cli
     # Two instances with the same cluster host but a different
     # http_scaler_address must not share a cache entry.
     keda_a = _keda_for(custom_api=_custom_api_for(), core_api=_core_api_for());
-    caps_a = keda_a.discover_capabilities();
+    caps_a = keda_a.discover_capabilities("default");
     assert caps_a.errors == [];
     keda_b = KEDAAutoscaler(
         _custom_api=_custom_api_for(),
         _core_api=_core_api_for(scaler=404),
         http_scaler_address="custom-scaler.other-ns:9090"
     );
-    caps_b = keda_b.discover_capabilities();
+    caps_b = keda_b.discover_capabilities("default");
     assert any([("scaler" in e.lower()) for e in caps_b.errors]) , "a distinct http_scaler_address must not reuse instance A's cached result";
 
     # Two instances with the same cluster key and service addresses but a
     # different injected client must not share a cache entry either.
     keda_c = _keda_for(custom_api=_custom_api_for(), core_api=_core_api_for());
-    assert keda_c.discover_capabilities().errors == [];
+    assert keda_c.discover_capabilities("default").errors == [];
     keda_d = KEDAAutoscaler(
         _custom_api=_custom_api_for(core=403), _core_api=_core_api_for()
     );
-    caps_d = keda_d.discover_capabilities();
+    caps_d = keda_d.discover_capabilities("default");
     assert any(
         [("permission" in e.lower() or "rbac" in e.lower()) for e in caps_d.errors]
     ) , "a distinct (RBAC-restricted) client must not reuse instance C's cached result";
@@ -1502,7 +1515,7 @@ test "discover_capabilities caches per (cluster, namespace, service-address, cli
         _apps_api=unittest.mock.MagicMock(),
         http_scaler_address="keda-add-ons-http-external-scaler.keda.svc.cluster.local:9090",
         interceptor_service_address="keda-add-ons-http-interceptor-proxy.keda.svc.cluster.local:8080"
-    ).discover_capabilities();
+    ).discover_capabilities("default");
     lookups = [
         (c[1]["name"], c[1]["namespace"])
         for c in fqdn_core.read_namespaced_service.call_args_list
@@ -1518,16 +1531,13 @@ test "discover_capabilities caches per (cluster, namespace, service-address, cli
     preflight_api.list_namespaced_custom_object.side_effect = denied_in_default;
     preflight_keda = KEDAAutoscaler(_custom_api=preflight_api);
     assert preflight_keda.preflight("team-a") == [];
-    raised = False;
-    warnings: list[str] = [];
+    error_msg = "";
     try {
-        warnings = preflight_keda.preflight("default");
-    } except ApiException {
-        raised = True;
+        preflight_keda.preflight("default");
+    } except ValueError as e {
+        error_msg = str(e);
     }
-    assert not raised , "preflight must report a 403 as a warning, not an unhandled exception";
-    assert len(warnings) == 1 , f"a pass cached for one namespace must not skip the probe in another; got: {warnings}";
-    assert "'default'" in warnings[0] , "the 403 warning must name the namespace it was denied in";
+    assert "'default'" in error_msg , f"a 403 must raise an error naming its namespace, even after another namespace passed; got: {error_msg!r}";
 }
 
 
