@@ -1,28 +1,13 @@
-impl target_pkg_root -> str {
-    return package_root();
-}
-
 impl _target_root_real -> str {
     if _ROOT_REAL {
         return _ROOT_REAL[0];
     }
-    pkg = target_pkg_root();
+    pkg = package_root();
     if not pkg {
         return "\x00";
     }
     _ROOT_REAL.append(os.path.realpath(pkg) + os.sep);
     return _ROOT_REAL[0];
-}
-
-impl is_target_package_path(path: str) -> bool {
-    if not path {
-        return False;
-    }
-    try {
-        return os.path.realpath(path).startswith(_target_root_real());
-    } except (OSError, ValueError) {
-        return False;
-    }
 }
 
 impl target_package_rel(path: str) -> (str | None) {

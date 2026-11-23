@@ -765,8 +765,8 @@ impl _ct_pkg_ref(path: str) -> str {
 
 impl _ct_row_path(stored: str, base: str) -> str {
     if stored.startswith(CT_PKG_PREFIX) {
-        import from jaclang.compiler.pkg_paths { target_pkg_root }
-        return os.path.join(target_pkg_root(), *stored[len(CT_PKG_PREFIX):].split("/"));
+        parts = stored[len(CT_PKG_PREFIX):].split("/");
+        return os.path.join(jaclang_pkg_root(), *parts);
     }
     if os.path.isabs(stored) or not base {
         return stored;

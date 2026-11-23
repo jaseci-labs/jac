@@ -81,7 +81,6 @@ impl is_pub(nd: UniNode) -> bool {
 
 impl native_surface(native_mod: Module, stub_module: str) -> dict[str, NativeBinding] {
     out: dict[str, NativeBinding] = {};
-    path = native_mod.loc.mod_path;
     for stmt in ModuleFacts.iter_context_stmts(native_mod) {
         if not is_pub(stmt) {
             continue;
@@ -91,7 +90,6 @@ impl native_surface(native_mod: Module, stub_module: str) -> dict[str, NativeBin
             out[stmt.name_ref.sym_name] = NativeBinding(
                 stub_module=stub_module,
                 name=stmt.name_ref.sym_name,
-                native_path=path,
                 decl=stmt,
                 params=names,
                 variadic=variadic
@@ -101,7 +99,6 @@ impl native_surface(native_mod: Module, stub_module: str) -> dict[str, NativeBin
             out[stmt.name.value] = NativeBinding(
                 stub_module=stub_module,
                 name=stmt.name.value,
-                native_path=path,
                 decl=stmt,
                 params=ctor_params,
                 variadic=ctor_open,
@@ -363,13 +360,6 @@ impl NativeBindings.surface(
     }
     self.modules[stub_module] = found;
     return found;
-}
-
-impl NativeBindings.lookup(
-    prog: JacProgram, stub_module: str, name: str, base_dir: str
-) -> (NativeBinding | None) {
-    table = self.surface(prog, stub_module, base_dir);
-    return table.get(name) if table is not None else None;
 }
 
 impl native_bindings_of(prog: JacProgram) -> NativeBindings {

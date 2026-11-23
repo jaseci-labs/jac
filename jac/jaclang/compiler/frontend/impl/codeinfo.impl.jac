@@ -467,7 +467,7 @@ impl is_compiler_source_path(source_path: str) -> bool {
 
 impl kernel_unit_path(rel: str) -> str {
     import os;
-    return os.path.join(target_pkg_root(), rel.replace("/", os.sep));
+    return os.path.join(jaclang_pkg_root(), rel.replace("/", os.sep));
 }
 
 impl real_path(path: str) -> str {
@@ -545,7 +545,7 @@ impl native_unit_compile_active -> bool {
 
 impl native_stdlib_root -> (str | None) {
     import os;
-    pkg = target_pkg_root();
+    pkg = jaclang_pkg_root();
     if not pkg {
         return None;
     }
@@ -983,7 +983,7 @@ impl resolve_native_module(
 
     if clean.startswith('jaclang.') {
         _cand = os.path.join(
-            target_pkg_root(), clean.split('.', 1)[1].replace('.', os.sep) + '.jac'
+            jaclang_pkg_root(), clean.split('.', 1)[1].replace('.', os.sep) + '.jac'
         );
         if clean in SHARED_RUNTIME_MODULES and os.path.isfile(_cand) {
             return (path_name, _cand);
