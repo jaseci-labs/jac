@@ -7,6 +7,7 @@ request, never safe to retry). These tests run against real loopback
 sockets so the classification is exercised end to end.
 """
 
+import asyncio;
 import socket;
 import struct;
 import threading;
@@ -15,6 +16,7 @@ import from jaclang.server.serving.client {
     ClientRequestNotSent,
     ClientRequestSent,
     ClientReadTimeout,
+    arequest,
     request_sync,
     post_stream_aware_sync
 }
@@ -155,6 +157,15 @@ def _sse_one_event_then_reset(conn: any) {
     _sse_reset_gate.`wait(5.0);
     conn.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0));
     conn.close();
+}
+
+
+def _reply_and_hold(reply: bytes) -> any {
+    def handle(conn: any) {
+        conn.recv(65536);
+        conn.sendall(reply);
+    }
+    return handle;
 }
 
 
@@ -370,4 +381,43 @@ test "mid-stream connection loss raises from the consumer's iterator" {
         _sse_reset_gate.set();
         _stop_server(srv, held);
     }
+}
+
+
+test "bodiless responses end at the head" {
+    cases: list[tuple[str, str, bytes, int]] = [
+        (
+            "HEAD with a length",
+            "HEAD",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n",
+            200
+        ),
+        (
+            "304 with a length",
+            "GET",
+            b"HTTP/1.1 304 Not Modified\r\nContent-Length: 5\r\n\r\n",
+            304
+        ),
+        ("204 without framing", "GET", b"HTTP/1.1 204 No Content\r\n\r\n", 204)
+    ];
+    failures: list[str] = [];
+    for (name, method, reply, status) in cases {
+        (srv, held, port) = _start_server(_reply_and_hold(reply));
+        try {
+            resp: any = asyncio.run(
+                asyncio.wait_for(
+                    arequest(method, f"http://127.0.0.1:{port}/x", timeout=2.0),
+                    timeout=3.0
+                )
+            );
+            if resp.status_code != status or resp.body != b"" {
+                failures.append(f"{name}: {resp.status_code} {resp.body!r}");
+            }
+        } except asyncio.TimeoutError {
+            failures.append(f"{name}: client kept waiting for a body");
+        } finally {
+            _stop_server(srv, held);
+        }
+    }
+    assert not failures , "\n".join(failures);
 }
