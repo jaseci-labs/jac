@@ -165,6 +165,8 @@ jobs:
             size=$(psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "select pg_database_size(current_database())")
             free=$(df -Pk "$dir" | awk "NR == 2 { print \$4 * 1024 }")
             echo "database $size bytes, volume free $free bytes"
+            case "$size" in ""|*[!0-9]*) echo "Could not read the database size." >&2; exit 1 ;; esac
+            case "$free" in ""|*[!0-9]*) echo "Could not read the volume free space." >&2; exit 1 ;; esac
             if [ "$free" -lt $((size * 2)) ]; then
               echo "Not enough room on the database volume for a backup; free some or grow it." >&2
               exit 1
