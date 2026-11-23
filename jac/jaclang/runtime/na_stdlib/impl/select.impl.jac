@@ -1,5 +1,5 @@
 impl _check_fd(fd: int) {
-    if fd < 0 or fd >= _FD_SETSIZE {
+    if fd < 0 {
         raise ValueError("filedescriptor out of range in select()");
     }
 }

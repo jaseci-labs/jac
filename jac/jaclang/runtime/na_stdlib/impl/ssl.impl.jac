@@ -1,27 +1,114 @@
+import fcntl;
+import select;
+import time;
+impl _tls_wait(fd: int, want_read: bool, timeout: float) -> bool {
+    if want_read {
+        (readable, _writable, _exceptional) = select.select([fd], [], [], timeout);
+        return fd in readable;
+    }
+    (_readable, writable, _exceptional) = select.select([], [fd], [], timeout);
+    return fd in writable;
+}
+
+
 impl SSLSocket.fileno -> int {
     return self._sock.fileno();
 }
 
 impl SSLSocket.sendall(data: bytes) {
-    if ssl_write_all(self._ssl, data) < 0 {
-        raise SSLError("TLS write failed: " + last_error());
+    timeout = self._sock.gettimeout();
+    if timeout is None {
+        if ssl_write_all(self._ssl, data) < 0 {
+            raise SSLError("TLS write failed: " + last_error());
+        }
+        return;
+    }
+    deadline = time.monotonic() + timeout;
+    off = 0;
+    while off < len(data) {
+        chunk = data[off:];
+        while True {
+            written = ssl_write_once(self._ssl, chunk);
+            if written > 0 {
+                off += written;
+                break;
+            }
+            error = ssl_get_error(self._ssl, written);
+            if error == _SSL_ERROR_WANT_READ or error == _SSL_ERROR_WANT_WRITE {
+                remain = max(0.0, deadline - time.monotonic());
+                if not _tls_wait(
+                    self.fileno(), error == _SSL_ERROR_WANT_READ, remain
+                ) {
+                    raise TimeoutError("TLS write timed out");
+                }
+                continue;
+            }
+            raise SSLError("TLS write failed: " + last_error());
+        }
     }
 }
 
 impl SSLSocket.send(data: bytes) -> int {
-    n = ssl_write_all(self._ssl, data);
-    if n < 0 {
-        raise SSLError("TLS write failed: " + last_error());
+    timeout = self._sock.gettimeout();
+    if timeout is None {
+        n = ssl_write_once(self._ssl, data);
+        if n < 0 {
+            raise SSLError("TLS write failed: " + last_error());
+        }
+        return n;
     }
-    return n;
+    deadline = time.monotonic() + timeout;
+    while True {
+        n = ssl_write_once(self._ssl, data);
+        if n >= 0 {
+            return n;
+        }
+        error = ssl_get_error(self._ssl, n);
+        if error != _SSL_ERROR_WANT_READ and error != _SSL_ERROR_WANT_WRITE {
+            raise SSLError("TLS write failed: " + last_error());
+        }
+        remain = max(0.0, deadline - time.monotonic());
+        if not _tls_wait(self.fileno(), error == _SSL_ERROR_WANT_READ, remain) {
+            raise TimeoutError("TLS write timed out");
+        }
+    }
 }
 
 impl SSLSocket.recv(bufsize: int) -> bytes {
-    try {
+    timeout = self._sock.gettimeout();
+    if timeout is None {
         return ssl_read(self._ssl, bufsize);
-    } except OSError as e {
-        raise SSLError("TLS read error");
     }
+    deadline = time.monotonic() + timeout;
+    while True {
+        (got, error, data) = ssl_read_status(self._ssl, bufsize);
+        if got > 0 {
+            return data;
+        }
+        if error == _SSL_ERROR_ZERO_RETURN {
+            return b"";
+        }
+        if error == _SSL_ERROR_SSL {
+            raise SSLError("TLS read failed: " + last_error());
+        }
+        if error != _SSL_ERROR_WANT_READ and error != _SSL_ERROR_WANT_WRITE {
+            raise SSLError("TLS read failed: " + last_error());
+        }
+        remain = max(0.0, deadline - time.monotonic());
+        if not _tls_wait(self.fileno(), error == _SSL_ERROR_WANT_READ, remain) {
+            raise TimeoutError("TLS read timed out");
+        }
+    }
+}
+
+
+impl SSLSocket.settimeout(timeout: (float | None)) -> None {
+    self._sock.settimeout(timeout);
+}
+
+
+impl SSLSocket.gettimeout -> (float | None) {
+    return self._sock.gettimeout();
 }
 
 impl SSLSocket.close {
@@ -61,7 +148,67 @@ impl SSLContext.wrap_socket(sock: Socket, server_hostname: str) -> SSLSocket {
         sock.close();
         raise SSLError("SSL_new failed");
     }
-    if do_handshake(ssl) != 1 {
+    hs = 0;
+    handshake_timeout = sock.gettimeout();
+    if handshake_timeout is None {
+        hs = do_handshake(ssl);
+    } else {
+        flags = fcntl.fcntl(sock.fileno(), fcntl.F_GETFL);
+        fcntl.fcntl(sock.fileno(), fcntl.F_SETFL, flags | fcntl.O_NONBLOCK);
+        timed_out = False;
+        try {
+            try {
+                deadline = time.monotonic() + handshake_timeout;
+                while True {
+                    rc = do_handshake(ssl);
+                    if rc == 1 {
+                        hs = 1;
+                        break;
+                    }
+                    serr = ssl_get_error(ssl, rc);
+                    if serr != _SSL_ERROR_WANT_READ and serr != _SSL_ERROR_WANT_WRITE {
+                        break;
+                    }
+                    remain = deadline - time.monotonic();
+                    if remain <= 0.0 {
+                        timed_out = True;
+                        break;
+                    }
+                    if serr == _SSL_ERROR_WANT_READ {
+                        (readable, _writable, _exceptional) = select.select(
+                            [sock.fileno()], [], [], remain
+                        );
+                        if sock.fileno() not in readable {
+                            timed_out = True;
+                            break;
+                        }
+                    } else {
+                        (_readable, writable, _exceptional) = select.select(
+                            [], [sock.fileno()], [], remain
+                        );
+                        if sock.fileno() not in writable {
+                            timed_out = True;
+                            break;
+                        }
+                    }
+                }
+            } finally {
+                fcntl.fcntl(sock.fileno(), fcntl.F_SETFL, flags);
+            }
+        } except Exception {
+            ssl_close(ssl);
+            ctx_free(ctx);
+            sock.close();
+            raise;
+        }
+        if timed_out {
+            ssl_close(ssl);
+            ctx_free(ctx);
+            sock.close();
+            raise TimeoutError("TLS handshake timed out");
+        }
+    }
+    if hs != 1 {
         vr = verify_result(ssl);
         msg = "";
         if vr != 0 {

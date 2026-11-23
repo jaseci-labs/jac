@@ -26,11 +26,12 @@ def urllib_redirect_py -> dict[any, any] {
 }
 
 
-import from urllib.request { urlopen }
+import from urllib.request { urlopen, Request }
 
 def urlopen_status_na -> int {
     base = "http://127.0.0.1:" + os.getenv("JAC_URLLIB_TEST_PORT", "");
-    resp = urlopen(base + "/hello");
+    req = Request(url=base + "/hello", headers={"Connection": "keep-alive"});
+    resp = urlopen(req);
     return resp.status;
 }
 
@@ -50,4 +51,22 @@ def urlopen_redirect_body_length_na -> int {
     base = "http://127.0.0.1:" + os.getenv("JAC_URLLIB_TEST_PORT", "");
     resp = urlopen(base + "/redirect");
     return len(resp.read());
+}
+
+def urlopen_request_data_length_na -> int {
+    base = "http://127.0.0.1:" + os.getenv("JAC_URLLIB_TEST_PORT", "");
+    req = Request(url=base + "/echo", method="POST");
+    resp = urlopen(req, b"payload");
+    return len(resp.read());
+}
+
+def request_line_injection_rejected_na -> int {
+    base = "http://127.0.0.1:" + os.getenv("JAC_URLLIB_TEST_PORT", "");
+    req = Request(url=base + "/hello", method="GET\r\nX-Test: 1");
+    try {
+        urlopen(req);
+    } except ValueError {
+        return 1;
+    }
+    return 0;
 }
