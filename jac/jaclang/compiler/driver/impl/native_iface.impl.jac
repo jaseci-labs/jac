@@ -11,7 +11,7 @@ impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
         return ref;
     }
     if root_name == "jaclang" {
-        return os.path.join(os.path.dirname(target_pkg_root()), ref);
+        return os.path.join(os.path.dirname(jaclang_pkg_root()), ref);
     }
     if anchor {
         anchor_root = native_unit_root(os.path.dirname(os.path.realpath(anchor)));

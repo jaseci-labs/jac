@@ -35,408 +35,73 @@ obj IntrinsicRegistry {
 
     def get(name: str) -> IntrinsicEntry | None;
     def is_intrinsic(name: str) -> bool;
-    def names -> list[str];
     def entries -> list[IntrinsicEntry];
 }
 
+glob _INTRINSIC_WIDTHS: list[str] = ["i8", "i16", "i32", "i64"],
+     _ATOMIC_RMW_OPS: list[str] = ["add", "sub", "and", "or", "xor", "swap"];
+
+glob _INTRINSIC_ROWS: list[tuple[str, list[str], str, str, (str | None)]] = [
+         ("__rc_debug_enable", [], "none", "rc_runtime", None),
+         ("__rc_debug_disable", [], "none", "rc_runtime", None),
+         ("__rc_gc_disable", [], "none", "rc_runtime", None),
+         ("__rc_gc_enable", [], "none", "rc_runtime", None),
+         ("__rc_collect_cycles", [], "none", "rc_runtime", "cycles"),
+         ("__float_bits", ["f64"], "i64", "float_bits", None),
+         ("__bits_float", ["i64"], "f64", "bits_float", None),
+         *[
+             row
+             for w in _INTRINSIC_WIDTHS
+             for row in [
+                 (f"__mem_load_{w}", ["i64"], w, "mem_load", None),
+                 (f"__mem_store_{w}", ["i64", w], "none", "mem_store", None)
+             ]
+         ],
+         ("__bytes_data", ["ref"], "i64", "buffer_data", None),
+         ("__bytearray_data", ["ref"], "i64", "buffer_data", None),
+         ("__str_data", ["ref"], "i64", "str_data", None),
+         ("__ref_addr", ["ref"], "i64", "ref_addr", None),
+         ("__list_data_ptr", ["list"], "i64", "list_data", None),
+         ("__atomic_xchg_i64", ["i64", "i64"], "i64", "atomic_xchg", None),
+         *[
+             row
+             for w in _INTRINSIC_WIDTHS
+             for row in [
+                 (f"__atomic_load_{w}", ["i64", "i32"], w, "atomic_load", None),
+                 (
+                     f"__atomic_store_{w}",
+                     ["i64", w, "i32"],
+                     "none",
+                     "atomic_store",
+                     None
+                 ),
+                 (f"__atomic_cas_{w}", ["i64", w, w, "i32"], w, "atomic_cas", None),
+                 *[
+                     (f"__atomic_{op}_{w}", ["i64", w, "i32"], w, "atomic_rmw", None)
+                     for op in _ATOMIC_RMW_OPS
+                 ]
+             ]
+         ],
+         ("__atomic_fence", ["i32"], "none", "atomic_fence", None),
+         ("__thread_local_block", ["str", "i64"], "i64", "c_thread_local", None),
+         ("__thread_local", ["str"], "i64", "c_thread_local", None),
+         ("__c_thread_local", ["str"], "i64", "c_thread_local", None),
+         ("__mem_call_dtor", ["i64", "i64"], "none", "call_dtor", None),
+         ("__jac_region_tls_get", [], "i64", "region_tls", None),
+         ("__jac_region_tls_set", ["i64"], "none", "region_tls", None),
+         ("__jac_region_gbl_get", [], "i64", "region_tls", None),
+         ("__alloca", ["i64"], "i64", "alloca", None)
+     ];
+
 glob INTRINSIC_REGISTRY = IntrinsicRegistry(
          _entries={
-             "__rc_debug_enable": IntrinsicEntry(
-                 name="__rc_debug_enable",
-                 param_specs=[],
-                 result_spec="none",
-                 dispatch=IntrinsicDispatch.RC_RUNTIME
-             ),
-             "__rc_debug_disable": IntrinsicEntry(
-                 name="__rc_debug_disable",
-                 param_specs=[],
-                 result_spec="none",
-                 dispatch=IntrinsicDispatch.RC_RUNTIME
-             ),
-             "__rc_gc_disable": IntrinsicEntry(
-                 name="__rc_gc_disable",
-                 param_specs=[],
-                 result_spec="none",
-                 dispatch=IntrinsicDispatch.RC_RUNTIME
-             ),
-             "__rc_gc_enable": IntrinsicEntry(
-                 name="__rc_gc_enable",
-                 param_specs=[],
-                 result_spec="none",
-                 dispatch=IntrinsicDispatch.RC_RUNTIME
-             ),
-             "__rc_collect_cycles": IntrinsicEntry(
-                 name="__rc_collect_cycles",
-                 param_specs=[],
-                 result_spec="none",
-                 dispatch=IntrinsicDispatch.RC_RUNTIME,
-                 gc_mode_gate="cycles"
-             ),
-             "__float_bits": IntrinsicEntry(
-                 name="__float_bits",
-                 param_specs=["f64"],
-                 result_spec="i64",
-                 dispatch=IntrinsicDispatch.FLOAT_BITS
-             ),
-             "__bits_float": IntrinsicEntry(
-                 name="__bits_float",
-                 param_specs=["i64"],
-                 result_spec="f64",
-                 dispatch=IntrinsicDispatch.BITS_FLOAT
-             ),
-             "__mem_load_i8": IntrinsicEntry(
-                 name="__mem_load_i8",
-                 param_specs=["i64"],
-                 result_spec="i8",
-                 dispatch=IntrinsicDispatch.MEM_LOAD
-             ),
-             "__mem_store_i8": IntrinsicEntry(
-                 name="__mem_store_i8",
-                 param_specs=["i64", "i8"],
-                 result_spec="none",
-                 dispatch=IntrinsicDispatch.MEM_STORE
-             ),
-             "__mem_load_i16": IntrinsicEntry(
-                 name="__mem_load_i16",
-                 param_specs=["i64"],
-                 result_spec="i16",
-                 dispatch=IntrinsicDispatch.MEM_LOAD
-             ),
-             "__mem_store_i16": IntrinsicEntry(
-                 name="__mem_store_i16",
-                 param_specs=["i64", "i16"],
-                 result_spec="none",
-                 dispatch=IntrinsicDispatch.MEM_STORE
-             ),
-             "__mem_load_i32": IntrinsicEntry(
-                 name="__mem_load_i32",
-                 param_specs=["i64"],
-                 result_spec="i32",
-                 dispatch=IntrinsicDispatch.MEM_LOAD
-             ),
-             "__mem_store_i32": IntrinsicEntry(
-                 name="__mem_store_i32",
-                 param_specs=["i64", "i32"],
-                 result_spec="none",
-                 dispatch=IntrinsicDispatch.MEM_STORE
-             ),
-             "__mem_load_i64": IntrinsicEntry(
-                 name="__mem_load_i64",
-                 param_specs=["i64"],
-                 result_spec="i64",
-                 dispatch=IntrinsicDispatch.MEM_LOAD
-             ),
-             "__mem_store_i64": IntrinsicEntry(
-                 name="__mem_store_i64",
-                 param_specs=["i64", "i64"],
-                 result_spec="none",
-                 dispatch=IntrinsicDispatch.MEM_STORE
-             ),
-             "__bytes_data": IntrinsicEntry(
-                 name="__bytes_data",
-                 param_specs=["ref"],
-                 result_spec="i64",
-                 dispatch=IntrinsicDispatch.BUFFER_DATA
-             ),
-             "__bytearray_data": IntrinsicEntry(
-                 name="__bytearray_data",
-                 param_specs=["ref"],
-                 result_spec="i64",
-                 dispatch=IntrinsicDispatch.BUFFER_DATA
-             ),
-             "__str_data": IntrinsicEntry(
-                 name="__str_data",
-                 param_specs=["ref"],
-                 result_spec="i64",
-                 dispatch=IntrinsicDispatch.STR_DATA
-             ),
-             "__ref_addr": IntrinsicEntry(
-                 name="__ref_addr",
-                 param_specs=["ref"],
-                 result_spec="i64",
-                 dispatch=IntrinsicDispatch.REF_ADDR
-             ),
-             "__list_data_ptr": IntrinsicEntry(
-                 name="__list_data_ptr",
-                 param_specs=["list"],
-                 result_spec="i64",
-                 dispatch=IntrinsicDispatch.LIST_DATA
-             ),
-             "__atomic_xchg_i64": IntrinsicEntry(
-                 name="__atomic_xchg_i64",
-                 param_specs=["i64", "i64"],
-                 result_spec="i64",
-                 dispatch=IntrinsicDispatch.ATOMIC_XCHG
-             ),
-             "__atomic_load_i8": IntrinsicEntry(
-                 name="__atomic_load_i8",
-                 param_specs=["i64", "i32"],
-                 result_spec="i8",
-                 dispatch=IntrinsicDispatch.ATOMIC_LOAD
-             ),
-             "__atomic_store_i8": IntrinsicEntry(
-                 name="__atomic_store_i8",
-                 param_specs=["i64", "i8", "i32"],
-                 result_spec="none",
-                 dispatch=IntrinsicDispatch.ATOMIC_STORE
-             ),
-             "__atomic_cas_i8": IntrinsicEntry(
-                 name="__atomic_cas_i8",
-                 param_specs=["i64", "i8", "i8", "i32"],
-                 result_spec="i8",
-                 dispatch=IntrinsicDispatch.ATOMIC_CAS
-             ),
-             "__atomic_add_i8": IntrinsicEntry(
-                 name="__atomic_add_i8",
-                 param_specs=["i64", "i8", "i32"],
-                 result_spec="i8",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_sub_i8": IntrinsicEntry(
-                 name="__atomic_sub_i8",
-                 param_specs=["i64", "i8", "i32"],
-                 result_spec="i8",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_and_i8": IntrinsicEntry(
-                 name="__atomic_and_i8",
-                 param_specs=["i64", "i8", "i32"],
-                 result_spec="i8",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_or_i8": IntrinsicEntry(
-                 name="__atomic_or_i8",
-                 param_specs=["i64", "i8", "i32"],
-                 result_spec="i8",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_xor_i8": IntrinsicEntry(
-                 name="__atomic_xor_i8",
-                 param_specs=["i64", "i8", "i32"],
-                 result_spec="i8",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_swap_i8": IntrinsicEntry(
-                 name="__atomic_swap_i8",
-                 param_specs=["i64", "i8", "i32"],
-                 result_spec="i8",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_load_i16": IntrinsicEntry(
-                 name="__atomic_load_i16",
-                 param_specs=["i64", "i32"],
-                 result_spec="i16",
-                 dispatch=IntrinsicDispatch.ATOMIC_LOAD
-             ),
-             "__atomic_store_i16": IntrinsicEntry(
-                 name="__atomic_store_i16",
-                 param_specs=["i64", "i16", "i32"],
-                 result_spec="none",
-                 dispatch=IntrinsicDispatch.ATOMIC_STORE
-             ),
-             "__atomic_cas_i16": IntrinsicEntry(
-                 name="__atomic_cas_i16",
-                 param_specs=["i64", "i16", "i16", "i32"],
-                 result_spec="i16",
-                 dispatch=IntrinsicDispatch.ATOMIC_CAS
-             ),
-             "__atomic_add_i16": IntrinsicEntry(
-                 name="__atomic_add_i16",
-                 param_specs=["i64", "i16", "i32"],
-                 result_spec="i16",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_sub_i16": IntrinsicEntry(
-                 name="__atomic_sub_i16",
-                 param_specs=["i64", "i16", "i32"],
-                 result_spec="i16",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_and_i16": IntrinsicEntry(
-                 name="__atomic_and_i16",
-                 param_specs=["i64", "i16", "i32"],
-                 result_spec="i16",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_or_i16": IntrinsicEntry(
-                 name="__atomic_or_i16",
-                 param_specs=["i64", "i16", "i32"],
-                 result_spec="i16",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_xor_i16": IntrinsicEntry(
-                 name="__atomic_xor_i16",
-                 param_specs=["i64", "i16", "i32"],
-                 result_spec="i16",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_swap_i16": IntrinsicEntry(
-                 name="__atomic_swap_i16",
-                 param_specs=["i64", "i16", "i32"],
-                 result_spec="i16",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_load_i32": IntrinsicEntry(
-                 name="__atomic_load_i32",
-                 param_specs=["i64", "i32"],
-                 result_spec="i32",
-                 dispatch=IntrinsicDispatch.ATOMIC_LOAD
-             ),
-             "__atomic_store_i32": IntrinsicEntry(
-                 name="__atomic_store_i32",
-                 param_specs=["i64", "i32", "i32"],
-                 result_spec="none",
-                 dispatch=IntrinsicDispatch.ATOMIC_STORE
-             ),
-             "__atomic_cas_i32": IntrinsicEntry(
-                 name="__atomic_cas_i32",
-                 param_specs=["i64", "i32", "i32", "i32"],
-                 result_spec="i32",
-                 dispatch=IntrinsicDispatch.ATOMIC_CAS
-             ),
-             "__atomic_add_i32": IntrinsicEntry(
-                 name="__atomic_add_i32",
-                 param_specs=["i64", "i32", "i32"],
-                 result_spec="i32",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_sub_i32": IntrinsicEntry(
-                 name="__atomic_sub_i32",
-                 param_specs=["i64", "i32", "i32"],
-                 result_spec="i32",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_and_i32": IntrinsicEntry(
-                 name="__atomic_and_i32",
-                 param_specs=["i64", "i32", "i32"],
-                 result_spec="i32",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_or_i32": IntrinsicEntry(
-                 name="__atomic_or_i32",
-                 param_specs=["i64", "i32", "i32"],
-                 result_spec="i32",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_xor_i32": IntrinsicEntry(
-                 name="__atomic_xor_i32",
-                 param_specs=["i64", "i32", "i32"],
-                 result_spec="i32",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_swap_i32": IntrinsicEntry(
-                 name="__atomic_swap_i32",
-                 param_specs=["i64", "i32", "i32"],
-                 result_spec="i32",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_load_i64": IntrinsicEntry(
-                 name="__atomic_load_i64",
-                 param_specs=["i64", "i32"],
-                 result_spec="i64",
-                 dispatch=IntrinsicDispatch.ATOMIC_LOAD
-             ),
-             "__atomic_store_i64": IntrinsicEntry(
-                 name="__atomic_store_i64",
-                 param_specs=["i64", "i64", "i32"],
-                 result_spec="none",
-                 dispatch=IntrinsicDispatch.ATOMIC_STORE
-             ),
-             "__atomic_cas_i64": IntrinsicEntry(
-                 name="__atomic_cas_i64",
-                 param_specs=["i64", "i64", "i64", "i32"],
-                 result_spec="i64",
-                 dispatch=IntrinsicDispatch.ATOMIC_CAS
-             ),
-             "__atomic_add_i64": IntrinsicEntry(
-                 name="__atomic_add_i64",
-                 param_specs=["i64", "i64", "i32"],
-                 result_spec="i64",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_sub_i64": IntrinsicEntry(
-                 name="__atomic_sub_i64",
-                 param_specs=["i64", "i64", "i32"],
-                 result_spec="i64",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_and_i64": IntrinsicEntry(
-                 name="__atomic_and_i64",
-                 param_specs=["i64", "i64", "i32"],
-                 result_spec="i64",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_or_i64": IntrinsicEntry(
-                 name="__atomic_or_i64",
-                 param_specs=["i64", "i64", "i32"],
-                 result_spec="i64",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_xor_i64": IntrinsicEntry(
-                 name="__atomic_xor_i64",
-                 param_specs=["i64", "i64", "i32"],
-                 result_spec="i64",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_swap_i64": IntrinsicEntry(
-                 name="__atomic_swap_i64",
-                 param_specs=["i64", "i64", "i32"],
-                 result_spec="i64",
-                 dispatch=IntrinsicDispatch.ATOMIC_RMW
-             ),
-             "__atomic_fence": IntrinsicEntry(
-                 name="__atomic_fence",
-                 param_specs=["i32"],
-                 result_spec="none",
-                 dispatch=IntrinsicDispatch.ATOMIC_FENCE
-             ),
-             "__thread_local_block": IntrinsicEntry(
-                 name="__thread_local_block",
-                 param_specs=["str", "i64"],
-                 result_spec="i64",
-                 dispatch=IntrinsicDispatch.C_THREAD_LOCAL
-             ),
-             "__thread_local": IntrinsicEntry(
-                 name="__thread_local",
-                 param_specs=["str"],
-                 result_spec="i64",
-                 dispatch=IntrinsicDispatch.C_THREAD_LOCAL
-             ),
-             "__c_thread_local": IntrinsicEntry(
-                 name="__c_thread_local",
-                 param_specs=["str"],
-                 result_spec="i64",
-                 dispatch=IntrinsicDispatch.C_THREAD_LOCAL
-             ),
-             "__mem_call_dtor": IntrinsicEntry(
-                 name="__mem_call_dtor",
-                 param_specs=["i64", "i64"],
-                 result_spec="none",
-                 dispatch=IntrinsicDispatch.CALL_DTOR
-             ),
-             "__jac_region_tls_get": IntrinsicEntry(
-                 name="__jac_region_tls_get",
-                 param_specs=[],
-                 result_spec="i64",
-                 dispatch=IntrinsicDispatch.REGION_TLS
-             ),
-             "__jac_region_tls_set": IntrinsicEntry(
-                 name="__jac_region_tls_set",
-                 param_specs=["i64"],
-                 result_spec="none",
-                 dispatch=IntrinsicDispatch.REGION_TLS
-             ),
-             "__jac_region_gbl_get": IntrinsicEntry(
-                 name="__jac_region_gbl_get",
-                 param_specs=[],
-                 result_spec="i64",
-                 dispatch=IntrinsicDispatch.REGION_TLS
-             ),
-             "__alloca": IntrinsicEntry(
-                 name="__alloca",
-                 param_specs=["i64"],
-                 result_spec="i64",
-                 dispatch=IntrinsicDispatch.ALLOCA
+             name: IntrinsicEntry(
+                 name=name,
+                 param_specs=params,
+                 result_spec=result,
+                 dispatch=IntrinsicDispatch(dispatch),
+                 gc_mode_gate=gate
              )
+             for (name, params, result, dispatch, gate) in _INTRINSIC_ROWS
          }
      );

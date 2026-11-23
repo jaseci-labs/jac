@@ -56,8 +56,6 @@ def c_lent_elem(
     param_type: (TypeBase | None), operand_type: (TypeBase | None)
 ) -> (TypeBase | None);
 
-def c_spec_same(a: any, b: any) -> bool;
-
 def c_abi_callee(call: (UniNode | None)) -> (Ability | None);
 
 def c_lent_arg_elem(arg: (UniNode | None)) -> (TypeBase | None);

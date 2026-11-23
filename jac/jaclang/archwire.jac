@@ -5701,6 +5701,7 @@ graph import compiler {
             is_compiler_source_path,
             is_native_by_location
         },
+        driver.jir._ct_row_path { jaclang_pkg_root },
         driver.native_iface {
             NATIVE_ABI_VERSION,
             NativeEnumLayout,
@@ -5709,6 +5710,7 @@ graph import compiler {
             NativeModuleLayout,
             NativeStructLayout,
             NativeTupleLayout,
+            jaclang_pkg_root,
             native_unit_identity,
             native_unit_root
         },
@@ -6621,7 +6623,7 @@ graph import compiler {
             active_host
         },
         passes.package_boundary_pass { ProjectFacts, active_host },
-        pkg_paths.target_pkg_root { package_root },
+        pkg_paths._target_root_real { package_root },
         types.type_evaluator.TypeEvaluator._untyped_external_is_error { active_host },
         types.type_evaluator.TypeEvaluator.get_type_of_module { active_host },
     ]
@@ -8805,11 +8807,9 @@ graph import compiler {
         driver.jir._ct_pkg_ref | placement.placement_facts._toolchain_rel {
             target_package_rel
         },
-        driver.native_iface | frontend.codeinfo { target_pkg_root },
         driver.program.JacProgram.declared_codespace { package_host_edge },
     ]
     pkg_paths --> [
-        driver.jir._ct_row_path { target_pkg_root },
         driver.program.JacProgram.infers_native_codespace { package_host_edge },
         frontend.codeinfo._inferred_native_path { scope_allows_inferred_path },
         frontend.codeinfo.native_arch_scope { binds_bare_arch_names },
