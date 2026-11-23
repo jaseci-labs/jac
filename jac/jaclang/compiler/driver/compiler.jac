@@ -92,8 +92,9 @@ obj JacCompiler(SessionHooks) {
         full_target: str
     ) -> (tuple[str, str, str, str] | None);
 
-    def _get_precompiled_jir_bytecode(full_target: str) -> (tuple[bytes, bytes] | None);
-
+    def _get_precompiled_jir_bytecode(
+        full_target: str
+    ) -> (tuple[bytes, bytes] | None);
     def _sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None);
     def _precompiled_jir_data(full_target: str) -> (tuple[bytes, str] | None);
     def _restore_native_clibs(

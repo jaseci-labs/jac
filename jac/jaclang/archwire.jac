@@ -4708,10 +4708,10 @@ graph import compiler {
     type backends.native.llvm.binding ++> driver.compiler.JacCompiler._load_native_from_cache
         | frontend.codeinfo { ExecutionEngine }
     type backends.native.llvm.ir ++> frontend.codeinfo { Module as IRModule }
-    backends.native.lowering ++> driver.nativecache.NativeBuildSession.unbound_symbols {
-        DEMOTED_SUFFIX
-    }
-    backends.native.lowering ++> tests.test_prim_equivalence { native_lowering_issues }
+    backends.native.lowering ++> [
+        driver.nativecache.NativeBuildSession.unbound_symbols { DEMOTED_SUFFIX },
+        tests.test_prim_equivalence { native_lowering_issues },
+    ]
     type backends.native.lowering ++> frontend.codeinfo { NativeFallbacks }
     backends.native.na_compile_pass ++> [
         driver.nativecache.NativeBuildSession._optimize_in_parallel {
@@ -5875,11 +5875,11 @@ graph import compiler {
         backends.native.link_glue | backends.native.link_plan { InteropBinding },
         backends.native.na_compile_pass
             | backends.py.codegen_shim
+            | driver.compiler
             | driver.nativecache { CodeGenTarget },
         backends.native.na_ir_gen_pass { NativeModuleLayout },
         driver.boundary_classify { InteropManifest },
         driver.client_graph { ClientArtifact, ClientManifest },
-        driver.compiler { CodeGenTarget },
         driver.progstate { ClientArtifact, CodeGenTarget },
     ]
     frontend.const_fold ++> [
@@ -6560,6 +6560,7 @@ graph import compiler {
             | driver.module_analysis
             | driver.module_compile
             | driver.pipeline
+            | driver.program.JacProgram.execution_hubs
             | driver.progstate.DiagLedger._owned
             | driver.session_compile
             | driver.unit_products.dependency_span_rows
@@ -6577,14 +6578,14 @@ graph import compiler {
         backends.native.na_ir_gen_pass.NaIRGenPass._seam_warnings_on
             | driver.compilation_context.compilation_scope
             | driver.ifacecache.IfaceRegistry.analysis_profile
-            | driver.program.JacProgram.execution_hubs
+            | driver.program.JacProgram.jac_file_formatter
             | driver.progstate.ModuleHub.is_fresh
             | passes.placement_pass.PlacementPass._run_undecided
             | placement.placement_solver._keep_native_scan
             | tools.jac_auto_lint_pass.JacAutoLintPass.__post_init__
             | types.type_evaluator.TypeEvaluator._client_npm_base { active_host },
         driver.compilation_context.context_app
-            | driver.program.JacProgram.jac_file_formatter
+            | driver.program.JacProgram.jac_file_linter
             | driver.progstate.ModuleHub.stamp
             | passes.placement_pass.settle_native_module
             | placement.placement_solver._native_dep_scan
@@ -6593,30 +6594,26 @@ graph import compiler {
             active_host
         },
         driver.pass_driver { CheckSettings, active_host },
-        driver.program.JacProgram.jac_file_linter
+        driver.program.JacProgram.jac_str_formatter
             | placement.placement_solver._native_scan_digest
             | tools.jac_auto_lint_pass.JacAutoLintPass._is_sibling_annex
             | types.type_evaluator.TypeEvaluator._jac_virtual_sibling_dts {
             active_host
         },
-        driver.program.JacProgram.jac_str_formatter
+        driver.program.JacProgram.note_stub_tree_served
             | placement.placement_solver._read_native_scan
             | types.type_evaluator.TypeEvaluator._load_ts_declarations { active_host },
-        driver.program.JacProgram.note_stub_tree_served
+        driver.program.JacProgram.parse_source
             | placement.placement_solver.native_placement_candidate
             | types.type_evaluator.TypeEvaluator._resolve_client_npm_module {
             active_host
         },
-        driver.program.JacProgram.parse_source
+        driver.program.JacProgram.stamp_access_check_facts
             | types.type_evaluator.TypeEvaluator._resolve_submodule_attr {
             active_host
         },
-        driver.program.JacProgram.stamp_access_check_facts
-            | types.type_evaluator.TypeEvaluator._ts_decl_path { active_host },
         driver.program.JacProgram.stamp_app_facts
-            | types.type_evaluator.TypeEvaluator._untyped_external_is_error {
-            active_host
-        },
+            | types.type_evaluator.TypeEvaluator._ts_decl_path { active_host },
         driver.wiring {
             HOST_FACT_GIT_IGNORED,
             HOST_FACT_SEP,
@@ -6625,6 +6622,7 @@ graph import compiler {
         },
         passes.package_boundary_pass { ProjectFacts, active_host },
         pkg_paths.target_pkg_root { package_root },
+        types.type_evaluator.TypeEvaluator._untyped_external_is_error { active_host },
         types.type_evaluator.TypeEvaluator.get_type_of_module { active_host },
     ]
     frontend.host --> [

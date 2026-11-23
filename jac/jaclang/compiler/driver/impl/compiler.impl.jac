@@ -323,9 +323,7 @@ impl JacCompiler._load_native_from_cache(
     if engine is None {
         import from jaclang.compiler.backends.native.link_plan { jit_engine_for_cached }
         engine = jit_engine_for_cached(
-            target_program,
-            full_target,
-            target_program.options or CompileOptions()
+            target_program, full_target, target_program.options or CompileOptions()
         );
     }
     if engine is None {
