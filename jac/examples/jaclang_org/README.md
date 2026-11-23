@@ -468,10 +468,10 @@ registration belong to `@jac/wasm_host`.
 
 Production client bundles include `/static/boundaries.json`. This audit records
 qualified endpoint identities, placements, callers, value shapes, native ownership
-contracts, host requirements, and effect assumptions. The compiler retains these
+contracts, host requirements, and endpoint effects. The compiler retains these
 records in cached client artifacts so they survive release of its syntax trees.
-Unknown effects disable endpoint caching; explicit effect declarations are
-reported as assumptions, not inferred guarantees.
+Effects are inferred from the types of what each endpoint changes; an endpoint
+whose effect cannot be decided is not cached.
 
 The game's `[memory]` enforcement remains declared in `jac.toml`. Entity pools
 are index arenas inside an owned `Game`; update passes borrow it mutably, and

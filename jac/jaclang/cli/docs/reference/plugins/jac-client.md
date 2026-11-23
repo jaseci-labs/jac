@@ -2283,7 +2283,7 @@ The client runtime automatically caches responses from reader endpoints and inva
 
 **How it works:**
 
-1. The compiler classifies each walker/function endpoint as a **reader** (no side effects) or **writer** (modifies state)
+1. The compiler classifies each walker/function endpoint as a **reader** or a **writer** from the types it already checked: an endpoint writes when it connects, disconnects, creates or destroys a node or edge, changes a value stored on one (`n.x = v`, `n.meta[k] = v`, `n.tags.append(v)`), or calls or spawns code that does. Changes to local values, `self` on a walker, and calls to built-ins are reads. A walker that uses `visit` and an endpoint that uses `spawn` count as writers, because they run abilities on the nodes they reach.
 2. Reader responses are stored in an LRU cache (500 entries, 60-second TTL)
 3. Concurrent identical requests are deduplicated (only one network call)
 4. When a writer endpoint is called, all cached reader responses are automatically invalidated

@@ -430,7 +430,6 @@ obj CodeGenTarget {
         _clib_paths: list[str] = [],
         _clib_symbol_lib: dict[(str, str)] = {},
         _exported_symbols: list[str] = [],
-        callable_effects: dict[str, dict[str, any]] = {},
         doc_comments: (NodeComments | None) = None;
 
     has doc_ir: Doc { getter; setter(value: Doc); }

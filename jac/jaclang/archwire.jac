@@ -5266,7 +5266,6 @@ graph import compiler {
             | passes.ast_validation_pass
             | passes.boundary_analysis_pass
             | passes.context
-            | passes.endpoint_effect_pass
             | passes.graph_lowering_pass
             | passes.jsx_intrinsic_guard_pass
             | passes.layout_pass
@@ -5495,15 +5494,13 @@ graph import compiler {
             ClientManifest,
             InteropManifest
         },
-        backends.es.esast_gen_pass.EsastGenPass._build_spawn_runtime_call
-            | passes.endpoint_effect_pass.EndpointEffectPass.enter_ability {
+        backends.es.esast_gen_pass.EsastGenPass._build_spawn_runtime_call {
             endpoint_key
         },
         backends.es.esast_gen_pass.EsastGenPass._generate_na_import_binding {
             native_wasm_stem
         },
-        backends.es.esast_gen_pass.EsastGenPass._try_lower_server_rpc_call
-            | passes.endpoint_effect_pass.EndpointEffectPass.enter_archetype {
+        backends.es.esast_gen_pass.EsastGenPass._try_lower_server_rpc_call {
             endpoint_key
         },
         backends.es.esast_gen_pass.EsastGenPass.prepare { ClientManifest },
@@ -5692,7 +5689,8 @@ graph import compiler {
         driver.compiler.JacCompiler._wants_native_engine
             | driver.program.JacProgram.toolchain_dependency
             | driver.selfhost.SelfHostCache.owns
-            | passes.endpoint_effect_pass.EndpointEffectPass.record_callables
+            | passes.boundary_analysis_pass.BoundaryAnalysisPass.finish
+            | passes.graph_effects.GraphEffectScan._call_writes
             | passes.package_boundary_pass.PackageBoundaryPass.run_walk {
             is_compiler_source_path
         },
@@ -5753,9 +5751,7 @@ graph import compiler {
         passes.capability_check_pass { NATIVE_SUPPORTED_STDLIB, is_native_by_location },
         passes.capability_check_pass.classify_native_import
             | placement.placement._erased_only_import { native_erased_import_names },
-        passes.endpoint_effect_pass.EndpointEffectPass._classify {
-            endpoint_descriptor
-        },
+        passes.graph_effects.endpoint_effects { endpoint_descriptor, endpoint_key },
         passes.layout_pass { real_path },
         passes.layout_pass._archetype_native_name { native_arch_name },
         passes.layout_pass.interface_class_native_name { native_arch_name },
@@ -5958,6 +5954,7 @@ graph import compiler {
             | driver.wiring
             | expr_keys
             | passes.cfg_build_pass.CFGBuildPass.exit_ctrl_stmt
+            | passes.graph_effects
             | passes.graph_lowering_pass
             | passes.mtir_gen_pass
             | passes.ownership_check_pass.OwnershipCheckPass._emit_flow_for_diagnostics
@@ -6032,7 +6029,6 @@ graph import compiler {
             ExprCtx,
             Tokens as Tok
         },
-        passes.endpoint_effect_pass { SymbolType, Tokens as Tok },
         passes.layout_pass | types.ct_eval { OwnershipKind, Tokens as Tok },
         passes.osp_analysis { CodeContext, Tokens as Tok },
         passes.ownership_check_pass {
@@ -6779,7 +6775,7 @@ graph import compiler {
             | passes.capability_check_pass
             | passes.cfg_build_pass
             | passes.comptime_resolve_pass
-            | passes.endpoint_effect_pass
+            | passes.graph_effects
             | passes.osp_analysis
             | passes.type_checker_pass
             | tools.cfg_dot
@@ -7371,32 +7367,34 @@ graph import compiler {
             Test,
             UniNode
         },
-        passes.endpoint_effect_pass {
+        passes.graph_effects {
             Ability,
             Archetype,
             Assignment,
             AstSymbolNode,
             AtomTrailer,
             BinaryExpr,
-            BoolExpr,
             ConnectOp,
             DeleteStmt,
+            DictCompr,
+            DictVal,
             DisconnectOp,
-            EventSignature,
             Expr,
+            FString,
             FuncCall,
             ImplDef,
-            KWPair,
+            ListCompr,
             ListVal,
+            Literal,
             Module,
             MultiString,
             Name,
-            String,
-            Symbol,
+            SetVal,
             Token,
+            TupleVal,
+            UnaryExpr,
             UniNode,
-            UniScopeNode,
-            ability_of_symbol
+            VisitStmt
         },
         passes.import_wiring_pass {
             Ability,
@@ -8393,11 +8391,9 @@ graph import compiler {
             | tools.jac_auto_lint_pass { unparse_node },
         boundary_rules.signature_refusals { unparse_node },
     ]
-    frontend.unparse --> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._emit_unlowerable_type
-            | passes.endpoint_effect_pass.EndpointEffectPass._apply { unparse_node },
-        passes.endpoint_effect_pass.EndpointEffectPass._scan { unparse_node },
-    ]
+    frontend.unparse --> backends.native.na_ir_gen_pass.NaIRGenPass._emit_unlowerable_type {
+        unparse_node
+    }
     intrinsic_registry ++> [
         backends.native.na_ir_gen_pass { IntrinsicEntry },
         backends.native.na_ir_gen_pass.NaIRGenPass._codegen_call
@@ -8415,7 +8411,6 @@ graph import compiler {
     ]
     type intrinsic_registry ++> symbol_utils { IntrinsicRegistry }
     native_bindings ++> [
-        passes.endpoint_effect_pass.callable_key { is_owning_scope },
         passes.layout_pass.record_interface_twins {
             interface_type,
             typeshed_stub_path
@@ -8487,7 +8482,6 @@ graph import compiler {
         },
         driver.pipeline.declaration_passes { DeclarationTypePass },
     ]
-    passes.endpoint_effect_pass ++> driver.pipeline { EndpointEffectPass }
     passes.execution ++> driver.pass_driver | tests.xbackend_equiv { run_walker }
     passes.freeze_structure_pass ++> driver.pipeline.frozen_passes {
         FreezeStructurePass
@@ -9250,10 +9244,7 @@ graph import compiler {
     ]
     types.stubcat.reader ++> [
         driver.program.JacProgram.load_dependency_module
-            | driver.unit_products.dependency_span_rows
-            | passes.endpoint_effect_pass.EndpointEffectPass._served_effects {
-            CatModule
-        },
+            | driver.unit_products.dependency_span_rows { CatModule },
         native_bindings.is_owning_scope { CatScope },
         tests.test_stubcat_roundtrip { StubCatalog, open_catalog_file },
     ]
@@ -9351,12 +9342,14 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._arch_kind_of_type
             | backends.native.na_ir_gen_pass.NaIRGenPass._agg_key_args
             | passes.capability_check_pass
+            | passes.graph_effects.GraphEffectScan._call_writes
             | passes.layout_pass.class_form_enum_scalar
             | passes.ownership_check_pass.OwnershipCheckPass._raised_class_names {
             ClassType
         },
         backends.es.esast_gen_pass.EsastGenPass._build_spawn_runtime_call
             | backends.native.na_ir_gen_pass.NaIRGenPass._container_class_name
+            | passes.graph_effects.GraphEffectScan._fresh_local
             | passes.layout_pass.class_type_native_name
             | passes.ownership_check_pass.OwnershipCheckPass._view_arch_of_call {
             ClassType
@@ -9370,6 +9363,7 @@ graph import compiler {
         },
         backends.es.esast_gen_pass.EsastGenPass._field_constructor_args
             | backends.native.na_ir_gen_pass.NaIRGenPass._exception_member_name
+            | passes.graph_effects.GraphEffectScan._store_writes
             | passes.layout_pass.declaring_module_path
             | passes.ownership_check_pass._is_class_object { ClassType },
         backends.es.esast_gen_pass.EsastGenPass._osp_expr_arch_name
@@ -9577,6 +9571,7 @@ graph import compiler {
     type types.types ++> [
         backends.native.primitives_native
             | frontend.unitree
+            | passes.graph_effects
             | passes.ownership_check_pass { TypeBase },
         c_interop { ClassType, TypeBase },
         driver.ifacecache { ClassDetailsShared },
@@ -11172,7 +11167,6 @@ graph import compiler.passes {
         ast_validation_pass
             | boundary_analysis_pass
             | cfg_build_pass
-            | endpoint_effect_pass
             | graph_lowering_pass
             | jsx_intrinsic_guard_pass
             | semantic_analysis_pass
@@ -11194,6 +11188,9 @@ graph import compiler.passes {
         type_checker_pass { SymId, is_scope_exit, solve_forward },
     ]
     execution ++> pyast_load_pass.build_python_module { new_context, walk_pass }
+    graph_effects ++> boundary_analysis_pass.BoundaryAnalysisPass.finish {
+        endpoint_effects
+    }
     import_wiring_pass ++> static_analysis_pass { report_unused_wires }
     layout_pass ++> osp_analysis.OspAnalysis.native_slot_triggers {
         native_type_key,
