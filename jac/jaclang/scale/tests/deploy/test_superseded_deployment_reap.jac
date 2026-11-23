@@ -822,8 +822,10 @@ test "status reads a container's current state, not its lifetime restart count" 
             "activating"
         )
     ];
-    deployment = _rollout(generation=2, observed=2, replicas=2, updated=1, available=1);
-    deployment.metadata.name = "standup";
+    deployment = _as_emitted(
+        _rollout(generation=2, observed=2, replicas=2, updated=1, available=1),
+        "standup"
+    );
     core = FakeCoreV1(pods=[]);
     wrong: list[str] = [];
     with unittest.mock.patch(
