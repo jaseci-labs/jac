@@ -1,5 +1,6 @@
 import hashlib;
 import os;
+import sys;
 import from collections.abc { Iterator }
 import from contextlib { contextmanager }
 import from contextvars { ContextVar }

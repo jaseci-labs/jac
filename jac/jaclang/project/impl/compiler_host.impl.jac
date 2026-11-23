@@ -306,16 +306,8 @@ impl ProjectHost.save_native_debug_ir(path: str, text: str) {
     self.note(f"[native debug] IR saved to: {saved}", style="info");
 }
 
-impl ProjectHost.native_fact(kind: str, key: str) -> str {
-    import sys;
-    if kind == HOST_FACT_STDLIB_MODULES {
-        return HOST_FACT_SEP.join(sorted(sys.stdlib_module_names));
-    }
-    if kind == HOST_FACT_GIT_IGNORED {
-        return HOST_FACT_SEP.join(_git_ignored_under(key));
-    }
-    import from jaclang.compiler.backends.native.host_facts { host_native_fact }
-    return host_native_fact(kind, key);
+impl ProjectHost.git_ignored_under(root_dir: str) -> list[str] {
+    return _git_ignored_under(root_dir);
 }
 
 def _git_ignored_under(root_dir: str) -> list[str];
