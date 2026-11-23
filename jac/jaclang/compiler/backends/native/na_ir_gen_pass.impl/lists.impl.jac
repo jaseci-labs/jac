@@ -1096,8 +1096,7 @@ impl NaIRGenPass._tbaa_list_field(
 }
 
 impl NaIRGenPass._apply_list_tbaa -> None {
-    import os;
-    if os.environ.get("JAC_NO_TBAA") or not self.list_types {
+    if not self.list_types {
         return;
     }
     list_tys: set[int] = set();
@@ -1379,9 +1378,7 @@ impl NaIRGenPass._anchor_builtin_call(nd: uni.FuncCall) -> bool {
 }
 
 impl NaIRGenPass._emit_list_anchors(body: list[uni.UniNode]) -> None {
-    import os;
-    if os.environ.get("JAC_NO_LIST_ANCHORS")
-        or not self._body_keeps_list_headers(body) {
+    if not self._body_keeps_list_headers(body) {
         return;
     }
     list_tys: set[int] = set();

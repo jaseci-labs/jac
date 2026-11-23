@@ -1,3 +1,4 @@
+import ast;
 import from collections.abc { Sequence }
 
 
@@ -104,7 +105,6 @@ obj PlacePath {
 
 obj CgSplice(CgItem) {
     has src: str,
-        offset: int = 0,
         bound_names: list[str] = [];
 }
 
@@ -115,9 +115,13 @@ obj CgWideInt(CgItem) {
         magnitude: bytes;
 }
 
-def write_ir_value(w: CodegenIrWriter, v: object);
+def int_literal_magnitude(text: str) -> bytes;
 
-def module_container_bytes(mod_path: str, root_node: CgNode) -> bytes;
+def splice_stmts(splice: CgSplice) -> list[ast.stmt];
+
+def build_py_value(v: object) -> any;
+
+def build_py_module(root_node: CgNode) -> ast.Module;
 
 walker JcirGenPass(TreePass) {
     static has contract: PassContract = PassContract();
@@ -138,7 +142,6 @@ walker JcirGenPass(TreePass) {
         preamble: list[CgItem] postinit,
         _sink: dict[UniNode, list[CgItem]] postinit,
         _module_root: (CgNode | None) = None,
-        _module_path: str = "",
         _interop_stub_node: (UniNode | None) = None,
         _sv_boundary_names: dict[str, str] = {},
         _sv_boundary_registry: str = "",
@@ -347,7 +350,7 @@ walker JcirGenPass(TreePass) {
     ) -> CgNode;
 
     def _del_location(target: Expr, nd: DeleteStmt, ordinal: int) -> list[CgItem];
-    def ir_bytes -> bytes;
+    def ir_module -> ast.Module;
     can exit_sub_tag with SubTag exit;
     can exit_module with Module exit;
     can exit_type_param with TypeParam exit;

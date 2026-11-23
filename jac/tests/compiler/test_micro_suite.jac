@@ -51,7 +51,7 @@ def micro_suite_combined_test(rel_path: str) -> None {
     from_jac_str = ast3.dump(from_jac, indent=2);
     assert isinstance(from_jac, ast3.Module) , f"Not a module for {filename}";
     compile(from_jac, filename="<ast>", mode="exec");
-    # The loc-fill invariant (codegen-ir.md 5.1): the emitter stamps all
+    # The loc-fill invariant (codegen-ir.md section 3): the emitter stamps all
     # four normalized position values at construction time and there is no
     # fill pass behind it. A location-bearing node arriving here with a
     # field missing means a recipe was built off something other than the

@@ -392,7 +392,7 @@ obj CodeGenTarget {
         _client_manifest: (ClientManifest | None) = None,
         py_ast: list[any] = [],
         py_bytecode: (bytes | None) = None,
-        jcir: (bytes | None) = None,
+        py_tree: any = None,
         es_ast: EsNode | Sequence[EsNode] | SliceInfo | IndexInfo | None = None,
         llvm_ir: any = None,
         ir_module: (IRModule | None) = None,
