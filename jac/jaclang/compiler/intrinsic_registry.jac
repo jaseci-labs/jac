@@ -50,8 +50,7 @@ glob _INTRINSIC_ROWS: list[tuple[str, list[str], str, str, (str | None)]] = [
          ("__float_bits", ["f64"], "i64", "float_bits", None),
          ("__bits_float", ["i64"], "f64", "bits_float", None),
          *[
-             row
-             for w in _INTRINSIC_WIDTHS
+             row for w in _INTRINSIC_WIDTHS
              for row in [
                  (f"__mem_load_{w}", ["i64"], w, "mem_load", None),
                  (f"__mem_store_{w}", ["i64", w], "none", "mem_store", None)
@@ -64,8 +63,7 @@ glob _INTRINSIC_ROWS: list[tuple[str, list[str], str, str, (str | None)]] = [
          ("__list_data_ptr", ["list"], "i64", "list_data", None),
          ("__atomic_xchg_i64", ["i64", "i64"], "i64", "atomic_xchg", None),
          *[
-             row
-             for w in _INTRINSIC_WIDTHS
+             row for w in _INTRINSIC_WIDTHS
              for row in [
                  (f"__atomic_load_{w}", ["i64", "i32"], w, "atomic_load", None),
                  (
@@ -101,7 +99,6 @@ glob INTRINSIC_REGISTRY = IntrinsicRegistry(
                  result_spec=result,
                  dispatch=IntrinsicDispatch(dispatch),
                  gc_mode_gate=gate
-             )
-             for (name, params, result, dispatch, gate) in _INTRINSIC_ROWS
+             ) for (name, params, result, dispatch, gate) in _INTRINSIC_ROWS
          }
      );

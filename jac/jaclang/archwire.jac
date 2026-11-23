@@ -5485,6 +5485,7 @@ graph import compiler {
         backends.es.client_kernel_cache._es_backend_fingerprint
             | backends.native.floors._repo_root
             | backends.native.llvm.shim_path._repo_root
+            | driver.jir._ct_row_path
             | driver.pass_driver._alert_in_internal_stub
             | driver.setup_progress
             | driver.source_failures._compiler_source_root
@@ -5701,7 +5702,6 @@ graph import compiler {
             is_compiler_source_path,
             is_native_by_location
         },
-        driver.jir._ct_row_path { jaclang_pkg_root },
         driver.native_iface {
             NATIVE_ABI_VERSION,
             NativeEnumLayout,
