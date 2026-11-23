@@ -59,12 +59,8 @@ def _plugin_config_path -> Path {
     return _pkg_root().parent.parent / "desktop_plugin_config.jac";
 }
 
-"""The rich window.__jac SDK shim (invoke/on/__emit__).
-
-Single in-test copy of the SDK so the JS tests below don't each carry their own.
-`cef_dispatch.jac`'s BOOTSTRAP_JS glob is the source of truth (this is the
-slice `_jac_sdk_js()` extracts for the web target); the "js sdk snippet matches
-generated host source" test asserts this copy has not drifted from it."""
+"""The window.__jac SDK shim, one in-test copy; the CEF `bootstrap.js` is the source of
+truth, and "js sdk snippet matches generated host source" checks it has not drifted."""
 def _bootstrap_js_snippet -> str {
     return (
         "(function(){"
@@ -1081,13 +1077,13 @@ test "js sdk invoke produces correct request format" {
 """The in-test JS shim must match the canonical SDK source of truth.
 
 Guards the single _bootstrap_js_snippet() copy against drifting from the real
-window.__jac SDK. CEF's BOOTSTRAP_JS embeds the full SDK (plus a fetch-based
+window.__jac SDK. CEF's bootstrap.js embeds the full SDK (plus a fetch-based
 __jac_invoke). The native webview host (_host_bootstrap.jac) emits the same
 SDK body and sets __JAC_NATIVE__, while window.__jac_invoke comes from
 wv.bind. Both hosts must keep the shared invoke/on/__emit__ body in sync."""
 test "js sdk snippet matches generated host source" {
-    cef_src = unit_source(_native_dir() / "cef" / "cef_dispatch.jac");
-    assert _bootstrap_js_snippet() in cef_src , "in-test JS shim drifted from cef_dispatch.jac BOOTSTRAP_JS";
+    cef_src = (_native_dir() / "cef" / "bootstrap.js").read_text();
+    assert _bootstrap_js_snippet() in cef_src , "in-test JS shim drifted from the CEF bootstrap.js";
     host_boot = unit_source(_pkg_root() / "_host_bootstrap.jac");
     # Native bootstrap stores the SDK as a Python string concat; spot-check the
     # critical pieces rather than requiring a single contiguous literal.

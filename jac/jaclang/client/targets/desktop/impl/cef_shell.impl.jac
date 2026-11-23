@@ -1,44 +1,3 @@
-impl _is_stale(output: Path, inputs: list[Path]) -> bool {
-    if not output.exists() {
-        return True;
-    }
-    out_mtime = output.stat().st_mtime;
-    for src in inputs {
-        if src.exists() and src.stat().st_mtime > out_mtime {
-            return True;
-        }
-    }
-    return False;
-}
-
-impl _ensure_libcef_dispatch(cef_dir: Path) -> Path {
-    lib = cef_dir / "libcef_dispatch.so";
-    src = cef_dir / "cef_dispatch.jac";
-    stale = _is_stale(
-        lib, module_files(src) + module_files(cef_dir / "cef_platform.jac")
-    );
-    if not stale {
-        return lib;
-    }
-    console.print(
-        "  Building libcef_dispatch.so (jac build --native --lib)...", style="muted"
-    );
-    return build_cef_dispatch(cef_dir);
-}
-
-impl _ensure_cef_subprocess(cef_dir: Path) -> Path {
-    helper = cef_dir / "cef-subprocess";
-    src = cef_dir / "cef_subprocess.jac";
-    stale = _is_stale(
-        helper, module_files(src) + module_files(cef_dir / "cef_platform.jac")
-    );
-    if not stale {
-        return helper;
-    }
-    console.print("  Building cef-subprocess (jac build --native)...", style="muted");
-    return build_cef_subprocess(cef_dir);
-}
-
 impl _generate_host_source(
     title: str,
     width: int,
@@ -204,8 +163,8 @@ impl cef_build(
         shutil.copy2(fonts_conf, out_dir / "minimal-fonts.conf");
     }
     cef_dist = ensure_cef(cef_dir);
-    libcef_dispatch = _ensure_libcef_dispatch(cef_dir);
-    cef_subprocess = _ensure_cef_subprocess(cef_dir);
+    libcef_dispatch = build_cef_dispatch(cef_dir);
+    cef_subprocess = build_cef_subprocess(cef_dir);
     shutil.copy2(libcef_dispatch, out_dir / "libcef_dispatch.so");
     shutil.copy2(cef_subprocess, out_dir / "cef-subprocess");
     (out_dir / "cef-subprocess").chmod(0o755);

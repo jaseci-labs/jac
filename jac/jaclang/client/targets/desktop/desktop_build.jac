@@ -32,20 +32,9 @@ def _bundle_runtime(host_binary: Path);
 
 def _jac_bin -> str;
 
-def _cef_bootstrap_js -> str;
-
-def _jac_sdk_js -> str;
-
-def _top_level_import_boundary(lines: list[str]) -> int;
-
-def _unit_source(module: Path, keep_imports: bool = True) -> str;
-
-def _inject_platform(host_src: str, platform_src: str) -> str;
-
 def _native_build_cef(
-    cef_dir: Path, source_name: str, build_name: str, output: Path, shared: bool,
+    cef_dir: Path, source_name: str, output: Path, shared: bool
 ) -> Path;
-
 
 def build_cef_dispatch(cef_dir: Path) -> Path;
 
