@@ -23,7 +23,6 @@ walker NormalizePass(TreePass) {
     can enter_has_var with uni.HasVar entry;
     can enter_typed_ctx_block with uni.TypedCtxBlock entry;
     def _normalize_cond_block(nd: (uni.IfStmt | uni.WhileStmt), kw: Tok) -> None;
-    def _normalize_name_list_stmt(nd: (uni.SemDef | uni.ImplDef), op: Tok) -> None;
     can enter_open_stmt with uni.OpenStmt entry;
     can enter_if_stmt with uni.IfStmt entry;
     can enter_else_if with uni.ElseIf entry;
@@ -124,3 +123,10 @@ walker NormalizePass(TreePass) {
         owner: uni.UniNode
     ) -> None;
 }
+
+def _append_joined(
+    out: list[uni.UniNode],
+    items: Sequence[uni.UniNode],
+    owner: uni.UniNode,
+    sep: Tok
+) -> None;
