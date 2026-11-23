@@ -1,8 +1,5 @@
 impl _append_joined(
-    out: list[uni.UniNode],
-    items: Sequence[uni.UniNode],
-    owner: uni.UniNode,
-    sep: Tok
+    out: list[uni.UniNode], items: Sequence[uni.UniNode], owner: uni.UniNode, sep: Tok
 ) -> None {
     for (idx, item) in enumerate(items) {
         if idx > 0 {

@@ -19,7 +19,6 @@ impl JacAutoLintPass._is_file_excluded(file_path: str) -> bool {
 }
 
 impl JacAutoLintPass.exit_ability with uni.Ability exit {
-
     if not self.report_only and self._pending_setters {
         self._pending_setters.pop();
     }
@@ -2539,7 +2538,6 @@ impl JacAutoLintPass.exit_module with uni.Module exit {
 }
 
 impl JacAutoLintPass._strip_noise(nd: uni.Module) -> None {
-
     if self._is_file_excluded(nd.loc.mod_path) {
         return;
     }

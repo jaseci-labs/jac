@@ -125,8 +125,5 @@ walker NormalizePass(TreePass) {
 }
 
 def _append_joined(
-    out: list[uni.UniNode],
-    items: Sequence[uni.UniNode],
-    owner: uni.UniNode,
-    sep: Tok
+    out: list[uni.UniNode], items: Sequence[uni.UniNode], owner: uni.UniNode, sep: Tok
 ) -> None;
