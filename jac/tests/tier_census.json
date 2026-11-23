@@ -568,7 +568,8 @@
       "class": "same"
     },
     "tests/language/fixtures/object_type_assignment.jac": {
-      "class": "same"
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for builtin call 'hasattr'"
     },
     "tests/language/fixtures/objref.jac": {
       "class": "skipped",

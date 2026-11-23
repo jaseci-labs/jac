@@ -1194,12 +1194,13 @@ impl NaIRGenPass._native_imports(
     for _nested_imp in _nested_native {
         _native_ids.add(id(_nested_imp));
     }
-    wq: list[tuple[str, str, str | None, bool, bool]] = [];
+    wq: list[tuple[str, str, str | None, bool, bool, str | None]] = [];
     for imp in ModuleFacts.iter_module_imports(self.module) + _nested_native {
         mod_name = self._extract_import_module_name(imp);
         if not mod_name {
             continue;
         }
+        _pinned_native_target = native_only_import_target(imp, self.prog);
         if (not imp.from_loc) and (not imp.is_absorb) {
             if not _has_native_code {
                 continue;
@@ -1223,11 +1224,19 @@ impl NaIRGenPass._native_imports(
             }
         }
         wq.append(
-            (mod_name, entry_base, None, bool(imp.is_typed), bool(imp.is_comptime))
+            (
+                mod_name,
+                entry_base,
+                None,
+                bool(imp.is_typed),
+                bool(imp.is_comptime),
+                _pinned_native_target
+            )
         );
 
         if imp.from_loc and imp.items {
-            _bound_path = resolve_native_module(mod_name, entry_base)[1];
+            _bound_path = _pinned_native_target
+                or resolve_native_module(mod_name, entry_base)[1];
             if _bound_path is not None {
                 for _it in imp.items {
                     if isinstance(_it, uni.ModuleItem) and _it.alias is None {
@@ -1254,10 +1263,14 @@ impl NaIRGenPass._native_imports(
     runtime_edges: dict[str, list[str]] = {};
     qi = 0;
     while qi < len(wq) {
-        (mod_name, cur_base, parent_key, typed, ct_edge) = wq[qi];
+        (mod_name, cur_base, parent_key, typed, ct_edge, pinned_path) = wq[qi];
         qi += 1;
         assert mod_name is not None;
         (src_mod_str, full_path) = resolve_native_module(mod_name, cur_base);
+        if (src_mod_str is None or full_path is None) and pinned_path is not None {
+            src_mod_str = mod_name;
+            full_path = pinned_path;
+        }
         if src_mod_str is None or full_path is None {
             continue;
         }
@@ -1343,7 +1356,8 @@ impl NaIRGenPass._native_imports(
                         sub_base,
                         abs_key,
                         typed or bool(sub_imp.is_typed),
-                        bool(sub_imp.is_comptime)
+                        bool(sub_imp.is_comptime),
+                        None
                     )
                 );
             }

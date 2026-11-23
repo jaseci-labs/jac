@@ -297,7 +297,8 @@ impl info_graph_from_json(text: str) -> dict[str, Info] {
     reader.build();
     raw_entries = raw.get("entries");
     if isinstance(raw_entries, dict) {
-        for (key, ref) in raw_entries.items() {
+        entries: dict[str, any] = raw_entries;
+        for (key, ref) in entries.items() {
             found = reader.find(ref);
             if isinstance(found, Info) {
                 out[str(key)] = found;

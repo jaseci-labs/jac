@@ -60,11 +60,13 @@ impl NaIRGenPass._direct_c_entry(fn: ir.Function) -> bool {
         return False;
     }
     if opts.native_heap
-        and fn.name
-            in [
-                f"{opts.native_heap}_{kind}"
-                for kind in ("malloc", "calloc", "realloc", "free", "usable_size")
-            ] {
+        and (
+            fn.name == f"{opts.native_heap}_malloc"
+            or fn.name == f"{opts.native_heap}_calloc"
+            or fn.name == f"{opts.native_heap}_realloc"
+            or fn.name == f"{opts.native_heap}_free"
+            or fn.name == f"{opts.native_heap}_usable_size"
+        ) {
         return True;
     }
     return bool(opts.native_direct_c_entries)
