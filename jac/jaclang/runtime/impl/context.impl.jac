@@ -86,7 +86,7 @@ impl ExecutionContext._get_anchor(anchor_id: str) -> NodeAnchor {
 impl ExecutionContext.set_user_root(root_id: str) -> None {
     self._resolve_roots();
     self._user_root = self._get_anchor(root_id);
-
+    self._principals = None;
     self._entry_node = self._user_root;
 }
 
@@ -172,6 +172,7 @@ impl ExecutionContext._aget_anchor(anchor_id: str) -> NodeAnchor {
 impl ExecutionContext.aset_user_root(root_id: str) -> None {
     self._resolve_roots();
     self._user_root = await self._aget_anchor(root_id);
+    self._principals = None;
     self._entry_node = self._user_root;
 }
 

@@ -200,7 +200,10 @@ impl walk(
                 }
                 other = edge_pair_for(e, cur, hop);
                 if other is not None {
-                    if gated and not acl_read_ok(other) {
+                    judged = e
+                        if q.edges_only and i == nhops and is_membership(e.archetype)
+                        else other;
+                    if gated and not acl_read_ok(judged) {
                         continue;
                     }
                     seen_edges.add(ekey);
@@ -278,7 +281,7 @@ impl walk_edges(origins: list[Anchor], q: GraphQuery, gated: bool) -> list[Ancho
             continue;
         }
         nkey = anchor_key(nd);
-        if nkey in seen_nodes {
+        if nkey in seen_nodes or (gated and not acl_read_ok(nd)) {
             continue;
         }
         seen_nodes.add(nkey);

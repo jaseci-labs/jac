@@ -71,8 +71,9 @@ impl Memory.query(
 
 impl Memory.get_roots -> Generator[Root, None, None] {
     for anchor in list(self.__mem__.values()) {
-        if isinstance(anchor.archetype, Root) {
-            yield anchor.archetype;
+        arch = anchor.archetype;
+        if isinstance(arch, Root) and untracked_class(`type(arch)) is Root {
+            yield arch;
         }
     }
 }

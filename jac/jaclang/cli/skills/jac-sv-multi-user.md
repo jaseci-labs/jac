@@ -6,7 +6,7 @@ description: Implement graph sharing and per-user authorization. Use for grants,
 Authenticated endpoints give every user an isolated subgraph hung off *their* `root` (see `jac-sv-auth`). Cross-user features punch through that isolation three ways:
 
 1. **`grant(node, level)`** - open ONE node to **every** logged-in user. `revoke(node)` undoes it. Ambient builtins, no import.
-2. **`Jac.allow_root(node, root_id, level)`** - open one node to **one specific user**. `Jac.disallow_root(node, root_id)` undoes it. Needs an import (below).
+2. **`set_access(node, who, level)`** - give one user or one group a level on a node **and everything under it**. `clear_access(node, who)` undoes it. Ambient builtins, no import.
 3. **`root.shared`** - the deployment's public commons graph; write public data there directly.
 4. **`def __jac_access__`** on a node/edge - open **every instance of the archetype** at a fixed level; for app-owned public structure (below).
 
@@ -45,66 +45,48 @@ def global_feed() -> list[dict[str, any]] {
 
 ## Access levels
 
-`grant`/`allow_root` take a member of the ambient `AccessLevel` enum (no import). Higher includes lower: `AccessLevel.NO_ACCESS` (explicit deny) < `AccessLevel.READ` (read fields, traverse in) < `AccessLevel.CONNECT` (+ attach edges) < `AccessLevel.WRITE` (+ mutate fields). Omitted level defaults to `AccessLevel.READ`; pass it explicitly and pick the least that works.
+`grant`/`set_access` take a member of the ambient `AccessLevel` enum (no import). Higher includes lower: `AccessLevel.NO_ACCESS` (block) < `AccessLevel.READ` (read fields, traverse in) < `AccessLevel.CONNECT` (+ attach edges) < `AccessLevel.WRITE` (+ mutate fields) < `AccessLevel.ADMIN` (+ change who has access). Only an ADMIN of a node may `grant`, `set_access` or `clear_access` on it; owners are ADMIN of what they own. `grant` cannot be ADMIN. Omitted `grant` level defaults to `AccessLevel.READ`; pass it explicitly and pick the least that works.
 
 **Pick the level by what the interaction does to the target.** Edge-attach interactions (follow a Profile, join a Channel) need only `AccessLevel.CONNECT`. Interactions that MUTATE FIELDS on the target need `AccessLevel.WRITE`: littleX stores likes/comments as fields ON the tweet (`here.likes`, `here.comments`), so Tweets get `AccessLevel.WRITE` while Profiles and Channels get `AccessLevel.CONNECT`.
 
-The Scale reference's `perm_grant` / `perm_revoke` / `allow_root` / `disallow_root` take the same `AccessLevel` members. (The former ambient constants `NoPerm`/`ReadPerm`/`ConnectPerm`/`WritePerm` were removed - if you see them in older snippets, they map 1:1 onto the enum members.)
+The Scale reference's `perm_grant` / `perm_revoke` take the same `AccessLevel` members. (The former ambient constants `NoPerm`/`ReadPerm`/`ConnectPerm`/`WritePerm` were removed - if you see them in older snippets, they map 1:1 onto the enum members.)
 
-## Per-user grants: allow_root
+## Sharing with a user or a group: set_access
 
-"Share with user B only" - `grant()` over-shares to all users. `allow_root` is the per-user form. It is NOT ambient (calling bare `allow_root(...)` passes `jac check` with a warning but **NameErrors at runtime** - the Scale docs' bare usage is misleading); import the runtime:
+"Share with user B only" - `grant()` over-shares to all users. `set_access` names who:
 
 ```jac
-import from jaclang { JacRuntime as Jac }
-import from uuid { UUID }
+node Workspace(Root) { has name: str; }   # a group type: a root nobody logs in as
+node Doc { has title: str; }
 
-def share_with(tweet_id: str, target_root: str) {
-    for t in [root -->][?:Tweet] {
-        if jid(t) == tweet_id {
-            Jac.allow_root(t, UUID(target_root), AccessLevel.READ);  # jac:ignore[E1053]
-            # Jac.disallow_root(t, UUID(target_root));       # revoke that one user
-        }
-    }
+def create_workspace(name: str) -> Workspace {
+    ws = Workspace(name=name);
+    save(ws);                    # required: nothing points to it yet. The caller becomes its ADMIN
+    return ws;
+}
+
+def add_doc(ws: Workspace, title: str) -> Doc {
+    return ws ++> Doc(title=title);    # attached under ws, so ws owns it
+}
+
+def invite(ws: Workspace, user_root: str) {
+    set_access(ws, user_root, AccessLevel.WRITE);   # the user reaches ws and all it owns
+}
+
+def my_workspaces -> list[Workspace] {
+    return [root ->:Member:->][?:Workspace];       # everything shared with me is an edge
 }
 ```
 
-`target_root` is the other user's root id - the `root_id` field of their `/user/login` response, or `jid(root)` captured server-side. Like `grant`, it's per-node, not per-subtree. The `jac:ignore[E1053]` is needed because the checker doesn't yet accept node types for the `archetype: Archetype` parameter (runtime is fine - verified live); alternatively cast `t as Archetype` with `import from jaclang.runtime.archetype { Archetype }`.
-
-## Sharing with a group: `allow_group`
-
-`allow_root(obj, root_id, level)` writes one entry per grantee into that
-object's own permission map, so an audience of N costs N entries on every
-object and joining or leaving rewrites all of them. Name a **group** instead:
-the grant is one entry, and membership is an edge.
-
-```jac
-node Doc { has body: str; }
-node Team { has name: str; }
-edge MemberOf: Root --> Team {}
-
-import from jaclang { JacRuntime as Jac }
-import from uuid { UUID }
-
-def share_with_team(doc: Doc, team: Team) {
-    Jac.allow_group(doc, UUID(jid(team)), AccessLevel.READ);  # jac:ignore[E1053]
-}
-
-def join_team(team: Team) {
-    root +>:MemberOf:+> team;   # joining: one edge, zero content writes
-}
-```
-
-- Membership is resolved through the edge at check time, so a join or a leave
-  touches no content row at all - which is what makes it O(1) rather than
-  proportional to the group's data.
-- Group grants compose with the rest: an existing per-root grant still
-  applies, and a group grant only ever raises the level.
-- The permission test compiles into the query for the standard model (owner,
-  granted-to-all, granted-to-you, granted-to-your-group), so a gated read
-  costs the rows you may see. An archetype overriding `__jac_access__` or
-  `__jac_access_for__` decides in Jac, which has no SQL form, and keeps the
-  object-space filter.
+- `who` is a user's root id (`str`, the `root_id` of their `/user/login`), a root, or a group. `set_access(node, who, AccessLevel.NO_ACCESS)` blocks `who` on that node even if a grant or a membership would let them in; it does not block an ADMIN of a group above the node.
+- It covers the node **and everything under it**, including what is added later. Sharing never changes who owns anything: the node and what its owner holds under it get a label naming the share, and the owner becomes the share's ADMIN. Unsharing or deleting the node loses nothing.
+- Admins list members with `[edge node <-:Member:<-]` (`m.who()` is the member's id, `m.level` their level); members' roots stay hidden, and a member sees only their own edge.
+- `Member` edges go out of the member's root, so `visit [-->]` from root also walks into the user's groups. Filter by type when a walker should stay in the user's own data.
+- Deleting a node needs WRITE. An org (`Root` subtype) can be deleted only by its ADMIN and only once it owns nothing.
+- Each share is a `Member` edge from `who` to the node, owned by the node. Only `set_access`/`clear_access` change them: connecting `+>:Member:+>` raises, and members cannot edit or delete their own edge.
+- New data attached under a node owned by a group belongs to that group when the caller can WRITE as it; otherwise it stays the caller's (a stranger's reply under your post stays theirs).
+- Levels combine by **highest wins**; a block wins over everything except an ADMIN above it. The last ADMIN of a group cannot be cleared. Anyone can `clear_access(node, own_root_id)` to leave.
+- `Jac.allow_root` / `disallow_root` / `allow_group` / `disallow_group` are removed: `Jac.allow_root(n, UUID(rid), lvl)` is now `set_access(n, rid, lvl)`, and `disallow_root` is `clear_access(n, rid)`. Entries they stored earlier are still honored.
 
 ## root.shared - the public commons
 
@@ -149,7 +131,7 @@ edge Contains(PublicEdge) {}
 
 - Consulted for every non-owner access, BEFORE stored grants: a returned level is final; return `None` (with return type `-> AccessLevel | None`) to fall through to grant checking, enabling conditional policies like `return AccessLevel.READ if self.published else None;`.
 - Return `AccessLevel` members (ambient, no import). Strings (`"WRITE"`) and ints are accepted but a typo'd string is a runtime `KeyError` on the first cross-user request - never hand-write them.
-- Owner and system root always have `WRITE`; the hook cannot lock the author out.
+- Owner and system root always have `ADMIN`; the hook cannot lock the author out.
 - Decision rule: user-owned contributions -> `grant` at creation (owner decides per instance); app-owned public structure -> `__jac_access__` (author decides per archetype).
 
 ## Roles
@@ -208,8 +190,8 @@ tokens.
 
 ## Pitfalls
 
-- **A node is only reachable by other users if granted** (`grant`, `allow_root`, or living open on `root.shared`). Creating it under your root and connecting an edge is NOT enough - forgetting the grant is the #1 cause of "the other user's feed is empty" with no error. Grant at creation time, in the same function.
-- **Grants are per-node, not per-subtree.** Granting a `Profile` does not grant the `Tweet`s hanging off it.
+- **A node is only reachable by other users if granted** (`grant`, `set_access`, or living open on `root.shared`). Creating it under your root and connecting an edge is NOT enough - forgetting the grant is the #1 cause of "the other user's feed is empty" with no error. Grant at creation time, in the same function.
+- **`grant` is per-node, `set_access` is per-subtree.** `grant`ing a `Profile` does not open the `Tweet`s hanging off it; `set_access` on it does.
 - **`allroots()` needs served context** (`jac run`). In a single-session `jac run` it returns only the one root - validate cross-user features with two real logged-in users, never a single-root script.
 - **`allroots()` fan-outs can visit the same node twice** - a node reachable through more than one root (granted, shared) is surfaced once per path, so a bare per-visit tally double-counts. Dedupe with a `jid(here)`-keyed dict (littleX's trending walker keeps a `seen: dict[str, bool]`).
 - **`def:pub` is the wrong tool for shared data.** Anonymous callers land on the guest graph, token-holders on their own root - so a `:pub` "global graph" isn't even one graph. Keep endpoints authenticated and use `grant`/`root.shared`. See `jac-sv-auth`.

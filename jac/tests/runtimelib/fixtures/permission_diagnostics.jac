@@ -8,7 +8,6 @@ can parse it back.
 """
 
 import from jaclang { JacRuntime as Jac }
-import from uuid { UUID }
 
 node Profile {
     has tag: str = "";
@@ -41,7 +40,7 @@ walker grant_profile_to {
 
     can enter with Root entry {
         for p in [here-->] {
-            Jac.allow_root(p, UUID(self.requestor_id), self.level);
+            set_access(p, self.requestor_id, self.level);
         }
     }
 }
@@ -127,7 +126,11 @@ walker try_acl_grant {
     can enter with Root entry {
         target = &(self.target_id);
         # Cross-user ACL write: a grant on a node the caller does not own.
-        Jac.allow_root(target, UUID(self.requestor_id), self.level);
+        try {
+            set_access(target, self.requestor_id, self.level);
+        } except PermissionError {
+            print("RAISED");
+        }
         _print_diagnostics();
     }
 }
@@ -139,7 +142,11 @@ walker try_perm_grant {
     can enter with Root entry {
         target = &(self.target_id);
         # Cross-user ACL write: opening a foreign node to every user.
-        Jac.perm_grant(target, self.level);
+        try {
+            Jac.perm_grant(target, self.level);
+        } except PermissionError {
+            print("RAISED");
+        }
         _print_diagnostics();
     }
 }
@@ -151,8 +158,13 @@ walker check_grant_level {
     can enter with Root entry {
         target = &(self.target_id);
         acc = target.__jac__.access;
-        lvl = acc.roots.check(self.requestor_id) if acc is not None else None;
-        print("LEVEL:" + (lvl.name if lvl is not None else "NONE"));
-        print("ALL:" + (acc.all.name if acc is not None else "NONE"));
+        lvl = "NONE";
+        for m in [edge target<-:Member:<-] {
+            if m.who() == self.requestor_id {
+                lvl = ["NO_ACCESS", "READ", "CONNECT", "WRITE", "ADMIN"][m.level + 1];
+            }
+        }
+        print("LEVEL:" + lvl);
+        print("ALL:" + (acc.all.name if acc is not None else "NO_ACCESS"));
     }
 }
