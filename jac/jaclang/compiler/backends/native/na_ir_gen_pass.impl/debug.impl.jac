@@ -19,9 +19,7 @@ impl NaIRGenPass._heap_extern(kind: str) -> ir.Function {
 impl NaIRGenPass._heap_usable_size(
     b: ir.IRBuilder, block: ir.Value, name: str
 ) -> ir.Value {
-    return self._floor_call(
-        "__jac_malloc_size", ir.IntType(64), [block], name, b
-    );
+    return self._floor_call("__jac_malloc_size", ir.IntType(64), [block], name, b);
 }
 
 impl NaIRGenPass._direct_c_entry(fn: ir.Function) -> bool {
