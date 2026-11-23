@@ -49,8 +49,7 @@ impl PrimitiveEmitter.dispatch(
 impl PrimitiveEmitter.dispatch_static(
     self: PrimitiveEmitter, name: str, ctx: C, args: list[V]
 ) -> (V | None) {
-    if name not in emit_name_set(type(self), 3)
-        and name not in self.static_names() {
+    if name not in emit_name_set(type(self), 3) and name not in self.static_names() {
         return None;
     }
     return getattr(self, "emit_" + name)(ctx, args);
