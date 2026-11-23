@@ -872,27 +872,39 @@ test "a deployed fleet is found by the Deployments the builder emitted" {
     legacy = _rollout(generation=1, observed=1, replicas=1, updated=1, available=1);
     legacy.metadata.name = "shop";
     legacy.metadata.labels = _legacy_deployment("shop").metadata.labels;
-    # (label, fleet, Deployment scaled)
-    cases: list[tuple[str, list[any], str]] = [
+    # (label, fleet, service passed to scale, Deployment scaled)
+    cases: list[tuple[str, list[any], str, str]] = [
         (
             "a solo app and its gateway",
             [member("shop"), member(GATEWAY_NAME)],
+            "",
             "shop-deployment"
         ),
-        ("a pre-0.34.9 Deployment a redeploy has not replaced yet", [legacy], "shop")
+        (
+            "a workspace service named by its [apps] key",
+            [member("web"), member("products_app"), member(GATEWAY_NAME)],
+            "products_app",
+            "products-app-deployment"
+        ),
+        (
+            "a pre-0.34.9 Deployment a redeploy has not replaced yet",
+            [legacy],
+            "",
+            "shop"
+        )
     ];
     wrong: list[str] = [];
     with unittest.mock.patch(
         "jaclang.scale.deploy.target.kubernetes.kubernetes_target.k8s_cluster_config"
     ) {
-        for (label, fleet, scaled) in cases {
+        for (label, fleet, service, scaled) in cases {
             apps = FakeAppsV1(items=fleet);
             with unittest.mock.patch(
                 "jaclang.scale.deploy.target.kubernetes.kubernetes_target.client.AppsV1Api",
                 return_value=apps
             ) {
                 try {
-                    _target("shop", "shop").scale("shop", 3);
+                    _target("shop", "shop").scale("shop", 3, service);
                 } except Exception as e {
                     wrong.append(f"{label}: scale raised {e}");
                 }
@@ -909,8 +921,8 @@ test "a deployed fleet is found by the Deployments the builder emitted" {
                 _target("shop", "shop").scale("shop", 3);
                 wrong.append("a workspace scaled a member it was not asked for");
             } except ValueError as e {
-                if "web" not in str(e) {
-                    wrong.append(f"the refusal does not name the members: {e}");
+                if "web" not in str(e) or "service" not in str(e) {
+                    wrong.append(f"the refusal does not point at service: {e}");
                 }
             }
         }
