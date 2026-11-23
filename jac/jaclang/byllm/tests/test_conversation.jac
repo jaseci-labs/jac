@@ -13,6 +13,7 @@ import from litellm.types.utils {
     Message as LiteLLMMessage
 }
 import from support {
+    blank_replies,
     call,
     calls,
     chunk_text,
@@ -395,6 +396,7 @@ test "a saved history drops calls without a result, and finish_tool in any form"
         for m in mk_run(tools=[mul], messages=messages).get_history_for_persist() {
             d = _as_dict(m);
             assert d.get("tool_calls") != [] , f"{label}: an empty tool_calls list was saved";
+            assert not blank_replies([d]) , f"{label}: blank text was saved: {d}";
             ids = " ".join(str(tc["id"]) for tc in (d.get("tool_calls") or []));
             saved.append(f"{d.get('role')} {ids}".strip());
         }
