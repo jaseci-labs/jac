@@ -2,6 +2,7 @@ import asyncio;
 import os;
 import ssl as ssl_lib;
 import threading;
+import time;
 import queue as queue_lib;
 import from base64 { b64encode }
 import from concurrent.futures { ThreadPoolExecutor }
@@ -9,7 +10,10 @@ import from json { dumps, loads }
 import from urllib.parse { urlencode, urlsplit }
 
 
-glob DEFAULT_TIMEOUT: float = 30.0;
+glob DEFAULT_TIMEOUT: float = 30.0,
+     IDLE_TIMEOUT: float = 30.0,
+     MAX_CONNECTION_AGE: float = 120.0,
+     MAX_IDLE_PER_ORIGIN: int = 32;
 
 
 obj ClientConnectionError(Exception) {
@@ -28,6 +32,14 @@ obj ClientReadTimeout(ClientRequestSent) {}
 
 def _client_json_default(o: any) -> str;
 
+obj _PooledConn {
+    has origin: tuple[str, str, int],
+        reader: any,
+        writer: any,
+        opened: float = 0.0,
+        idle_since: float = 0.0;
+}
+
 obj ClientResponse {
     has status_code: int = 0,
         reason: str = '',
@@ -45,11 +57,21 @@ obj ClientResponse {
     async def aclose;
 }
 
+def _idle_pool -> dict[tuple[str, str, int], list[_PooledConn]];
+
+def _usable(conn: _PooledConn, now: float) -> bool;
+
+def _take_idle(origin: tuple[str, str, int]) -> (_PooledConn | None);
+
+def _release(conn: _PooledConn);
+
 def _split_url(url: str) -> tuple[str, str, int, str];
 
 async def _open_stream(
     scheme: str, host: str, port: int, timeout: float
 ) -> tuple[any, any];
+
+async def _connect(origin: tuple[str, str, int], timeout: float) -> _PooledConn;
 
 async def _read_response_head(reader: any, timeout: float) -> tuple[int, str, Headers];
 
