@@ -96,13 +96,6 @@ impl int_bit_length(a: CtInt) -> int {
     return mag_bit_length(m);
 }
 
-impl int_small_index(a: CtInt) -> int {
-    if a.mag {
-        raise ct_exc("IndexError", "cannot fit 'int' into an index-sized integer");
-    }
-    return a.small;
-}
-
 impl int_pow(a: CtInt, b: CtInt) -> CtValue {
     if int_is_neg(b) {
         return float_pow(int_to_float(a), int_to_float(b));

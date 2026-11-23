@@ -78,7 +78,6 @@ def is_generator_family_type(return_type: TypeBase) -> bool;
 obj ModuleSourceFlags {
     has is_stub_file: bool = False,
         is_stdlib_stub: bool = False,
-        is_typing_stub: bool = False,
         is_builtin_stub: bool = False;
 }
 
