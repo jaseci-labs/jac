@@ -1935,10 +1935,6 @@ impl _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
             import from jaclang.compiler.driver.na_coverage { na_coverage_snapshot }
             result['coverage'] = na_coverage_snapshot();
         }
-        for m in prog.mod.hub.values() {
-            m.terminals = [];
-            m.src_terminals = [];
-        }
         new_errors = prog.errors_had[err_start:];
         new_warnings = prog.warnings_had[warn_start:];
 

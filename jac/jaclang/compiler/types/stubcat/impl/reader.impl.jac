@@ -105,13 +105,7 @@ impl CatModule.init(
     self.cat_id = cat_id;
     self.cat_kids = kids;
     Module.init(
-        self,
-        name=name,
-        source=tok.orig_src,
-        body=[],
-        terminals=[],
-        stub_only=True,
-        kid=[tok]
+        self, name=name, source=tok.orig_src, body=[], stub_only=True, kid=[tok]
     );
 }
 

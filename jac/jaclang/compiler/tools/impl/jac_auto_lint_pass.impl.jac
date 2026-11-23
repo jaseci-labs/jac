@@ -2340,7 +2340,6 @@ impl JacAutoLintPass.exit_expr_stmt with uni.ExprStmt exit {
     assign = uni.Assignment(
         target=[lhs_name],
         value=value_expr,
-        mutable=True,
         aug_op=None,
         kid=[
             lhs_name,

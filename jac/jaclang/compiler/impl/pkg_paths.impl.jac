@@ -59,7 +59,7 @@ impl binds_bare_arch_names(mod_path: str) -> bool {
     rel = rel.lstrip("/");
     if rel.endswith(".pyi")
         or (rel.startswith("runtime/") and rel.count("/") == 1)
-        or rel in kernel_unit_rels() {
+        or rel in KERNEL_UNIT_REL {
         return True;
     }
     if rel.startswith("runtime/") {

@@ -116,6 +116,15 @@ impl Parser.error(message: str) {
     );
 }
 
+impl Parser._reject_paren_filter {
+    self.emit_diag(
+        "Parenthesized filter syntax '(?:...)' was removed. Use bracket syntax '[?:...]' instead.",
+        "E0048",
+        loc=self.current().loc,
+        help="Replace (?:Type, cond) with [?:Type, cond]"
+    );
+}
+
 impl Parser.emit_diag(
     message: str, code_str: str, loc: SourceLoc | None = None, help: str = ""
 ) {
@@ -170,9 +179,7 @@ impl Parser.expect_name(context: str = "identifier") -> LexToken {
 }
 
 impl Parser.make_uni_token(tok: LexToken) -> Token {
-    tok_name: str = TOKEN_KIND_TO_TOK[tok.kind]
-        if tok.kind in TOKEN_KIND_TO_TOK
-        else tok.kind.value;
+    tok_name: str = TOKEN_KIND_TO_TOK[tok.kind];
     return Token(
         orig_src=self.source,
         name=tok_name,
@@ -211,9 +218,7 @@ impl Parser.make_name(tok: LexToken, is_enum_stmt: bool = False) -> Name {
 }
 
 impl Parser.make_special_name(tok: LexToken) -> Name {
-    tok_name: str = TOKEN_KIND_TO_TOK[tok.kind]
-        if tok.kind in TOKEN_KIND_TO_TOK
-        else tok.kind.value;
+    tok_name: str = TOKEN_KIND_TO_TOK[tok.kind];
     return Name(
         orig_src=self.source,
         name=tok_name,
@@ -409,10 +414,6 @@ impl Parser.parse -> Module {
 impl Parser.parse_module -> Module {
     doc: String | None = None;
     body: list[ElementStmt | EmptyToken] = [];
-    terminals: list[Token] = [];
-    for tok in self.tokens {
-        terminals.append(self.make_uni_token(tok));
-    }
     if self.check(TokenKind.STRING) {
         tok = self.expect(TokenKind.STRING);
         doc = self.make_string(tok);
@@ -452,14 +453,7 @@ impl Parser.parse_module -> Module {
             mod_name = base[:dot] if dot > 0 else base;
         }
     }
-    module = Module(
-        source=self.source,
-        name=mod_name,
-        doc=doc,
-        body=body,
-        terminals=terminals,
-        kid=kid
-    );
+    module = Module(source=self.source, name=mod_name, doc=doc, body=body, kid=kid);
     node_list: list[UniNode] = [];
     seen: dict[int, bool] = {};
     walk: list[UniNode] = [module];
@@ -531,19 +525,10 @@ impl Parser._recover_js_arrow_fault(left: Expr) -> Expr {
     eq_tok = self.advance();
     gt_tok = self.advance();
 
-    _arrow_span = SourceLoc(
-        file_path=eq_tok.loc.file_path,
-        line=eq_tok.loc.line,
-        end_line=gt_tok.loc.end_line,
-        col_start=eq_tok.loc.col_start,
-        col_end=gt_tok.loc.col_end,
-        pos_start=eq_tok.loc.pos_start,
-        pos_end=gt_tok.loc.pos_end
-    );
     self.emit_diag(
         "JavaScript arrow function syntax ('=>') is not supported in Jac",
         "E0025",
-        loc=_arrow_span,
+        loc=eq_tok.loc.span_to(gt_tok.loc),
         help="Use Jac lambda syntax instead: 'lambda (e: ChangeEvent) { ... }' or 'lambda (x: int) { x + 1; }'."
     );
     if self.check(TokenKind.LBRACE) {
@@ -1238,12 +1223,7 @@ impl Parser.parse_atomic_chain -> Expr {
             );
         } elif self.check(TokenKind.LPAREN) {
             if self.check_peek(TokenKind.NULL_OK) {
-                self.emit_diag(
-                    "Parenthesized filter syntax '(?:...)' was removed. Use bracket syntax '[?:...]' instead.",
-                    "E0048",
-                    loc=self.current().loc,
-                    help="Replace (?:Type, cond) with [?:Type, cond]"
-                );
+                self._reject_paren_filter();
                 self.expect(TokenKind.LPAREN);
                 filter_expr: FilterCompr = self.parse_filter_compr_inner();
 
@@ -1760,9 +1740,7 @@ impl Parser.parse_builtin_type -> Expr | None {
             TokenKind.TYP_F32,
             TokenKind.TYP_F64
         );
-        builtin_name: str = TOKEN_KIND_TO_TOK[tok.kind]
-            if tok.kind in TOKEN_KIND_TO_TOK
-            else tok.kind.value;
+        builtin_name: str = TOKEN_KIND_TO_TOK[tok.kind];
         return BuiltinType(
             orig_src=self.source,
             name=builtin_name,
@@ -2344,12 +2322,7 @@ impl Parser._continue_edge_ref_chain(start_expr: Expr, lsquare_uni: Token) -> Ex
             kid.append(filter_expr);
         } elif self.check(TokenKind.LPAREN) {
             if self.check_peek(TokenKind.NULL_OK) {
-                self.emit_diag(
-                    "Parenthesized filter syntax '(?:...)' was removed. Use bracket syntax '[?:...]' instead.",
-                    "E0048",
-                    loc=self.current().loc,
-                    help="Replace (?:Type, cond) with [?:Type, cond]"
-                );
+                self._reject_paren_filter();
                 self.advance();
                 fc_expr = self.parse_filter_compr_inner();
                 chain.append(fc_expr);
@@ -2430,12 +2403,7 @@ impl Parser.parse_edge_ref_chain -> Expr {
             kid.append(filter_expr);
         } elif self.check(TokenKind.LPAREN) {
             if self.check_peek(TokenKind.NULL_OK) {
-                self.emit_diag(
-                    "Parenthesized filter syntax '(?:...)' was removed. Use bracket syntax '[?:...]' instead.",
-                    "E0048",
-                    loc=self.current().loc,
-                    help="Replace (?:Type, cond) with [?:Type, cond]"
-                );
+                self._reject_paren_filter();
                 self.expect(TokenKind.LPAREN);
                 fc_expr = self.parse_filter_compr_inner();
                 chain.append(fc_expr);
@@ -2789,12 +2757,7 @@ impl Parser.parse_jsx_element -> JsxElement {
         kid.extend(children);
         kid.append(self.consume_uni(TokenKind.JSX_FRAG_CLOSE));
         return JsxElement(
-            name=None,
-            attributes=[],
-            children=children,
-            is_self_closing=False,
-            is_fragment=True,
-            kid=kid
+            name=None, attributes=[], children=children, is_fragment=True, kid=kid
         );
     }
 
@@ -2831,7 +2794,6 @@ impl Parser.parse_jsx_element -> JsxElement {
             name=elem_name,
             attributes=attrs,
             children=None,
-            is_self_closing=True,
             is_fragment=False,
             dynamic_tag=dyn_tag,
             kid=open_kid
@@ -2871,7 +2833,6 @@ impl Parser.parse_jsx_element -> JsxElement {
         name=elem_name,
         attributes=attrs,
         children=children,
-        is_self_closing=False,
         is_fragment=False,
         dynamic_tag=dyn_tag,
         kid=kid
@@ -4094,7 +4055,6 @@ impl Parser.parse_for_stmt -> IterForStmt | InForStmt {
                 value=None,
                 type_tag=None,
                 kid=[step_target],
-                mutable=True,
                 aug_op=None,
                 is_enum_stmt=False
             );
@@ -4112,7 +4072,6 @@ impl Parser.parse_for_stmt -> IterForStmt | InForStmt {
             value=start_val,
             type_tag=None,
             kid=[target, eq_uni, start_val],
-            mutable=True,
             aug_op=None,
             is_enum_stmt=False
         );
@@ -5058,7 +5017,6 @@ impl Parser.parse_assignment_with_target(
         value=value,
         type_tag=type_tag,
         kid=kid,
-        mutable=True,
         aug_op=aug_op,
         is_enum_stmt=False
     );
@@ -6396,7 +6354,6 @@ impl Parser.parse_enum_member -> Assignment {
         value=value,
         type_tag=None,
         kid=kid,
-        mutable=False,
         aug_op=None,
         is_enum_stmt=True
     );
@@ -6605,7 +6562,6 @@ impl Parser.parse_global_var_assignment -> Assignment {
         value=value,
         type_tag=type_tag,
         kid=kid,
-        mutable=True,
         aug_op=None,
         is_enum_stmt=False
     );
@@ -6950,7 +6906,6 @@ impl Parser.parse_impl_enum_body -> tuple[(list[Assignment], list[Token])] {
                     value=value,
                     type_tag=type_tag,
                     kid=kid,
-                    mutable=True,
                     aug_op=None,
                     is_enum_stmt=True
                 )
@@ -7664,22 +7619,6 @@ impl _test_ident_from_desc(desc_text: str) -> str {
         ident = ident[:-1];
     }
     return ident.lower();
-}
-
-impl parse_program(
-    source: str, file_path: str
-) -> tuple[(Module, int, list[SrcDiag], list[CommentData], list[SrcDiag], int)] {
-    (tokens, comments, lex_diags, lex_error_count) = tokenize_full(source, file_path);
-    parser = Parser(tokens=tokens, file_path=file_path, source_code=source);
-    mod = parser.parse();
-    return (
-        mod,
-        parser.error_count,
-        parser.diags,
-        comments,
-        lex_diags,
-        lex_error_count
-    );
 }
 
 impl parse_expression(
