@@ -51,9 +51,8 @@ jobs:
   resolve:
     if: >-
       github.repository == 'jaseci-labs/jac' && (
-        github.event_name != 'workflow_run' || (
-          github.event.workflow_run.conclusion == 'success' &&
-          github.event.workflow_run.event == 'pull_request'))
+        github.event_name != 'workflow_run' ||
+        github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -62,10 +61,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # A Release run deploys only when it is the run that published the pin,
+      # whether a merged release PR or a hand-run publish started it.
       - name: Read the pin and check its release is out
         id: pin
         env:
           GH_TOKEN: ${{ github.token }}
+          RUN_STARTED: ${{ github.event.workflow_run.run_started_at }}
         run: |
           pin=$(sed -n 's/^jac-version = "==\([0-9][0-9.]*\)"$/\1/p' "$SITE_DIR/jac.toml")
           if [ -z "$pin" ]; then
@@ -73,8 +75,16 @@ jobs:
             exit 1
           fi
           echo "pin=$pin" >> "$GITHUB_OUTPUT"
-          draft=$(gh release view "v$pin" --repo jaseci-labs/jac --json isDraft --jq .isDraft 2>/dev/null || true)
-          if [ "$draft" = false ]; then
+          published=$(gh release view "v$pin" --repo jaseci-labs/jac --json isDraft,publishedAt \
+            --jq 'select(.isDraft | not) | .publishedAt' 2>/dev/null || true)
+          if [ "$GITHUB_EVENT_NAME" = workflow_run ]; then
+            if [ -n "$published" ] && [[ ! "$published" < "$RUN_STARTED" ]]; then
+              echo "ready=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "::notice::This Release run did not publish jac v$pin; nothing to deploy."
+              echo "ready=false" >> "$GITHUB_OUTPUT"
+            fi
+          elif [ -n "$published" ]; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
           elif [ "$GITHUB_EVENT_NAME" = push ]; then
             echo "::notice::jac v$pin is not published yet; the Release run deploys it when it finishes."
@@ -140,7 +150,9 @@ jobs:
         run: jac scale deploy web --target kubernetes --dry-run
 
       # A rollout undo restores pods, not rows. Keeps the newest 10 CI dumps
-      # on the database volume, beside any taken by hand.
+      # on the database volume, beside any taken by hand. The dump shares the
+      # volume with the live data, so it needs room for twice the database and
+      # a failed dump is deleted rather than left to fill the disk.
       - name: Back up the database
         if: ${{ !inputs.dry_run }}
         run: |
@@ -149,9 +161,16 @@ jobs:
             export PGPASSWORD="$POSTGRES_PASSWORD"
             dir=/var/lib/jac/pgdata/backups
             mkdir -p "$dir"
-            pg_dump -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f "$dir/$1"
+            ls -1t "$dir"/ci-*.dump 2>/dev/null | tail -n +10 | xargs -r rm -f
+            size=$(psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "select pg_database_size(current_database())")
+            free=$(df -Pk "$dir" | awk "NR == 2 { print \$4 * 1024 }")
+            echo "database $size bytes, volume free $free bytes"
+            if [ "$free" -lt $((size * 2)) ]; then
+              echo "Not enough room on the database volume for a backup; free some or grow it." >&2
+              exit 1
+            fi
+            pg_dump -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f "$dir/$1" || { rm -f "$dir/$1"; exit 1; }
             ls -la "$dir/$1"
-            ls -1t "$dir"/ci-*.dump | tail -n +11 | xargs -r rm -f
           ' sh "$name"
 
       - name: Deploy
