@@ -335,6 +335,19 @@ def sent_messages(llm: MockLLM, n: int = 0) -> list[dict[str, any]] {
 }
 
 
+"""Assistant turns in `msgs` with blank text, which Anthropic is sent as placeholder text."""
+def blank_replies(msgs: list[any]) -> list[any] {
+    return [
+        m
+        for m in msgs
+        if isinstance(m, dict)
+            and m.get("role") == "assistant"
+            and isinstance(m.get("content"), str)
+            and not m["content"].strip()
+    ];
+}
+
+
 """The role of each message sent on call `n`, in order.
 
     assert roles(llm) == ["system", "user"];

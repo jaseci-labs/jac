@@ -798,6 +798,7 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
     last_result = "";
     total_tokens = 0;
     just_compacted = False;
+    nudged = False;
     while True {
         iter_count += 1;
         if on_iteration and iter_count > 1 {
@@ -842,6 +843,7 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
 
         just_compacted = self._maybe_compact(mt_run, usage, just_compacted, _cp);
         if resp.tool_calls {
+            nudged = False;
             (non_finish_calls, finish_tc, skipped_calls) = _split_at_finish(
                 resp.tool_calls
             );
@@ -889,6 +891,10 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
         } else {
             recovery_resp = self._attempt_recovery(mt_run);
             if recovery_resp is None {
+                if _nudge_after_empty_reply(mt_run, resp, nudged) {
+                    nudged = True;
+                    continue;
+                }
                 break;
             }
             return _recovered_answer(mt_run, recovery_resp);
@@ -1094,6 +1100,14 @@ def _sanitize_tool_calls(message: dict[str, any]) -> set[str];
 
 
 def _raise_if_empty_truncation(finish_reason: str, content: any, tool_calls: any);
+
+
+def _nudge_after_empty_reply(
+    mt_run: MTRuntime, resp: CompletionResult, nudged: bool
+) -> bool;
+
+
+def _raise_if_no_answer(mt_run: MTRuntime, output: object);
 
 
 def _truncated_call_ids(message: dict[str, any], finish_reason: str) -> set[str];
@@ -1722,6 +1736,9 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
     mt_run._call_kind = "final_answer_restream";
     try {
         output = _recovered_answer(mt_run, self.dispatch_no_streaming(mt_run));
+        if not mt_run._has_final_output and mt_run.resp_type in (None, str) {
+            _raise_if_no_answer(mt_run, output);
+        }
         return output if mt_run._has_final_output else str(output or "");
     } finally {
         mt_run._call_kind = original_call_kind;
@@ -1758,6 +1775,7 @@ impl BaseLLM._stream_final_answer(
             }
             yield token;
         }
+        _raise_if_no_answer(mt_run, accumulated);
     } except Exception {
         accumulated = "";
         raise;
@@ -1829,6 +1847,9 @@ impl BaseLLM._yield_recovery_result(
     recovery_resp: CompletionResult, iter_count: int, mt_run: MTRuntime, usage_base: int
 ) -> Generator[StreamEvent, None, None] {
     output = _recovered_answer(mt_run, recovery_resp);
+    if not mt_run._has_final_output {
+        _raise_if_no_answer(mt_run, output);
+    }
     yield StreamEvent(event_type="steps_done", data={"iterations": iter_count});
     if not mt_run._has_final_output and output {
         yield StreamEvent(event_type="chunk", data={"content": str(output)});
@@ -1872,6 +1893,7 @@ impl BaseLLM._stream_steps(
         just_compacted = False;
         shown = "";
         done_sent = False;
+        nudged = False;
         while True {
             if shown {
                 yield from _drop_answer(retractable);
@@ -2059,6 +2081,7 @@ impl BaseLLM._stream_steps(
             _usage_base = len(mt_run._usage_history);
 
             if resp.tool_calls {
+                nudged = False;
                 (non_finish_calls, finish_tc, skipped_calls) = _split_at_finish(
                     resp.tool_calls
                 );
@@ -2172,6 +2195,10 @@ impl BaseLLM._stream_steps(
                 );
                 recovery_resp = self._attempt_recovery(mt_run);
                 if recovery_resp is None {
+                    if _nudge_after_empty_reply(mt_run, resp, nudged) {
+                        nudged = True;
+                        continue;
+                    }
                     yield StreamEvent(
                         event_type="steps_done", data={"iterations": iter_count}
                     );
@@ -3068,6 +3095,41 @@ impl _raise_if_empty_truncation(finish_reason: str, content: any, tool_calls: an
             "The model hit max_tokens before it produced any text or tool call "
             "(the budget went to reasoning). Raise max_tokens or lower the "
             "reasoning effort."
+        );
+    }
+}
+
+
+impl _nudge_after_empty_reply(
+    mt_run: MTRuntime, resp: CompletionResult, nudged: bool
+) -> bool {
+    if not mt_run.tools or str(resp.output or "").strip() {
+        return False;
+    }
+    if nudged or resp.finish_reason == "content_filter" {
+        _raise_if_no_answer(mt_run, resp.output);
+    }
+    logger.warning(
+        "byLLM: the model replied with nothing (finish_reason "
+        f"'{resp.finish_reason}'); asking it to continue"
+    );
+    mt_run.add_scaffolding_message(
+        Message(
+            role=MessageRole.USER,
+            content="Your last reply was empty. Call the next tool, or finish_tool with your answer.",
+        )
+    );
+    return True;
+}
+
+
+impl _raise_if_no_answer(mt_run: MTRuntime, output: object) {
+    if not str(output or "").strip() {
+        last = mt_run._usage_history[-1] if mt_run._usage_history else {};
+        raise EmptyReplyError(
+            f"The model gave no answer (finish_reason '{last.get(
+                'finish_reason', ''
+            )}')."
         );
     }
 }

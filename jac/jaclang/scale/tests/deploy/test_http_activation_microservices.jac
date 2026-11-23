@@ -383,6 +383,50 @@ test "reap_stale_scaling_resources_for_bundle is a no-op on an empty bundle" {
 }
 
 
+# Leaving scale-to-zero while idle: the HPA that takes over never scales up from
+# 0, so the deploy sets the floor itself (#10846).
+test "a service that left scale-to-zero while idle is scaled up to its floor" {
+    apps_v1 = unittest.mock.MagicMock();
+    apps_v1.read_namespaced_deployment.return_value = _dep_at(0, 0);
+    bundle = {
+        "scaling": {
+            "worker": {
+                "mode": ScalingMode.METRIC,
+                "scale_target_name": "worker-deployment",
+                "replica_floor": 1
+            }
+        }
+    };
+    assert lift_parked_deployments_for_bundle(bundle, "t-ns", apps_v1) == ["worker"];
+    apps_v1.patch_namespaced_deployment.assert_called_once_with(
+        name="worker-deployment", namespace="t-ns", body={"spec": {"replicas": 1}}
+    );
+}
+
+test "a running service, a zero floor, and an activated service are left alone" {
+    cases = [
+        (ScalingMode.METRIC, 1, 2),
+        (ScalingMode.METRIC, 0, 0),
+        (ScalingMode.HTTP_ACTIVATION, 0, 0)
+    ];
+    for (mode, floor, replicas) in cases {
+        apps_v1 = unittest.mock.MagicMock();
+        apps_v1.read_namespaced_deployment.return_value = _dep_at(replicas, replicas);
+        bundle = {
+            "scaling": {
+                "worker": {
+                    "mode": mode,
+                    "scale_target_name": "worker-deployment",
+                    "replica_floor": floor
+                }
+            }
+        };
+        assert lift_parked_deployments_for_bundle(bundle, "t-ns", apps_v1) == [] , mode;
+        apps_v1.patch_namespaced_deployment.assert_not_called();
+    }
+}
+
+
 # --- Section E: _validate_http_activation_rules (interceptor routing collisions)
 # Two services that both inherit the shared [scale.kubernetes.http_activation]
 # default unchanged resolve to identical InterceptorRoute match rules; the
