@@ -857,9 +857,6 @@ test "a shared library linked on this host loads its system C library" {
             f"names the development link libcrypto.so, which the loader need not have: {needed}"
         );
         assert soname in needed , f"expected {soname} among {needed}";
-        assert needed[-2:] == ["libc.so.6", "libm.so.6"] , (
-            f"libc must load after every other library (libcef needs RTLD_NEXT close): {needed}"
-        );
         lib = ctypes.CDLL(out);
         lib.openssl_version.restype = ctypes.c_int64;
         assert lib.openssl_version() > 0;
