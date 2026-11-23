@@ -1623,10 +1623,6 @@ walker NaIRGenPass(CompilerPass) {
     def _exc_jmp_symbols -> tuple[str, str];
     def _exc_setjmp_fn -> ir.Function;
     def _exc_longjmp_fn -> ir.Function;
-    def _exc_builtin_sjlj -> bool;
-    def _native_tls_on -> bool;
-    def _native_sjlj_on -> bool;
-    def _unchecked_views_on -> bool;
     def _heap_extern(kind: str) -> ir.Function;
     def _heap_usable_size(b: ir.IRBuilder, block: ir.Value, name: str) -> ir.Value;
     def _direct_c_entry(fn: ir.Function) -> bool;

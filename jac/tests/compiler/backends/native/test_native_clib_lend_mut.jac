@@ -14,9 +14,7 @@ test "an &mut argument to a plain pointer parameter lends the variable's address
         native_required=True,
         memory_profile="rc",
         no_ir_cache=True,
-        native_target="x86_64-unknown-linux-gnu",
-        native_tls=True,
-        native_sjlj=True
+        native_target="x86_64-unknown-linux-gnu"
     );
     text = str(compile_native_ir("clib_lend_mut.jac", options=options).gen.llvm_ir);
     calls = [
