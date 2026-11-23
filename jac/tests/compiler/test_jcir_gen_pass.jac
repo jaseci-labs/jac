@@ -1,10 +1,10 @@
 """Construct-by-construct harness for the JCIR emitter (epic #8201).
 
 Every fixture is emitted twice over the same module. The first emission
-is the pipeline's own: `JcirGenPass` writes the container and
-`JcirBytecodeGenPass` transcribes it, leaving the tree on
+is the pipeline's own: `JcirGenPass` builds the Python tree and
+`JcirBytecodeGenPass` compiles it, leaving the tree on
 `mod.gen.py_ast`. The second is a fresh `JcirGenPass` run over the
-already-compiled module, transcribed through `codegen_shim`.
+already-compiled module, built through `ir_module`.
 
 Two things are asserted of every fixture. Exact
 `ast.dump(include_attributes=True)` equality between the two trees says
@@ -12,16 +12,12 @@ the emitter is deterministic and carries no state across a module that
 has already been through the whole pipeline, native lane included --
 the leak class this pass is most exposed to. Executing both code objects
 and comparing selected globals says the lowering is not merely stable
-but correct. Any mismatch is a bug in the emitter, the shim, or the
-design doc, never in the fixture.
+but correct. Any mismatch is a bug in the emitter or the design doc,
+never in the fixture.
 
 Cross-lane parity against the retired Python-AST emitter is not measured
 here: that lane is gone. Its evidence is the corpus comparison recorded
-in the cutover, plus `test_jcir_bound_emitter_bytes.jac`, which pins
-that binding the emitter's artifact does not change the bytes it emits.
-That file used to be named for a sealed-versus-source comparison it
-cannot make: the binder retains no function pointer, so both sides of it
-are the source lane until #8288 M1 rung 3.
+in the cutover.
 """
 
 import from jaclang.compiler.passes.execution { run_walker }
@@ -55,10 +51,15 @@ def codegen_lane(native: bool) -> list[type] {
 }
 
 import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
-import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
-import from jaclang.compiler.backends.py.codegen_shim { compile_ir, transcribe }
+import from jaclang.compiler.backends.py.jcir_gen_pass {
+    CgNode,
+    CgSplice,
+    CgWideInt,
+    JcirGenPass,
+    build_py_module
+}
 
-"""Compile a source string, then re-emit it: (pipeline tree, fresh tree, bytes)."""
+"""Compile a source string, then re-emit it: (pipeline tree, fresh tree, path)."""
 def dual_compile(src: str, path: str, *, codespace: str = "server") -> tuple[any, ...] {
     prog = JacProgram();
     mod = prog.compile(
@@ -73,13 +74,9 @@ def dual_compile(src: str, path: str, *, codespace: str = "server") -> tuple[any
     );
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);
     ref_tree = mod.gen.py_ast[0];
-    emitter = run_walker(JcirGenPass, module=mod);
-    blob = emitter.ir_bytes();
-    (mods, diags) = transcribe(blob);
-    assert diags == [];
-    assert len(mods) == 1;
-    assert mods[0][0] == path;
-    return (ref_tree, mods[0][1], blob);
+    got_tree = run_walker(JcirGenPass, module=mod).ir_module();
+    assert mod.loc.mod_path == path;
+    return (ref_tree, got_tree, path);
 }
 
 """The same double emission, for a fixture that must be compiled from disk."""
@@ -88,12 +85,8 @@ def dual_compile_file(path: str) -> tuple[any, ...] {
     mod = prog.compile(path, options=CompileOptions());
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);
     ref_tree = mod.gen.py_ast[0];
-    emitter = run_walker(JcirGenPass, module=mod);
-    blob = emitter.ir_bytes();
-    (mods, diags) = transcribe(blob);
-    assert diags == [];
-    assert len(mods) == 1;
-    return (ref_tree, mods[0][1], blob);
+    got_tree = run_walker(JcirGenPass, module=mod).ir_module();
+    return (ref_tree, got_tree, mod.loc.mod_path);
 }
 
 def assert_dump_equal(ref_tree: any, got_tree: any) {
@@ -157,9 +150,9 @@ def code_diffs(a: any, b: any, path: str, out: list[any]) -> list[any] {
     return out;
 }
 
-def assert_bytecode_equal(ref_tree: any, mod_path: str, bytecode: bytes) {
+def assert_code_equal(ref_tree: any, got_tree: any, mod_path: str) {
     ref_code = pycompile(ref_tree, mod_path, "exec");
-    jcir_code = marshal.loads(bytecode);
+    jcir_code = pycompile(got_tree, mod_path, "exec", dont_inherit=True);
     diffs = code_diffs(ref_code, jcir_code, "module", []);
     assert diffs == [] , "\n".join(diffs);
 }
@@ -206,13 +199,9 @@ with entry {
 """;
 
 test "the round trip fixture re-emits identically" {
-    (ref_tree, got_tree, blob) = dual_compile(ROUND_TRIP_FIXTURE, "rt_fixture.jac");
+    (ref_tree, got_tree, path) = dual_compile(ROUND_TRIP_FIXTURE, "rt_fixture.jac");
     assert_dump_equal(ref_tree, got_tree);
-    result = compile_ir(blob);
-    assert len(result.diags) == 0;
-    assert len(result.modules) == 1;
-    assert len(result.modules[0].bytecode) > 0;
-    assert_bytecode_equal(ref_tree, "rt_fixture.jac", result.modules[0].bytecode);
+    assert_code_equal(ref_tree, got_tree, path);
     exec_both(ref_tree, got_tree, "rt_fixture.jac", ["result", "count"]);
 }
 
@@ -671,15 +660,11 @@ test "doubles correctly" {
     assert double(2) == 4;
 }
 """;
-    (ref_tree, got_tree, blob) = dual_compile(
+    (ref_tree, got_tree, path) = dual_compile(
         src, "testblock_fixture.jac", codespace="native"
     );
     assert_dump_equal(ref_tree, got_tree);
-    result = compile_ir(blob);
-    assert len(result.diags) == 0;
-    assert_bytecode_equal(
-        ref_tree, "testblock_fixture.jac", result.modules[0].bytecode
-    );
+    assert_code_equal(ref_tree, got_tree, path);
     dumped = pyast.dump(got_tree);
     assert "invoke_native_test" in dumped;
 }
@@ -725,26 +710,19 @@ obj Helper {
     def rate(text: str) -> int by make_model();
 }
 """;
-    (ref_tree, got_tree, blob) = dual_compile(src, "llm_fixture.jac");
+    (ref_tree, got_tree, path) = dual_compile(src, "llm_fixture.jac");
     assert_dump_equal(ref_tree, got_tree);
     dumped = pyast.dump(got_tree);
     assert "call_llm" in dumped;
     assert "get_mtir" in dumped;
-    result = compile_ir(blob);
-    assert len(result.diags) == 0;
-    assert_bytecode_equal(ref_tree, "llm_fixture.jac", result.modules[0].bytecode);
+    assert_code_equal(ref_tree, got_tree, path);
 }
 
 test "real repo file srcloc lowers identically end to end" {
     path = os.path.join(JAC_ROOT, "jaclang", "compiler", "frontend", "srcloc.jac");
-    (ref_tree, got_tree, blob) = dual_compile_file(path);
+    (ref_tree, got_tree, mod_path) = dual_compile_file(path);
     assert_dump_equal(ref_tree, got_tree);
-    result = compile_ir(blob);
-    assert len(result.diags) == 0;
-    assert len(result.modules) == 1;
-    assert_bytecode_equal(
-        ref_tree, result.modules[0].mod_path, result.modules[0].bytecode
-    );
+    assert_code_equal(ref_tree, got_tree, mod_path);
 }
 
 test "walkers edges and visit lower identically" {
@@ -798,11 +776,9 @@ def launch -> Traveler {
     return root spawn Traveler();
 }
 """;
-    (ref_tree, got_tree, blob) = dual_compile(src, "walker_fixture.jac");
+    (ref_tree, got_tree, path) = dual_compile(src, "walker_fixture.jac");
     assert_dump_equal(ref_tree, got_tree);
-    result = compile_ir(blob);
-    assert len(result.diags) == 0;
-    assert_bytecode_equal(ref_tree, "walker_fixture.jac", result.modules[0].bytecode);
+    assert_code_equal(ref_tree, got_tree, path);
 }
 
 test "match statements lower identically" {
@@ -892,19 +868,15 @@ test "real repo walker file social_graph lowers identically" {
     path = os.path.join(
         JAC_ROOT, "examples", "jaclang_org", "core", "social_graph.jac"
     );
-    (ref_tree, got_tree, blob) = dual_compile_file(path);
+    (ref_tree, got_tree, mod_path) = dual_compile_file(path);
     assert_dump_equal(ref_tree, got_tree);
-    result = compile_ir(blob);
-    assert len(result.diags) == 0;
-    assert_bytecode_equal(
-        ref_tree, result.modules[0].mod_path, result.modules[0].bytecode
-    );
+    assert_code_equal(ref_tree, got_tree, mod_path);
 }
 
 test "the pipeline's codegen tail is jcir, with nothing to select" {
-    # The container is not an option the pipeline can be talked out of:
-    # a plain compile leaves JCIR bytes on the module, and the bytecode
-    # the driver hands the runtime is the one the container produced.
+    # The emitter is not an option the pipeline can be talked out of:
+    # a plain compile leaves the emitter's tree on the module, and the
+    # bytecode the driver hands the runtime is the one that tree produced.
     src = """
 \"\"\"Tail fixture.\"\"\"
 def double(x: int) -> int {
@@ -924,7 +896,7 @@ with entry {
         )
     );
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);
-    assert mod.gen.jcir , "a compiled module must carry its codegen container";
+    assert mod.gen.py_tree is not None , "a compiled module must carry its tree";
     assert mod.gen.py_bytecode;
     sched = codegen_lane(False);
     assert JcirGenPass in sched , f"jcir is not in the codegen schedule: {sched}";
@@ -965,14 +937,12 @@ with entry {
     with open(comp_path, "w") as f {
         f.write(src);
     }
-    (ref_tree, got_tree, blob) = dual_compile_file(comp_path);
+    (ref_tree, got_tree, mod_path) = dual_compile_file(comp_path);
     assert_dump_equal(ref_tree, got_tree);
     dumped = pyast.dump(got_tree);
     assert "'jsx'" in dumped;
     assert "Hello & " in dumped;
-    result = compile_ir(blob);
-    assert len(result.diags) == 0;
-    assert_bytecode_equal(ref_tree, comp_path, result.modules[0].bytecode);
+    assert_code_equal(ref_tree, got_tree, mod_path);
 }
 
 test "a genai call refuses deliberately rather than lowering wrong" {
@@ -1022,4 +992,48 @@ with entry {
     (ref_tree, got_tree, _) = dual_compile(src, "flow_fixture.jac");
     assert_dump_equal(ref_tree, got_tree);
     exec_both(ref_tree, got_tree, "flow_fixture.jac", ["r"]);
+}
+
+test "the tree builder splices python source and widens big ints" {
+    big = 2 ** 70 + 5;
+    store = CgNode(cls="Store", keys=[], vals=[], l1=3, c1=0, l2=3, c2=3);
+    target = CgNode(
+        cls="Name", keys=["id", "ctx"], vals=["BIG", store], l1=3, c1=0, l2=3, c2=3
+    );
+    wide = CgNode(
+        cls="Constant",
+        keys=["value"],
+        vals=[CgWideInt(negative=True, magnitude=big.to_bytes(9, "little"))],
+        l1=3,
+        c1=6,
+        l2=3,
+        c2=30
+    );
+    assign = CgNode(
+        cls="Assign",
+        keys=["targets", "value"],
+        vals=[[target], wide],
+        l1=3,
+        c1=0,
+        l2=3,
+        c2=30
+    );
+    tree = build_py_module(
+        CgNode(
+            cls="Module",
+            keys=["body", "type_ignores"],
+            vals=[[CgSplice(src="X = 40\nY = X + 2"), assign], []],
+            l1=1,
+            c1=0,
+            l2=1,
+            c2=1
+        )
+    );
+    assert [type(stmt).__name__ for stmt in tree.body] == ["Assign"] * 3;
+    assert tree.body[1].lineno == 2;
+    assert (tree.body[2].lineno, tree.body[2].end_col_offset) == (3, 30);
+    ns: dict[str, any] = {};
+    pyexec(pycompile(tree, "builder.py", "exec", dont_inherit=True), ns);
+    assert ns["Y"] == 42;
+    assert ns["BIG"] == -big;
 }

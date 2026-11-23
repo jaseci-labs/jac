@@ -1,8 +1,8 @@
-impl JcirGenPass.ir_bytes -> bytes {
+impl JcirGenPass.ir_module -> ast.Module {
     if self._module_root is None {
         raise RuntimeError(self.ctx.ice('JCIR emitter produced no module root'));
     }
-    return module_container_bytes(self._module_path, self._module_root);
+    return build_py_module(self._module_root);
 }
 
 impl JcirGenPass.exit_sub_tag with SubTag exit {
@@ -216,8 +216,7 @@ impl JcirGenPass.exit_module with Module exit {
     module = self.nod('Module', ['body', 'type_ignores'], [body_items, []]);
     self.set_out(here, [module]);
     self._module_root = module;
-    self._module_path = here.loc.mod_path;
-    here.gen.jcir = module_container_bytes(self._module_path, module);
+    here.gen.py_tree = build_py_module(module);
 }
 
 impl JcirGenPass.exit_type_param with TypeParam exit {

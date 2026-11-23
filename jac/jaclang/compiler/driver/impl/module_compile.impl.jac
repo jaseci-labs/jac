@@ -167,7 +167,7 @@ impl drop_products_on_error(program: JacProgram, mod: uni.Module) -> bool {
         return False;
     }
     gen = mod.gen;
-    gen.jcir = None;
+    gen.py_tree = None;
     gen.py_bytecode = None;
     gen.drop_native_ir();
     gen.native_engine = None;
