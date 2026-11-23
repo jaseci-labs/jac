@@ -261,9 +261,9 @@ impl KubernetesTargetBase.get_status(app_name: str) -> ResourceStatusInfo {
     }
 }
 
-impl KubernetesTargetBase.scale(app_name: str, replicas: int) {
+impl KubernetesTargetBase.scale(app_name: str, replicas: int, service: str = "") {
     self._assert_own_app(app_name);
-    member: str = k8s_safe_name(app_name);
+    member: str = k8s_safe_name(service or app_name);
     if self.logger {
         self.logger.info(f"Scaling '{member}' to {replicas} replicas");
     }
@@ -280,7 +280,7 @@ impl KubernetesTargetBase.scale(app_name: str, replicas: int) {
         if member not in labels {
             raise ValueError(
                 f"'{app_name}' has no fleet member '{member}' in namespace "
-                f"'{namespace}'; its members are {sorted(labels)}"
+                f"'{namespace}'; pass service as one of {sorted(labels)}"
             );
         }
         apps_v1.patch_namespaced_deployment(

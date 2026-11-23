@@ -1633,7 +1633,7 @@ reachable at call time).
 | `autoscaler_status(app_name, namespace, service="")` | `AutoscalerRuntimeStatus`: everything `ResourceStatusInfo` carries plus `engine`, `autoscaler_name`, `trigger_active`, `scaler_ready`, `conditions`, `resource_version` (see [Autoscaler runtime status](#autoscaler-runtime-status)) |
 | `watch_autoscaler_transitions(app_name, namespace, label_selector=None, timeout_seconds=None)` | iterator of `AutoscalerTransition` (see [Observing transitions](#observing-transitions)) |
 | `service_url(app_name, namespace)` | externally reachable URL or `None` |
-| `scale(app_name, namespace, replicas)` | resizes the app deployment |
+| `scale(app_name, namespace, replicas, service="")` | resizes one fleet member: `service` is an `[apps]` key or `gateway`, and defaults to the app itself; raises `ValueError` listing the members when none matches |
 
 `ScaleClient(kube_context=..., logger=...)` sets a default cluster context for
 every call and an optional custom logger. When `deploy` is given `on_event`,
