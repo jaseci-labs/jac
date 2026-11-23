@@ -111,14 +111,7 @@ test "a placement summary record round-trips and skips rows of the wrong shape" 
         summary_to_dict
     }
     element = ElementSummary(
-        index=2,
-        kind="ability",
-        name="walk",
-        import_items=["a", "b"],
-        reqs=[["native", "pin"]],
-        refs=[0, 1],
-        escapes=[(3, "x")],
-        glob_writes=[4]
+        index=2, name="walk", reqs=[["native", "pin"]], glob_writes=[4]
     );
     summary = PlacementSummary(
         mod_path="/app/main.jac",
@@ -133,13 +126,8 @@ test "a placement summary record round-trips and skips rows of the wrong shape" 
     assert summary_to_dict(restored) == summary_to_dict(summary);
     record = summary_to_dict(summary);
     record["anchors"] = "walk";
-    record["elements"] = [
-        {"index": 5, "refs": "0", "escapes": [[1, "y"], "z", [], [2]]},
-        "row"
-    ];
+    record["elements"] = [{"index": 5, "glob_writes": "0"}, "row"];
     odd = summary_from_dict(record);
     assert odd is not None and odd.anchors == [] and len(odd.elements) == 1;
-    assert odd.elements[0].index == 5
-        and odd.elements[0].refs == []
-        and odd.elements[0].escapes == [(1, "y")];
+    assert odd.elements[0].index == 5 and odd.elements[0].glob_writes == [];
 }
