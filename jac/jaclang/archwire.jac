@@ -14155,6 +14155,7 @@ graph import scale {
             in_cluster_namespace
         },
         deploy.target.kubernetes.database_provisioner
+            | deploy.target.kubernetes.kubernetes_target
             | deploy.target.kubernetes.ops_rbac
             | sdk.client { k8s_safe_name },
         deploy.target.kubernetes.manifest_builder
@@ -14790,6 +14791,7 @@ graph import scale.deploy.target.kubernetes {
         ingress { KubectlCluster, delete_if_exists },
         kubernetes_target {
             COMPANION_DEFS,
+            FLEET_SELECTOR,
             KubectlCluster,
             create_k8s_secret,
             get_cluster_provider,

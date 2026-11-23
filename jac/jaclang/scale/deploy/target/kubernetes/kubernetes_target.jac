@@ -31,6 +31,7 @@ obj KubernetesTargetBase(DeploymentTarget) {
     );
 
     def _assert_own_app(app_name: str);
+    def _fleet_deployments(apps_v1: any, namespace: str, app_name: str) -> list[any];
     def get_status(app_name: str) -> ResourceStatusInfo;
     def scale(app_name: str, replicas: int);
     def _get_lb_endpoint(app_name: str) -> (str | None);
