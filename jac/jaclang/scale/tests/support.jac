@@ -93,6 +93,18 @@ def cleanup_db_files(fixtures_dir: Path) {
     }
 }
 
+"""SIGKILL a started server's whole process group, workers included.
+
+Worker children inherit the harness's stdout and stderr pipes, so killing
+only the master orphans the workers: they keep running and hold the pipes
+open, and any later `communicate()` blocks on an EOF that never comes. A
+server started with `start_new_session=True` leads its own group, so the
+group kill reaches every worker; one that does not is signalled alone.
+"""
+def _kill_process_group(server: subprocess.Popen) {
+    _signal_group(server.pid, int(signal.SIGKILL));
+}
+
 """Unwrap a TransportResponse envelope down to its data payload.
 
 Accepts the `[status, body]` pair some transports return as well as the bare
@@ -170,7 +182,8 @@ def start_server(
     deadline = time.monotonic() + 300.0;
     while time.monotonic() < deadline {
         if server.poll() is not None {
-            (stdout, stderr) = server.communicate();
+            _kill_process_group(server);
+            (stdout, stderr) = server.communicate(timeout=30);
             raise RuntimeError(
                 f"server exited before serving {jac_file.name} on port {port}"
                 f"\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
@@ -184,7 +197,7 @@ def start_server(
         } except Exception {}
         time.sleep(1);
     }
-    server.kill();
+    _kill_process_group(server);
     (stdout, stderr) = server.communicate(timeout=5);
     raise RuntimeError(
         f"server did not answer /healthz for {jac_file.name} on port {port} "
@@ -210,9 +223,8 @@ def stop_server(server: subprocess.Popen | None) {
         try {
             server.`wait(timeout=5);
         } except subprocess.TimeoutExpired {
-            server.kill();
-            _signal_group(server.pid, int(signal.SIGKILL));
-            server.`wait();
+            _kill_process_group(server);
+            server.`wait(timeout=5);
         }
     }
     time.sleep(0.2);

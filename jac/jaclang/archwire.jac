@@ -15356,7 +15356,7 @@ graph import scale.tests {
             | microservices.test_seed_determinism { pod_binary, require_pod_binary },
         microservices.test_gateway
             | microservices.test_k8s_health_probe
-            | server.test_examples { get_free_port },
+            | server.test_examples { _kill_process_group, get_free_port },
         microservices.test_stop_signal_scope { stop_server },
         microservices.test_topology_conformance {
             extract,
@@ -15366,6 +15366,7 @@ graph import scale.tests {
         },
         server.test_drain_hooks { get_free_port, start_server, stop_server },
         server.test_metrics_workers | server.test_serve {
+            _kill_process_group,
             cleanup_db_files,
             get_free_port,
             start_server,
