@@ -10,6 +10,7 @@ and hangs up abruptly (RST via SO_LINGER 0). The server must keep answering
 subsequent requests as if nothing happened.
 """
 
+import http.client;
 import json;
 import socket;
 import struct;
@@ -46,5 +47,26 @@ test "abrupt client disconnects are absorbed by the connection handler" {
         assert body == {"ok": True} , "server stopped serving after client disconnects";
     } finally {
         stop();
+    }
+}
+
+
+test "a worker at its request budget closes the connection it answers on" {
+    app = ServingApp();
+    app.add_endpoint(JEndPoint(method=HTTPMethod.GET, path='/ping', callback=_ping));
+    server = ServingServer(app=app, host='127.0.0.1', port=0, request_budget=1);
+    stop = server.serve_background();
+    try {
+        conn = http.client.HTTPConnection('127.0.0.1', server.bound_port, timeout=5);
+        conn.request('GET', '/ping');
+        resp = conn.getresponse();
+        resp.read();
+        conn.close();
+        assert resp.status == 200;
+        assert resp.getheader('Connection') == 'close' , resp.getheader('Connection');
+    } finally {
+        try {
+            stop();
+        } except RuntimeError {}
     }
 }
