@@ -94,6 +94,45 @@ impl ClientResponse.aclose {
     }
 }
 
+impl _idle_pool -> dict[tuple[str, str, int], list[_PooledConn]] {
+    loop: any = asyncio.get_running_loop();
+    if not hasattr(loop, '_jac_idle_conns') {
+        loop._jac_idle_conns = {};
+    }
+    return loop._jac_idle_conns;
+}
+
+impl _usable(conn: _PooledConn, now: float) -> bool {
+    return not conn.writer.is_closing()
+        and not conn.reader.at_eof()
+        and len(conn.reader._buffer) == 0
+        and now - conn.idle_since < IDLE_TIMEOUT
+        and now - conn.opened < MAX_CONNECTION_AGE;
+}
+
+impl _take_idle(origin: tuple[str, str, int]) -> (_PooledConn | None) {
+    bucket = _idle_pool().get(origin, []);
+    now = time.monotonic();
+    while bucket {
+        conn = bucket.pop();
+        if _usable(conn, now) {
+            return conn;
+        }
+        conn.writer.close();
+    }
+    return None;
+}
+
+impl _release(conn: _PooledConn) {
+    conn.idle_since = time.monotonic();
+    bucket = _idle_pool().setdefault(conn.origin, []);
+    if _usable(conn, conn.idle_since) and len(bucket) < MAX_IDLE_PER_ORIGIN {
+        bucket.append(conn);
+    } else {
+        conn.writer.close();
+    }
+}
+
 impl _split_url(url: str) -> tuple[str, str, int, str] {
     split = urlsplit(url);
     scheme = (split.scheme or 'http').lower();
@@ -128,6 +167,13 @@ impl _open_stream(
     } except OSError as e {
         raise ClientRequestNotSent(detail=f"{host}:{port}: {e}");
     }
+}
+
+impl _connect(origin: tuple[str, str, int], timeout: float) -> _PooledConn {
+    (reader, writer) = await _open_stream(origin[0], origin[1], origin[2], timeout);
+    return _PooledConn(
+        origin=origin, reader=reader, writer=writer, opened=time.monotonic()
+    );
 }
 
 impl _read_response_head(reader: any, timeout: float) -> tuple[int, str, Headers] {
