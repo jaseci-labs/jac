@@ -19,10 +19,6 @@ impl JacAutoLintPass._is_file_excluded(file_path: str) -> bool {
 }
 
 impl JacAutoLintPass.exit_ability with uni.Ability exit {
-    if not self.lint_enabled {
-        return;
-    }
-
     if not self.report_only and self._pending_setters {
         self._pending_setters.pop();
     }
@@ -98,7 +94,7 @@ impl JacAutoLintPass._remove_staticmethod_from_kids(ability_node: uni.Ability) -
 }
 
 impl JacAutoLintPass.enter_ability with uni.Ability entry {
-    if not self.lint_enabled or self.report_only {
+    if self.report_only {
         return;
     }
     if here.decorators {
@@ -163,9 +159,6 @@ impl JacAutoLintPass.enter_ability with uni.Ability entry {
 }
 
 impl JacAutoLintPass.enter_impl_def with uni.ImplDef entry {
-    if not self.lint_enabled {
-        return;
-    }
     impl_node = here;
 
     if not self.ctx._is_suppressed(W3043) {
@@ -188,7 +181,7 @@ impl JacAutoLintPass.enter_impl_def with uni.ImplDef entry {
 }
 
 impl JacAutoLintPass.exit_impl_def with uni.ImplDef exit {
-    if not self.lint_enabled or self.ctx._is_suppressed(W3005) {
+    if self.ctx._is_suppressed(W3005) {
         return;
     }
     spec = here.spec;
@@ -201,7 +194,7 @@ impl JacAutoLintPass.exit_impl_def with uni.ImplDef exit {
 }
 
 impl JacAutoLintPass.enter_enum with uni.Enum entry {
-    if not self.lint_enabled or self.report_only {
+    if self.report_only {
         return;
     }
     enum_node = here;
@@ -209,9 +202,6 @@ impl JacAutoLintPass.enter_enum with uni.Enum entry {
 }
 
 impl JacAutoLintPass.enter_archetype with uni.Archetype entry {
-    if not self.lint_enabled {
-        return;
-    }
     arch = here;
 
     if not self.ctx._is_suppressed(W3043)
@@ -524,9 +514,6 @@ impl JacAutoLintPass.entry_written_names(module: uni.Module) -> set[str] {
 }
 
 impl JacAutoLintPass.enter_module with uni.Module entry {
-    if not self.lint_enabled {
-        return;
-    }
     if self.report_only {
         self._separate_impls(here, here.body);
         self._sink_impls(here, list(here.body));
@@ -610,9 +597,6 @@ impl JacAutoLintPass.enter_module with uni.Module entry {
 }
 
 impl JacAutoLintPass.enter_special_var_ref with uni.SpecialVarRef entry {
-    if not self.lint_enabled {
-        return;
-    }
     if self.report_only {
         return;
     }
@@ -779,9 +763,6 @@ impl JacAutoLintPass._replace_child_in_parent(
 }
 
 impl JacAutoLintPass.exit_func_call with uni.FuncCall exit {
-    if not self.lint_enabled {
-        return;
-    }
     self._check_no_print(here);
 
     if not self.ctx._is_suppressed(W3007) {
@@ -1094,7 +1075,7 @@ impl JacAutoLintPass._convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> boo
 }
 
 impl JacAutoLintPass.exit_if_else_expr with uni.IfElseExpr exit {
-    if not self.lint_enabled or self.report_only {
+    if self.report_only {
         return;
     }
     if not self.ctx._is_suppressed(W3008) and self._convert_ternary_to_or(here) {
@@ -1131,7 +1112,7 @@ impl JacAutoLintPass.exit_if_else_expr with uni.IfElseExpr exit {
 }
 
 impl JacAutoLintPass.exit_bool_expr with uni.BoolExpr exit {
-    if not self.lint_enabled or self.report_only or self.ctx._is_suppressed(W3007) {
+    if self.report_only or self.ctx._is_suppressed(W3007) {
         return;
     }
     trailers: list[uni.AtomTrailer] = [];
@@ -1434,7 +1415,7 @@ impl JacAutoLintPass._stmt_body_list(
 }
 
 impl JacAutoLintPass._strip_redundant_semis(nd: uni.Module) -> None {
-    if not self.lint_enabled or self.ctx._is_suppressed(W3013) {
+    if self.ctx._is_suppressed(W3013) {
         return;
     }
     removable: list[tuple[uni.UniNode, uni.Semi]] = [];
@@ -1933,9 +1914,6 @@ impl JacAutoLintPass.exit_if_stmt with uni.IfStmt exit {
     if here.__class__ is not uni.IfStmt {
         return;
     }
-    if not self.lint_enabled {
-        return;
-    }
     self._check_unnecessary_pass(list(here.body));
     self._check_unnecessary_else_after_return(here);
     self._check_return_bool_simplification(here);
@@ -1944,48 +1922,36 @@ impl JacAutoLintPass.exit_if_stmt with uni.IfStmt exit {
 }
 
 impl JacAutoLintPass.enter_else_stmt with uni.ElseStmt entry {
-    if not self.lint_enabled {
-        return;
-    }
     self._check_unnecessary_pass(list(here.body));
     self._check_nested_if_to_elif(here);
 }
 
 impl JacAutoLintPass.exit_compare_expr with uni.CompareExpr exit {
-    if not self.lint_enabled {
-        return;
-    }
     self._check_is_with_literal(here);
     self._check_filter_compare_tautology(here);
 }
 
 impl JacAutoLintPass.exit_func_signature with uni.FuncSignature exit {
-    if not self.lint_enabled or self._in_floated_spec(here) {
+    if self._in_floated_spec(here) {
         return;
     }
     self._check_too_many_params(here);
 }
 
 impl JacAutoLintPass.enter_param_var with uni.ParamVar entry {
-    if not self.lint_enabled or self._in_floated_spec(here) {
+    if self._in_floated_spec(here) {
         return;
     }
     self._check_mutable_default(here);
 }
 
 impl JacAutoLintPass.exit_archetype with uni.Archetype exit {
-    if not self.lint_enabled {
-        return;
-    }
     if here.body is not None and isinstance(here.body, list) {
         self._check_unnecessary_pass(list(here.body));
     }
 }
 
 impl JacAutoLintPass.exit_lambda_expr with uni.LambdaExpr exit {
-    if not self.lint_enabled {
-        return;
-    }
     self._check_unnecessary_none_return(here, here.body, here.signature, "lambda");
 }
 
@@ -2295,7 +2261,7 @@ impl JacAutoLintPass._convert_usestate_vars(ability_node: uni.Ability) -> None {
 }
 
 impl JacAutoLintPass.exit_expr_stmt with uni.ExprStmt exit {
-    if not self.lint_enabled or self.report_only or not self._pending_setters {
+    if self.report_only or not self._pending_setters {
         return;
     }
     call_node = here.expr;
@@ -2363,7 +2329,7 @@ impl JacAutoLintPass.exit_expr_stmt with uni.ExprStmt exit {
 }
 
 impl JacAutoLintPass._strip_usestate_imports(nd: uni.Module) -> None {
-    if not self.lint_enabled or self.report_only or not self._did_convert_usestate {
+    if self.report_only or not self._did_convert_usestate {
         return;
     }
     removed: set[int] = set();
@@ -2408,8 +2374,7 @@ impl JacAutoLintPass._strip_usestate_imports(nd: uni.Module) -> None {
 }
 
 impl JacAutoLintPass._strip_wired_imports(nd: uni.Module) -> None {
-    if not self.lint_enabled
-        or self.report_only
+    if self.report_only
         or (self.ctx._is_suppressed(W3053) and self.ctx._is_suppressed(W3054)) {
         return;
     }
@@ -2573,10 +2538,6 @@ impl JacAutoLintPass.exit_module with uni.Module exit {
 }
 
 impl JacAutoLintPass._strip_noise(nd: uni.Module) -> None {
-    if not self.lint_enabled {
-        return;
-    }
-
     if self._is_file_excluded(nd.loc.mod_path) {
         return;
     }

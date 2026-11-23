@@ -60,12 +60,6 @@ impl printgraph_ast_tree(
         shape = '';
         fillcolor = '';
         style = '';
-        _class__ = str(nd.__class__)[33:-2];
-        if (_class__ in CLASS_COLOR_MAP) {
-            shape = 'shape="oval"';
-            style = 'style="filled"';
-            fillcolor = f'fillcolor="{CLASS_COLOR_MAP[_class__]}"';
-        }
         info1: list[tuple[(str, str, str)]] = [];
         if isinstance(nd, uni.Token) {
             shape = 'shape="box"';
@@ -96,13 +90,12 @@ impl printgraph_ast_tree(
 }
 
 impl print_ast_tree(
-    root_node: (UniNode | ast3.AST),
+    root_node: UniNode,
     marker: str = '+-- ',
     level_markers: (list[bool] | None) = None,
     output_file: (str | None) = None,
     max_depth: (int | None) = None
 ) -> str {
-    print_py_raise: bool = False;
     def __node_repr_in_tree(nd: UniNode) -> str {
         access = f"Access: {nd.access.tag.value} ,"
             if (isinstance(nd, uni.AstAccessNode) and (nd.access is not None))
@@ -116,9 +109,7 @@ impl print_ast_tree(
             return out;
         } elif isinstance(nd, Token) {
             return f"{nd.__class__.__name__} - {nd.value}, {access}";
-        } elif (
-            isinstance(nd, uni.Module) and nd.is_raised_from_py and not print_py_raise
-        ) {
+        } elif isinstance(nd, uni.Module) and nd.is_raised_from_py {
             return f"{nd.__class__.__name__} - PythonModuleRaised: {nd.name}";
         } elif isinstance(nd, uni.ModuleItem) {
             name_str = nd.name.sym_name
@@ -160,65 +151,6 @@ impl print_ast_tree(
             return f"{nd.__class__.__name__}, {access}";
         }
     }
-    def __node_repr_in_py_tree(nd: ast3.AST) -> str {
-        if isinstance(nd, ast3.Constant) {
-            return f"{nd.__class__.__name__} - {nd.value!r}";
-        } elif isinstance(nd, ast3.Name) {
-            return f"{nd.__class__.__name__} - {nd.id}";
-        } elif isinstance(
-            nd, (ast3.FunctionDef, ast3.ClassDef, ast3.AsyncFunctionDef)
-        ) {
-            return f"{nd.__class__.__name__} - {nd.name}";
-        } elif isinstance(nd, ast3.Import) {
-            return f"{nd.__class__.__name__} - {', '.join(
-                alias.name for alias in nd.names
-            )}";
-        } elif isinstance(nd, ast3.ImportFrom) {
-            return f"{nd.__class__.__name__} - {nd.module} : {', '.join(
-                alias.name for alias in nd.names
-            )}";
-        } elif isinstance(nd, ast3.alias) {
-            return f"{nd.__class__.__name__} - {nd.name}";
-        } elif isinstance(nd, ast3.Attribute) {
-            return f"{nd.__class__.__name__} - {nd.attr}";
-        } elif isinstance(nd, ast3.Call) {
-            if isinstance(nd.func, ast3.Name) {
-                return f"{nd.__class__.__name__} - {nd.func.id}";
-            } elif isinstance(nd.func, ast3.Attribute) {
-                return f"{nd.__class__.__name__} - {nd.func.attr}";
-            } else {
-                return f"{nd.__class__.__name__}";
-            }
-        } else {
-            return f"{nd.__class__.__name__}";
-        }
-    }
-    def get_location_info(nd: ast3.AST) -> str {
-        if not isinstance(
-            nd,
-            (
-                ast3.stmt,
-                ast3.expr,
-                ast3.excepthandler,
-                ast3.arg,
-                ast3.keyword,
-                ast3.alias,
-                ast3.pattern,
-                ast3.type_param
-            )
-        ) {
-            return '-:- - -:-';
-        }
-        if (nd.lineno and nd.col_offset and nd.end_lineno and nd.end_col_offset) {
-            start_pos = f"{nd.lineno}:{(nd.col_offset + 1)}";
-            end_pos = f"{nd.end_lineno}:{(nd.end_col_offset + 1)
-                if nd.end_col_offset
-                else nd.col_offset}";
-            prefix = f"{start_pos} - {end_pos}";
-            return prefix;
-        }
-        return '-:- - -:-';
-    }
     if (
         (root_node is None)
         or ((max_depth is not None) and (len((level_markers or [])) >= max_depth))
@@ -237,11 +169,7 @@ impl print_ast_tree(
     markers += marker if (level > 0) else '';
     if isinstance(root_node, uni.UniNode) {
         tree_str = f"{root_node.loc}	{markers}{__node_repr_in_tree(root_node)}\n";
-        if (
-            isinstance(root_node, uni.Module)
-            and root_node.is_raised_from_py
-            and not print_py_raise
-        ) {
+        if isinstance(root_node, uni.Module) and root_node.is_raised_from_py {
             kids: Sequence[UniNode] = [
                 x
                 for x in root_node.get_all_sub_nodes(uni.Module)
@@ -254,16 +182,6 @@ impl print_ast_tree(
             is_last = i == (len(kids) - 1);
             tree_str += print_ast_tree(
                 child, marker, [*level_markers, not is_last], output_file, max_depth
-            );
-        }
-    } elif isinstance(root_node, ast3.AST) {
-        tree_str = f"{get_location_info(root_node)}	{markers}{__node_repr_in_py_tree(
-            root_node
-        )}\n";
-        for (i_a, child_a) in enumerate(ast3.iter_child_nodes(root_node)) {
-            is_last = i_a == (len(`list(ast3.iter_child_nodes(root_node))) - 1);
-            tree_str += print_ast_tree(
-                child_a, marker, [*level_markers, not is_last], output_file, max_depth
             );
         }
     }

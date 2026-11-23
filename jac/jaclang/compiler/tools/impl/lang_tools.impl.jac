@@ -226,7 +226,6 @@ impl AstTool.init -> None {
                     'UniCFGNode',
                     'ContextAwareNode',
                     'ProgramModule',
-                    'OOPAccessNode',
                     'WalkerStmtOnlyNode',
                     'Source',
                     'EmptyToken',
@@ -236,12 +235,10 @@ impl AstTool.init -> None {
                     'Literal',
                     'AstDocNode',
                     'AstImplNeedingNode',
-                    'AstSemStrNode',
                     'PythonModuleAst',
                     'AstAsyncNode',
                     'AstElseBodyNode',
                     'AstTypedVarNode',
-                    'AstImplOnlyNode',
                     'Expr',
                     'AtomExpr',
                     'ElementStmt',
@@ -264,8 +261,6 @@ impl AstTool.init -> None {
 impl UniNodeInfo.process(cls: type[uni.UniNode]) -> None {
     self.name = cls.__name__;
     self.doc = cls.__doc__;
-    UniNodeInfo.type_map[self.name] = cls;
-    self.class_name_snake = pascal_to_snake(cls.__name__);
     self.init_sig = inspect.signature(cls.__init__);
     self.kids = [];
     for (param_name, param) in self.init_sig.parameters.items() {
