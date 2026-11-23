@@ -1,11 +1,5 @@
 import os;
 
-def _coerce_module(module: uni.Module, context: CodeContext);
-
-def _coerce_client_module(module: uni.Module);
-
-def _coerce_native_module(module: uni.Module);
-
 def _stamp_context_element(elem: uni.UniNode, context: CodeContext);
 
 def hub_module_for_path(path: str, prog: JacProgram) -> (uni.Module | None);
@@ -64,8 +58,6 @@ def bridgeable_import_target(nd: uni.Import) -> (str | None);
 def is_service_app_entry(path: str) -> bool;
 
 def module_app(module: (uni.Module | None)) -> (str | None);
-
-def import_consumer_app(nd: uni.Import) -> (str | None);
 
 def same_workspace(consumer_path: str, provider_path: str) -> bool;
 

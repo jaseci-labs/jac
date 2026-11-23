@@ -62,7 +62,8 @@ impl run_parse(task: ModuleAnalysis) {
 
 impl run_head(task: ModuleAnalysis) {
     task.module_path = os.path.normpath(task.path);
-    before = task.program.count_module_blocking_errors(task.module_path);
+    (program, path) = (task.program, task.module_path);
+    before = program.count_module_errors(path, blocking=True);
     if task.options.symtab_ir_only {
         task.require(CompilationProduct.SYMBOLS);
     } else {
@@ -70,7 +71,7 @@ impl run_head(task: ModuleAnalysis) {
             CompilationProduct.IR, ProductRequest(gen_mtir=not task.options.no_cgen)
         );
     }
-    task.blocked = task.program.count_module_blocking_errors(task.module_path) > before;
+    task.blocked = program.count_module_errors(path, blocking=True) > before;
 }
 
 impl admits_placement(task: ModuleAnalysis) -> bool {

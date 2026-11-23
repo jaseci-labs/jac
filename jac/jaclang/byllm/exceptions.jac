@@ -38,3 +38,5 @@ obj McpError(ByLLMError) {}
 obj CompactionNotEffectiveError(ByLLMError) {}
 
 obj OutputTruncatedError(ByLLMError) {}
+
+obj EmptyReplyError(ByLLMError) {}

@@ -8,8 +8,6 @@ def no_passes(request: ProductRequest) -> PassSchedule;
 
 def unavailable_schedule(request: ProductRequest) -> (PassSchedule | None);
 
-def empty_schedule(request: ProductRequest) -> (PassSchedule | None);
-
 def no_action(program: JacProgram, module: Module) -> bool;
 
 def no_drop(program: JacProgram, module: Module);
@@ -79,8 +77,6 @@ def format_lintfix_passes(request: ProductRequest) -> PassSchedule;
 def lint_passes(request: ProductRequest) -> PassSchedule;
 
 def python_ast_passes(request: ProductRequest) -> PassSchedule;
-
-def python_symbols_passes(request: ProductRequest) -> PassSchedule;
 
 def grammar_passes(request: ProductRequest) -> PassSchedule;
 
@@ -208,7 +204,7 @@ glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
          CompilationProduct.LAYOUT: ProductSpec(passes=layout_passes, cached=True),
          CompilationProduct.CODEGEN: ProductSpec(
              passes=codegen_passes,
-             bootstrap=empty_schedule,
+             bootstrap=no_passes,
              loads=CODEGEN_LOADS,
              tier_with=[CompilationProduct.IR, CompilationProduct.NATIVE_LOWER],
              tiered=True,
@@ -217,7 +213,7 @@ glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
          CompilationProduct.PY_IR: ProductSpec(passes=py_ir_passes),
          CompilationProduct.FROZEN: ProductSpec(
              passes=frozen_passes,
-             bootstrap=empty_schedule,
+             bootstrap=no_passes,
              tier_with=[CompilationProduct.CODEGEN],
              tiered=True,
              on_import_error=ImportFallback.REPORT
@@ -249,9 +245,6 @@ glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
          CompilationProduct.LINT: ProductSpec(passes=lint_passes),
          CompilationProduct.PYTHON_AST: ProductSpec(
              passes=python_ast_passes, tool=True
-         ),
-         CompilationProduct.PYTHON_SYMBOLS: ProductSpec(
-             passes=python_symbols_passes, tool=True
          ),
          CompilationProduct.GRAMMAR: ProductSpec(passes=grammar_passes, tool=True),
          CompilationProduct.CFG_DOT: ProductSpec(passes=cfg_dot_passes, tool=True),

@@ -29,10 +29,10 @@ test "a native stdlib module resolves into the program that imports it" {
 test "a compiler module still resolves into the self-host program" {
     prog = JacProgram();
     cache = prog._get_compiler().selfhost;
-    log_mod = _pkg_path("compiler/driver/log.jac");
-    assert os.path.isfile(log_mod) , log_mod;
-    assert cache.resolve(log_mod, prog) is cache.program;
-    assert cache.resolve(log_mod, prog, force=True) is prog;
+    driver_mod = _pkg_path("compiler/driver/dependency_graph.jac");
+    assert os.path.isfile(driver_mod) , driver_mod;
+    assert cache.resolve(driver_mod, prog) is cache.program;
+    assert cache.resolve(driver_mod, prog, force=True) is prog;
 }
 
 test "shared construction runtime resolves into its consumer program" {

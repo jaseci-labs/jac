@@ -516,7 +516,7 @@ impl prepare_application(
     with PREPARATION_LOCK {
         previous = get_effective_default_codespace_override();
         set_effective_default_codespace('server');
-        watched = bool(os.environ.get('JAC_KERNEL_TIMING'));
+        watched = bool(os.environ.get('JAC_PREPARE_TRACEBACK'));
         if watched {
             import faulthandler;
             try {

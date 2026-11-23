@@ -32,7 +32,6 @@ impl NativeUnitRegistry.note_slow_step(verb: str, path: str, started: float) {
 
 impl NativeUnitRegistry.clear {
     self.entries.clear();
-    self.not_native.clear();
     self.compiled_paths.clear();
     self.failures.clear();
 }
@@ -49,7 +48,6 @@ impl NativeUnitRegistry.release_products {
 impl NativeUnitRegistry.forget(path: str) {
     real = os.path.realpath(path);
     self.entries.pop(real, None);
-    self.not_native.pop(real, None);
     self.failures.pop(real, None);
 }
 
@@ -168,9 +166,7 @@ impl NativeUnitRegistry.stamp_for(
 ) -> NativeStamp {
     opts = options if options is not None else self._options();
     return current_native_stamp(
-        opts.unit_codegen_identity(path),
-        opts.effective_triple(),
-        running_compiler_digest()
+        opts.unit_codegen_identity(path), opts.effective_triple()
     );
 }
 
@@ -430,9 +426,6 @@ impl NativeUnitRegistry.ensure(
     if not compile_on_miss or not os.path.isfile(resolved) {
         return None;
     }
-    if self.not_native.get(resolved) == NativeUnitRegistry._source_key(resolved) {
-        return None;
-    }
     return self.compile_unit(resolved, options, products=products);
 }
 
@@ -455,10 +448,7 @@ impl NativeUnitRegistry.dep_iface(
         if ent is not None {
             return ent.iface;
         }
-        if resolved not in self.building
-            and os.path.isfile(resolved)
-            and self.not_native.get(resolved)
-                != NativeUnitRegistry._source_key(resolved) {
+        if resolved not in self.building and os.path.isfile(resolved) {
             session.defer(resolved);
         }
         return None;
@@ -1014,7 +1004,7 @@ impl NativeBuildSession.unbound_symbols(
             if symbol not in defined
                 and (
                     (prefix and symbol.startswith(prefix))
-                    or (symbol + DEMOTED_SYMBOL_SUFFIX) in defined
+                    or (symbol + DEMOTED_SUFFIX) in defined
                 ) {
                 unbound.add(symbol);
             }

@@ -6,8 +6,6 @@ def wasm_ir_units(
     program: JacProgram, file_path: str
 ) -> tuple[str, set[str], list[list[str]]];
 
-def wasm_artifact(program: JacProgram, file_path: str, exports: list[str]) -> bytes;
-
 def wasm_artifact_inputs(
     program: JacProgram, file_path: str, exports: list[str]
 ) -> tuple[bytes, list[list[str]]];
@@ -22,8 +20,6 @@ def native_application(
     no_ir_cache: bool = False
 ) -> tuple[uni.Module, CompileOptions];
 
-
-def build_wasm(program: JacProgram, path: str, exports: list[str]) -> bytes;
 
 def route_exports(program: JacProgram, path: str) -> tuple[str | None, str | None];
 

@@ -148,10 +148,6 @@ obj HostServices {
         options: CompileOptions
     ) -> Module;
 
-    def build_module(
-        program: JacProgram, file_path: str, use_str: (str | None)
-    ) -> Module;
-
     def internal_program(program: JacProgram) -> (JacProgram | None);
     def bind_context_program(context_root: JacProgram, program: JacProgram);
     def note_program_dependency(program: JacProgram, resolved_path: str);

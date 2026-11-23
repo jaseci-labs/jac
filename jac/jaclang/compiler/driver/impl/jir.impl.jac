@@ -2,21 +2,6 @@ import struct;
 import sys;
 import zlib;
 
-impl JirHeader.to_bytes -> bytes {
-    return struct.pack(
-        HEADER_FMT,
-        self.magic,
-        self.format_version,
-        self.python_version,
-        self.jaclang_version_hash,
-        self.source_content_hash,
-        self.node_count,
-        self.symbol_count,
-        self.string_pool_size,
-        self.flags
-    );
-}
-
 impl JirHeader.is_compatible -> bool {
     expected_py = (sys.version_info.major << 8) | sys.version_info.minor;
     if self.python_version != expected_py {
@@ -81,11 +66,9 @@ impl NativeStamp.matches(other: NativeStamp) -> bool {
     return self.key() == other.key();
 }
 
-impl current_native_stamp(
-    codegen_identity: str, triple: str, producer: str = ""
-) -> NativeStamp {
+impl current_native_stamp(codegen_identity: str, triple: str) -> NativeStamp {
     return NativeStamp(
-        compiler_digest=producer or running_compiler_digest(),
+        compiler_digest=running_compiler_digest(),
         codegen_identity=codegen_identity,
         triple=triple
     );
@@ -323,9 +306,6 @@ impl compiler_source_files(pkg_dir: str) -> list[str] {
                 rel = os.path.relpath(os.path.join(walk_dir, name), base).replace(
                     os.sep, "/"
                 );
-                if rel in COMPILER_DIGEST_SKIP {
-                    continue;
-                }
                 rels.append(rel);
             }
         }
@@ -355,14 +335,6 @@ impl compiler_source_digest(pkg_dir: str) -> str {
     rows = [
         (rel, resolve_compiler_input(base, rel)) for rel in compiler_source_files(base)
     ];
-    return fold_compiler_digest(rows);
-}
-
-impl _manifest_compiler_digest(pkg_dir: str) -> str {
-    base = str(Path(pkg_dir));
-    rows = [
-        (rel, resolve_compiler_input(base, rel)) for rel in compiler_source_files(base)
-    ];
     digest = fold_compiler_digest(rows);
     _COMPILER_INPUT_ROWS[digest] = rows;
     return digest;
@@ -370,7 +342,7 @@ impl _manifest_compiler_digest(pkg_dir: str) -> str {
 
 impl running_compiler_digest -> str {
     if not _COMPILER_DIGEST_CACHE {
-        _COMPILER_DIGEST_CACHE.append(_manifest_compiler_digest(_jaclang_pkg_dir));
+        _COMPILER_DIGEST_CACHE.append(compiler_source_digest(_jaclang_pkg_dir));
     }
     return _COMPILER_DIGEST_CACHE[0];
 }
@@ -387,13 +359,12 @@ impl py_emitter_digest -> str {
     }
     rows = _COMPILER_INPUT_ROWS.get(current);
     if rows is None {
-        _manifest_compiler_digest(_jaclang_pkg_dir);
+        compiler_source_digest(_jaclang_pkg_dir);
         rows = _COMPILER_INPUT_ROWS.get(current, []);
     }
     h = hashlib.sha256();
     for (rel, sha) in rows {
-        if _rel_under(rel, PY_EMITTER_ROOTS)
-            and not _rel_under(rel, PY_EMITTER_EXCLUDED) {
+        if _rel_under(rel, PY_EMITTER_ROOTS) {
             h.update(rel.encode());
             h.update(b"\x00");
             h.update(sha.encode());

@@ -37,13 +37,8 @@ class JacProgram {
 
     def scrub_hub_types(self: JacProgram) -> None;
     def release_check_caches(self: JacProgram) -> None;
-    def hub_cache_stamp(self: JacProgram, resolved_path: str) -> None;
     def install_module(self: JacProgram, resolved_path: str, mod: uni.Module) -> None;
     def is_hub_entry_fresh(self: JacProgram, resolved_path: str) -> bool;
-    def record_dependency(
-        self: JacProgram, importer_path: str, target_path: str
-    ) -> None;
-
     def transitive_dependents(self: JacProgram, target_path: str) -> set[str];
     def invalidate_module(self: JacProgram, resolved_path: str) -> None;
     def release_module(self: JacProgram, resolved_path: str) -> None;
@@ -90,8 +85,10 @@ class JacProgram {
         self: JacProgram, mod_targ: uni.Module, file_path: str
     ) -> None;
 
-    def count_module_blocking_errors(self: JacProgram, mod_path: str) -> int;
-    def count_module_errors(self: JacProgram, mod_path: str) -> int;
+    def count_module_errors(
+        self: JacProgram, mod_path: str, blocking: bool = False
+    ) -> int;
+
     def module_scoped_errors(self: JacProgram, mod_path: str) -> bool;
     def compile(
         self: JacProgram,
@@ -101,10 +98,6 @@ class JacProgram {
         symtab_ir_only: bool = False,
         cancel_token: (CancelToken | None) = None,
         options: (CompileOptions | None) = None
-    ) -> uni.Module;
-
-    def build(
-        self: JacProgram, file_path: str, use_str: (str | None) = None
     ) -> uni.Module;
 
     static def jac_file_formatter(

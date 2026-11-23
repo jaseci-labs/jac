@@ -4,7 +4,6 @@ import sys;
 import time;
 
 glob SLOW_STEP_SECONDS: float = 2.0,
-     DEMOTED_SYMBOL_SUFFIX: str = ".__jac_demoted",
      _HEAP_HELD: list[bool] = [False];
 
 obj NativeUnitEntry {
@@ -27,7 +26,6 @@ obj NativeUnitRegistry {
         session: (NativeBuildSession | None) = None,
         entries: dict[str, NativeUnitEntry] = {},
         building: set[str] postinit,
-        not_native: dict[str, str] = {},
         failures: dict[str, str] = {},
         compiled_paths: list[str] = [],
         progress: (Callable[[str], None] | None) = None,
@@ -184,8 +182,6 @@ obj NativeBuildSession {
     def _finish(paths: list[str]);
     def close;
 }
-
-glob VERDICT_CLOSURE_LIMIT: int = 4096;
 
 def _ir_symbols(unit_ir: any) -> (tuple[set[str], set[str]] | None);
 

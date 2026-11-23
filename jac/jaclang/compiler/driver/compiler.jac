@@ -25,12 +25,6 @@ def unit_sections(
     products: UnitProducts, bytecode: (bytes | None)
 ) -> dict[int, bytes];
 
-obj HostCompileFrame(CompileFrame) {
-    has depth_prev: int = 0,
-        gc_prev: (tuple[int, int, int] | None) = None,
-        retain_selfhost: bool = False;
-}
-
 obj JacCompiler(SessionHooks) {
     has _selfhost: (SelfHostCache | None) = None,
         _reentrant_depth: int = 0,
@@ -50,11 +44,6 @@ obj JacCompiler(SessionHooks) {
         full_target: str, target_program: JacProgram
     ) -> tuple[((object | None), (dict[(str, object)] | None))];
 
-    def get_native_layout(
-        full_target: str, target_program: JacProgram
-    ) -> (NativeModuleLayout | None);
-
-    static def _check_native_abi(layout: NativeModuleLayout, full_target: str) -> None;
     def get_bytecode(
         full_target: str, target_program: JacProgram, skip_analysis: bool = False
     ) -> (types.CodeType | None);
@@ -88,8 +77,7 @@ obj JacCompiler(SessionHooks) {
     def _load_native_from_cache(
         full_target: str,
         target_program: JacProgram,
-        cached_interop: (dict[str, any] | None),
-        options: (CompileOptions | None) = None
+        cached_interop: (dict[str, any] | None)
     ) -> None;
 
     def _sealed_native_engine(full_target: str) -> (SharedNativeEngine | None);
@@ -100,8 +88,12 @@ obj JacCompiler(SessionHooks) {
         base_dir: str = ""
     ) -> None;
 
+    static def _precompiled_location(
+        full_target: str
+    ) -> (tuple[str, str, str, str] | None);
+
     def _get_precompiled_jir_bytecode(
-        full_target: str, allow_unsealed: bool = True
+        full_target: str
     ) -> (tuple[bytes, bytes] | None);
 
     def _sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None);
@@ -145,10 +137,6 @@ obj JacCompiler(SessionHooks) {
         actual_program: JacProgram,
         use_str: (str | None) = None,
         options: CompileOptions = CompileOptions()
-    ) -> uni.Module;
-
-    def build(
-        file_path: str, target_program: JacProgram, use_str: (str | None) = None
     ) -> uni.Module;
 
     static def _prepare_tool_program(

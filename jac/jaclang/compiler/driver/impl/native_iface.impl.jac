@@ -1,7 +1,5 @@
 impl native_unit_ref(path: str) -> str {
-    rp = os.path.realpath(path);
-    ident = native_unit_identity(rp);
-    return ident if ident != rp else rp;
+    return native_unit_identity(os.path.realpath(path));
 }
 
 impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {

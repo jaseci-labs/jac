@@ -27,13 +27,11 @@ import from jaclang.compiler.driver.jir {
     SEC_DIAG,
     SEC_IFACE,
     SECTIONS_MAGIC,
-    compiler_source_digest,
     parse_header,
     read_section_bytes,
     read_sections,
     write_module_cache,
-    write_precompiled_jir,
-    _manifest_compiler_digest
+    write_precompiled_jir
 }
 import from jaclang.compiler.frontend.constant { ImmutabilityKind }
 import from jaclang.compiler.types.stubcat.modiface { read_iface_hash }
@@ -294,26 +292,6 @@ test "verify mode accepts an honest cache and rejects a corrupted one" {
             os.environ["JAC_IFACE_VERIFY"] = prior;
         }
     }
-}
-
-test "the compiler digest manifest reproduces the full sweep exactly" {
-    pkg = tempfile.mkdtemp();
-    comp = Path(pkg) / "compiler";
-    comp.mkdir();
-    (comp / "a.jac").write_text("with entry { print(1); }\n");
-    (comp / "b.py").write_text("x = 1\n");
-    full = compiler_source_digest(pkg);
-    assert _manifest_compiler_digest(pkg) == full , "manifest digest diverged";
-    assert _manifest_compiler_digest(pkg) == full , "second (stat-only) run diverged";
-    import time;
-    (comp / "a.jac").write_text("with entry { print(2); }\n");
-    future = time.time() + 2.0;
-    os.utime(comp / "a.jac", (future, future));
-    changed = compiler_source_digest(pkg);
-    assert changed != full;
-    assert _manifest_compiler_digest(pkg) == changed , (
-        "manifest digest missed an edited file"
-    );
 }
 
 test "a typed third-party Python dependency is fingerprinted, never encoded as a target" {

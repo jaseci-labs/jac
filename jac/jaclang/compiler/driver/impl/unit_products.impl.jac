@@ -56,46 +56,6 @@ impl dependency_span_rows(module: uni.Module, program: JacProgram) -> list[str] 
     return rows;
 }
 
-impl jac_dependencies(module: uni.Module) -> list[str] {
-    found: set[str] = set();
-    for item in module.get_all_sub_nodes(uni.Import) {
-        if not item.is_jac {
-            continue;
-        }
-        paths: list[uni.ModulePath] = [
-            target
-            for target in item.items
-            if isinstance(target, uni.ModulePath)
-        ];
-        if item.from_loc is not None {
-            paths.append(item.from_loc);
-        }
-        sources: list[str] = [];
-        for path in paths {
-            try {
-                sources.append(path.resolve_relative_path());
-            } except Exception {
-                continue;
-            }
-        }
-        for target in item.items {
-            if isinstance(target, uni.ModuleItem) {
-                try {
-                    sources.append(target.resolve_relative_path());
-                } except Exception {
-                    continue;
-                }
-            }
-        }
-        for source in sources {
-            if source and source.endswith(".jac") and os.path.isfile(source) {
-                found.add(os.path.realpath(source));
-            }
-        }
-    }
-    return sorted(found);
-}
-
 impl import_edge_rows(module: uni.Module) -> list[str] {
     rows: list[str] = [];
     for item in module.body {
@@ -462,7 +422,6 @@ impl placement_record(
 impl unit_products(module: uni.Module, program: JacProgram) -> UnitProducts {
     products = UnitProducts(
         path=module.loc.mod_path,
-        jcir=module.gen.jcir or b"",
         ct_file_deps=list(module.ct_file_deps),
         ct_body_deps=list(module.ct_body_deps),
         ct_def_deps=[
@@ -491,36 +450,7 @@ impl unit_products(module: uni.Module, program: JacProgram) -> UnitProducts {
         products.client = client_artifact_json(artifact);
     }
     products.placement = placement_record(module, program);
-    products.app = module.app or "";
-    products.persistence = list(module.persistence);
-    products.import_edges = import_edge_rows(module);
-    products.jac_deps = jac_dependencies(module);
-    if module.gen.client_manifest is not None {
-        products.client_manifest = json.dumps(
-            manifest_record(module.gen.client_manifest)
-        );
-    }
-    if module.gen.callable_effects {
-        products.effects = json.dumps(module.gen.callable_effects, sort_keys=True);
-    }
-    native_products(module, products);
     return products;
-}
-
-impl native_products(module: uni.Module, products: UnitProducts) {
-    gen = module.gen;
-    built = gen.ir_module;
-    iface = gen.native_iface;
-    if built is None or iface is None {
-        return;
-    }
-    products.native_ir = str(built);
-    products.native_iface = iface.to_bytes().decode("utf-8");
-    layout = gen.native_layout;
-    if layout is not None {
-        products.native_layout = json.dumps(native_layout_to_dict(layout));
-    }
-    products.native_deps = list(gen.native_deps);
 }
 
 impl definition_deps(products: UnitProducts) -> list[tuple[str, str]] {
