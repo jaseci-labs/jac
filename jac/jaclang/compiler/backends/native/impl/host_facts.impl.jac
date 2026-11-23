@@ -109,7 +109,11 @@ impl sealed_runtime_active -> bool {
 impl import_search_dirs -> list[str] {
     import os;
     import sys;
-    return [p for p in sys.path if p and os.path.isabs(p)];
+    return [
+        p
+        for p in sys.path
+        if p and os.path.isabs(p)
+    ];
 }
 
 impl package_store_dir -> str {

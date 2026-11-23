@@ -1,6 +1,5 @@
-
-glob NATIVE_COPY_FUNCS: set[str] = {"copy", "deepcopy"};
-glob NATIVE_OS_FUNCS: set[str] = {
+glob NATIVE_COPY_FUNCS: set[str] = {"copy", "deepcopy"},
+     NATIVE_OS_FUNCS: set[str] = {
          "getpid",
          "listdir",
          "getcwd",
@@ -16,8 +15,8 @@ glob NATIVE_OS_FUNCS: set[str] = {
          "read",
          "isatty",
 
-     };
-glob NATIVE_OSPATH_FUNCS: set[str] = {
+     },
+     NATIVE_OSPATH_FUNCS: set[str] = {
          "join",
          "basename",
          "dirname",
@@ -29,8 +28,8 @@ glob NATIVE_OSPATH_FUNCS: set[str] = {
          "getmtime",
          "normcase",
 
-     };
-glob NATIVE_RANDOM_FUNCS: set[str] = {
+     },
+     NATIVE_RANDOM_FUNCS: set[str] = {
          "seed",
          "random",
          "getrandbits",
@@ -38,8 +37,8 @@ glob NATIVE_RANDOM_FUNCS: set[str] = {
          "randrange",
          "uniform",
 
-     };
-glob NATIVE_STRUCT_FUNCS: set[str] = {
+     },
+     NATIVE_STRUCT_FUNCS: set[str] = {
          "pack",
          "unpack",
          "calcsize",
