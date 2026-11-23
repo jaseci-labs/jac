@@ -175,3 +175,15 @@ og_site_name = "jaclang.org"
 og_image = "https://jaclang.org/static/assets/og-card.png"
 twitter_card = "summary_large_image"
 twitter_image = "https://jaclang.org/static/assets/og-card.png"
+
+# Google Analytics (via Google Tag Manager), emitted into every page's <head>.
+[[client.app_meta_data.scripts]]
+content = """
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+"""
+
+[[client.app_meta_data.scripts]]
+src = "https://www.googletagmanager.com/gtm.js?id=GTM-T7FPVLNB"
+async = true
