@@ -13328,6 +13328,7 @@ graph import scale {
     admin.logs --> tests.server.test_admin_logs {
         _build_logql,
         _flatten_loki_response,
+        _pod_log_lines,
         _service_to_pod_regex_for_mode,
         _services_for_mode
     }

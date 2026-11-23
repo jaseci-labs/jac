@@ -1,3 +1,4 @@
+import calendar;
 import os;
 import json as json_module;
 import logging;
@@ -52,6 +53,17 @@ async def _loki_request(path: str, params: dict[str, str]) -> dict[str, any];
 
 def _flatten_loki_response(
     payload: dict[str, any], ascending: bool = True
+) -> list[dict[str, any]];
+
+
+def _pod_log_lines(
+    text: str,
+    labels: dict[str, str],
+    start_ns: int,
+    end_ns: int,
+    level: str,
+    search: str,
+    trace_id: str
 ) -> list[dict[str, any]];
 
 
@@ -478,5 +490,41 @@ impl _flatten_loki_response(
     }
 
     out.sort(key=lambda (line) { line.get("ts_ns", ""); }, reverse=not ascending);
+    return out;
+}
+
+
+impl _pod_log_lines(
+    text: str,
+    labels: dict[str, str],
+    start_ns: int,
+    end_ns: int,
+    level: str,
+    search: str,
+    trace_id: str
+) -> list[dict[str, any]] {
+    out: list[dict[str, any]] = [];
+    trace_short = trace_id.split("-")[0];
+    for raw in text.splitlines() {
+        (stamp, _, body) = raw.partition(" ");
+        (head, _, frac) = stamp.rstrip("Z").partition(".");
+        try {
+            ts_ns = calendar.timegm(time.strptime(head, "%Y-%m-%dT%H:%M:%S"))
+                * 1_000_000_000
+                + int((frac + "000000000")[:9]);
+        } except ValueError {
+            continue;
+        }
+        if not (start_ns <= ts_ns <= end_ns)
+            or (level and level.upper() not in body)
+            or (search and search not in body) {
+            continue;
+        }
+        line = _parse_log_body(body, labels, str(ts_ns));
+        if trace_short and str(line["trace_id"] or "").split("-")[0] != trace_short {
+            continue;
+        }
+        out.append(line);
+    }
     return out;
 }
