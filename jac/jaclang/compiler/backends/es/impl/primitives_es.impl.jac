@@ -2235,24 +2235,15 @@ impl ESBuiltinEmitter.emit_bytearray(
 }
 
 impl _mcall(target: str, method: str, args: list[str]) -> str {
-    if len(args) > 0 {
-        return target + "." + method + "(" + ", ".join(args) + ")";
-    }
-    return target + "." + method + "()";
+    return _fcall(target + "." + method, args);
 }
 
 impl _fcall(name: str, args: list[str]) -> str {
-    if len(args) > 0 {
-        return name + "(" + ", ".join(args) + ")";
-    }
-    return name + "()";
+    return name + "(" + ", ".join(args) + ")";
 }
 
 impl _rt(ns: str, method: str, args: list[str]) -> str {
-    if len(args) > 0 {
-        return "_jac." + ns + "." + method + "(" + ", ".join(args) + ")";
-    }
-    return "_jac." + ns + "." + method + "()";
+    return _fcall("_jac." + ns + "." + method, args);
 }
 
 impl _binop(left: str, op: str, right: str) -> str {

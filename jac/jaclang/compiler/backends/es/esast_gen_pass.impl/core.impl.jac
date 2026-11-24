@@ -81,14 +81,6 @@ impl EsastGenPass._literal_value(expr: (uni.UniNode | None)) -> (object | None) 
     return None;
 }
 
-impl EsastGenPass.exit_semi with uni.Semi exit {}
-
-impl EsastGenPass.exit_token with uni.Token exit {
-    if here.__class__ is not uni.Token {
-        return;
-    }
-}
-
 impl EsastGenPass._collect_body_stmts(
     body: Sequence[uni.UniNode]
 ) -> list[es.Statement] {
@@ -331,7 +323,7 @@ impl EsastGenPass._get_ast_or_default(
         isinstance(nd, uni.Expr)
         and (nd.gen.es_ast is None)
         and (id(nd) not in self._unlowered_reported)
-        and self._is_client_destined(nd)
+        and uni.is_client_destined(nd)
     ) {
         import from jaclang.compiler.frontend.diagnostics { E5097 }
         self._unlowered_reported.add(id(nd));
@@ -340,10 +332,6 @@ impl EsastGenPass._get_ast_or_default(
     fallback = default_factory(nd);
     jac_ref = nd if (nd is not None) else self.ctx.current_node;
     return self.sync_loc(fallback, jac_node=jac_ref);
-}
-
-impl EsastGenPass._is_client_destined(nd: uni.UniNode) -> bool {
-    return uni.is_client_destined(nd);
 }
 
 impl EsastGenPass._collect_stmt_body(
