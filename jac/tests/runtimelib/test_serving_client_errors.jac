@@ -188,7 +188,7 @@ async def _pooled_pair(origin: tuple[str, str, int]) -> tuple[any, any] {
 }
 
 
-async def _pool_keeps(scenario: str) -> bool {
+async def _pool_outcome(scenario: str) -> tuple[bool, bool] {
     origin = ("http", "svc", 80);
     peers: list[any] = [];
     if scenario == "pool full" {
@@ -213,6 +213,7 @@ async def _pool_keeps(scenario: str) -> bool {
         conn.idle_since -= IDLE_TIMEOUT;
     }
     taken = _take_idle(("http", "other", 80) if scenario == "other origin" else origin);
+    closed = conn.writer.is_closing();
     leftovers = [conn] + [c for bucket in _idle_pool().values() for c in bucket];
     if taken is not None {
         leftovers.append(taken);
@@ -223,21 +224,21 @@ async def _pool_keeps(scenario: str) -> bool {
     for p in peers {
         p.close();
     }
-    return taken is conn;
+    return (taken is conn, closed);
 }
 
 
 test "the idle pool hands back only clean, recent connections" {
-    cases: dict[str, bool] = {
-        "fresh": True,
-        "idle too long": False,
-        "too old": False,
-        "unread bytes": False,
-        "peer closed": False,
-        "other origin": False,
-        "pool full": False
+    cases: dict[str, tuple[bool, bool]] = {
+        "fresh": (True, False),
+        "idle too long": (False, True),
+        "too old": (False, True),
+        "unread bytes": (False, True),
+        "peer closed": (False, True),
+        "other origin": (False, False),
+        "pool full": (False, True)
     };
-    outcomes = {scenario: asyncio.run(_pool_keeps(scenario)) for scenario in cases};
+    outcomes = {scenario: asyncio.run(_pool_outcome(scenario)) for scenario in cases};
     assert outcomes == cases , outcomes;
 }
 
