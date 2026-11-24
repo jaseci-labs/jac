@@ -824,7 +824,6 @@ graph import {
     compiler.driver.jir --> [
         cli.commands.cache._live_keys { compiler_generation },
         cli.commands.execution._exec_file { scrub_cache_dirs },
-        dist.precompile_bytecode._native_extra { rebase_placement_section },
         dist.precompile_bytecode._precompile_unit { cache_mode },
     ]
     compiler.driver.jir as jir --> scale.tests.microservices.test_seed_determinism;
@@ -1154,7 +1153,10 @@ graph import {
     compiler.placement.placement_export --> [
         cli.commands.analysis._check_file_job { collect_placement_rows },
         cli.commands.analysis.explain { collect_placement_rows },
-        dist.precompile_bytecode._unit_extra { summary_from_bytes, summary_to_bytes },
+        dist.precompile_bytecode._placement_section {
+            summary_from_bytes,
+            summary_to_bytes
+        },
     ]
     compiler.placement.placement_facts ++> [
         dist.precompile_bytecode._application_sources {
