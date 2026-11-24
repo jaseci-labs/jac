@@ -93,7 +93,7 @@ jobs:
         # Pure-compute na modules that must agree on darwin; str/bytes guard
         # the libc-binding divergence (musl static vs libSystem).
         run: >-
-          jac test jac/jaclang/compiler/tests/test_prim_equivalence.jac
+          jac test jac/jaclang/compiler/tests/test_prim_equivalence*.jac
           -f "shutil or path or textwrap or keyword or str or bytes"
       - name: Provision managed Ruby, CocoaPods, and native Node
         run: |
