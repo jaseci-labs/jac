@@ -190,7 +190,6 @@ obj CheckConfig {
         suppress: list[str] = [],
         suppress_categories: list[str] = [],
         enforce_access: bool = False,
-        warn_native_seams: bool = True,
         untyped_external: str = "warning";
 }
 

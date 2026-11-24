@@ -18,7 +18,7 @@ impl NaIRGenPass._register_osp_kernel_module -> None {
         self._walk_imported_module_types(unit);
     }
     for unit in (kernel_mod, graph_mod) {
-        self._walk_imported_module_abilities(unit, with_fn_verdicts=False);
+        self._walk_imported_module_abilities(unit);
         if unit?.loc and unit.loc.mod_path {
             self._note_native_dep(unit.loc.mod_path);
         }

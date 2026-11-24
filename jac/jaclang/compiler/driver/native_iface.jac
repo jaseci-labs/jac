@@ -32,7 +32,7 @@ def _field_info_from_dict(raw: any) -> NativeFieldInfo;
 
 def native_layout_from_dict(raw: any) -> NativeModuleLayout;
 
-glob NIFACE_FORMAT: int = 5,
+glob NIFACE_FORMAT: int = 6,
      NIFACE_HASH_LEN: int = 64,
      EXPORT_FUNCTION: str = "function";
 
@@ -99,7 +99,6 @@ obj NativeIface {
         enums: dict[str, list[str]] = {},
         init_symbol: str = "",
         entry_symbol: str = "",
-        demoted: list[str] = [],
         clib_paths: list[str] = [],
         python_imports: list[str] = [],
         clib_symbol_lib: dict[str, str] = {},

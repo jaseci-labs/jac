@@ -4704,24 +4704,15 @@ graph import compiler {
     type backends.native.llvm.binding ++> driver.compiler.JacCompiler._load_native_from_cache
         | frontend.codeinfo { ExecutionEngine }
     type backends.native.llvm.ir ++> frontend.codeinfo { Module as IRModule }
-    backends.native.lowering ++> [
-        driver.nativecache.NativeBuildSession.unbound_symbols { DEMOTED_SUFFIX },
-        tests.test_prim_equivalence { native_lowering_issues },
-    ]
-    type backends.native.lowering ++> frontend.codeinfo { NativeFallbacks }
     backends.native.na_compile_pass ++> [
         driver.nativecache.NativeBuildSession._optimize_in_parallel {
             optimize_unit_bitcodes,
-            unit_bitcode,
-            unit_fallbacks
+            unit_bitcode
         },
         driver.pipeline.native_object_passes { NativeCompilePass },
     ]
     backends.native.na_compile_pass --> [
-        driver.nativecache.NativeBuildSession.compact_ir {
-            unit_bitcode,
-            unit_fallbacks
-        },
+        driver.nativecache.NativeBuildSession.compact_ir { unit_bitcode },
         driver.nativecache.NativeBuildSession.lower { settle_unit_ir },
         driver.nativecache.NativeUnitRegistry.emit_objects { emit_unit_objects },
         driver.nativecache.NativeUnitRegistry.object_for { emit_unit_object },
@@ -8704,9 +8695,6 @@ graph import compiler {
     passes.package_boundary_pass ++> driver.pipeline { PackageBoundaryPass }
     passes.placement_pass ++> [
         backends.native.na_ir_gen_pass { NativeLegality, NativeRefusal, NativeRefused },
-        backends.native.na_ir_gen_pass.NaIRGenPass._demote_method_if_unlowerable {
-            refusal_from_alert
-        },
         backends.native.na_ir_gen_pass.NaIRGenPass._lower_module {
             build_native_legality
         },
@@ -9861,26 +9849,8 @@ graph import compiler.backends.native {
     ]
     llvm.binding.value ++> link_plan.internalize_native_implementation { Visibility }
     type llvm.binding.value ++> link_plan { ValueRef }
-    llvm.ir as ir ++> abi
-        | lexical_scope
-        | lowering
-        | na_ir_gen_pass
-        | primitives_native;
+    llvm.ir as ir ++> abi | lexical_scope | na_ir_gen_pass | primitives_native;
     llvm.ir.types ++> link_glue.bind_shared_callbacks { _wrapname }
-    lowering ++> [
-        entry_points.validate_native_application | na_compile_pass.unit_fallbacks {
-            native_fallbacks_in_ir
-        },
-        link_plan.LinkPlan.lowering_failures { native_lowering_issues },
-        link_plan.unresolved_unit_symbols { DEMOTED_SUFFIX },
-        na_ir_gen_pass {
-            DEMOTED_SUFFIX,
-            NativeLoweringIssue,
-            NativeLoweringKind,
-            native_fallbacks
-        },
-    ]
-    type lowering ++> na_compile_pass { NativeFallbacks }
     na_compile_pass ++> [
         entry_points.validate_native_application { native_linked_ir_text },
         link_plan {

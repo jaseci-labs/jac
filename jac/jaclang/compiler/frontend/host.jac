@@ -8,8 +8,7 @@ obj CheckSettings {
         lint_select: list[str] = [],
         lint_ignore: list[str] = [],
         enforce_access: bool = False,
-        untyped_external_error: bool = False,
-        warn_native_seams: bool = True;
+        untyped_external_error: bool = False;
 }
 
 obj ProjectDefaults {

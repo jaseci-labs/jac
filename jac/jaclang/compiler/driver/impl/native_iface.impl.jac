@@ -417,7 +417,6 @@ impl NativeIface.digest_fields -> dict[str, any] {
         "enums": {k: list(self.enums[k]) for k in sorted(self.enums.keys())},
         "init": self.init_symbol,
         "entry": self.entry_symbol,
-        "demoted": sorted(self.demoted),
         "clib_paths": list(self.clib_paths),
         "python_imports": sorted(self.python_imports),
         "clib_symbol_lib": {
@@ -492,7 +491,6 @@ impl NativeIface.from_dict(d: dict[str, any]) -> (NativeIface | None) {
         enums=enums,
         init_symbol=str(d.get("init", "")),
         entry_symbol=str(d.get("entry", "")),
-        demoted=_json_str_list(d.get("demoted")),
         clib_paths=_json_str_list(d.get("clib_paths")),
         python_imports=_json_str_list(d.get("python_imports")),
         clib_symbol_lib=clib_symbol_lib,

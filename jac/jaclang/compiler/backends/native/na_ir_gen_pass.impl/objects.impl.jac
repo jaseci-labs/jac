@@ -241,7 +241,6 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     self._register_osp_kernel_module();
     self._emit_osp_setup();
 
-    self._predemote_capability_constructors();
     self._codegen_constructors_first(archetypes);
 
     for arch in archetypes {
@@ -278,55 +277,6 @@ impl NaIRGenPass._constructor_slots -> tuple[str, ...] {
     return ("init", "__init__", "postinit", "__post_init__", );
 }
 
-impl NaIRGenPass._constructor_ability_for(cls: str, slot: str) -> (uni.Ability | None) {
-    for _cn in self._mro_of(cls) {
-        _arch = self.arch_ast_map.get(_cn);
-        if _arch is None or _arch.body is None {
-            continue;
-        }
-        for _st in (ModuleFacts.unwrap_body(_arch) or []) {
-            if isinstance(_st, uni.Ability)
-                and _st.name_ref is not None
-                and _st.name_ref.sym_name == slot {
-                return _st;
-            }
-        }
-    }
-    return None;
-}
-
-impl NaIRGenPass._predemote_capability_constructors -> None {
-    if self._legality is None or not self._legality.units {
-        return;
-    }
-    _slots = self._constructor_slots();
-    for _full in list(self.method_funcs.keys()) {
-        (_cls, _dot, _slot) = _full.rpartition(".");
-        if not _dot or _slot not in _slots {
-            continue;
-        }
-        _ability = self._constructor_ability_for(_cls, _slot);
-        if _ability is None {
-            continue;
-        }
-        _viols = self._static_refusals(_ability);
-        if _viols is None {
-            continue;
-        }
-        _func = self.method_funcs.get(_full);
-        if _func is None {
-            continue;
-        }
-        self._claimed_units.add(id(_ability));
-        self._stub_refused_unit(
-            _full,
-            _func,
-            _viols,
-            keep_func=_slot in self.vtable_method_indices.get(_cls, {})
-        );
-    }
-}
-
 impl NaIRGenPass._codegen_constructors_first(archetypes: list[uni.Archetype]) -> None {
     _slots = self._constructor_slots();
     for arch in archetypes {
@@ -343,24 +293,6 @@ impl NaIRGenPass._codegen_constructors_first(archetypes: list[uni.Archetype]) ->
             }
         }
     }
-}
-
-impl NaIRGenPass._demoted_init_of(type_name: str) -> (str | None) {
-    if not self._native_skipped_methods {
-        return None;
-    }
-    for _cn in self._mro_of(type_name) {
-        for _mn in ("init", "__init__") {
-            _cand = f"{_cn}.{_mn}";
-            if _cand in self._native_skipped_methods {
-                return _cand;
-            }
-            if _cand in self.method_funcs {
-                return None;
-            }
-        }
-    }
-    return None;
 }
 
 impl NaIRGenPass._visit_nonprimary_ancestor_methods(
@@ -1037,7 +969,7 @@ impl NaIRGenPass._forward_declare_method(
     }
 
     if len(self.ctx.errors_had) > _sig_mark {
-        self._demote_method_if_unlowerable(
+        self._drop_if_unlowerable(
             full_name,
             func,
             _sig_mark,
@@ -1083,7 +1015,7 @@ impl NaIRGenPass._codegen_method(
         and self._ability_is_generator(method) {
         _gen_mark = len(self.ctx.errors_had);
         self._codegen_generator(method, func, self_arch=arch_name);
-        self._demote_method_if_unlowerable(
+        self._drop_if_unlowerable(
             full_name,
             func,
             _gen_mark,
@@ -1188,12 +1120,12 @@ impl NaIRGenPass._codegen_method(
         self._leave_function(state);
     }
 
-    self._demote_method_if_unlowerable(
+    self._drop_if_unlowerable(
         full_name, func, _local_mark, keep_func=_is_virtual
     );
 }
 
-impl NaIRGenPass._demote_method_if_unlowerable(
+impl NaIRGenPass._drop_if_unlowerable(
     full_name: str,
     func: ir.Function,
     local_mark: int,
@@ -1204,150 +1136,27 @@ impl NaIRGenPass._demote_method_if_unlowerable(
         return False;
     }
 
-    _own = list(self.ctx.errors_had[local_mark:]);
-    _refusals = [refusal_from_alert(_diag) for _diag in _own];
-    required = self.prog.options.native_required_for(self.module.loc.mod_path)
-        or self._owner_required(full_name);
-    if not required and not self._lacks_python_body(full_name) {
-        del self.ctx.errors_had[local_mark:];
-    }
-    self._place_unit_python(
-        full_name, func, _refusals, keep_func=keep_func, stub_body=stub_body
-    );
+    self._drop_native_unit(full_name, func, keep_func=keep_func, stub_body=stub_body);
     return True;
 }
 
-impl NaIRGenPass._owner_element(full_name: str) -> (uni.UniNode | None) {
-    owner_name = full_name.split(".")[0];
-    for elem in self.module.body {
-        if isinstance(elem, uni.Archetype) and self._arch_key(elem) == owner_name {
-            return elem;
-        }
-        if element_display_name(elem) == owner_name {
-            return elem;
-        }
-    }
-    return None;
-}
-
-impl NaIRGenPass._owner_required(full_name: str) -> bool {
-    if self.module.gen.placement_mode != "inferred" {
-        return False;
-    }
-    owner = self._owner_element(full_name);
-    if owner is None {
-        return False;
-    }
-
-    need = element_requirements(self.module, self.prog).get(id(owner));
-    return need is not None and need[0] == "native";
-}
-
-impl NaIRGenPass._lacks_python_body(full_name: str) -> bool {
-    if self.module.gen.placement_mode != "inferred"
-        or self.module.decided_codespace == "native" {
-        return False;
-    }
-    owner = self._owner_element(full_name);
-    return isinstance(owner, uni.ContextAwareNode)
-        and owner.code_context == CodeContext.NATIVE;
-}
-
-impl NaIRGenPass._place_unit_python(
-    full_name: str,
-    func: ir.Function,
-    refusals: list[NativeRefusal],
-    keep_func: bool = False,
-    stub_body: bool = True
+impl NaIRGenPass._drop_native_unit(
+    full_name: str, func: ir.Function, keep_func: bool = False, stub_body: bool = True
 ) -> None {
-    _first = refusals[0];
-    if self._na_debug_on() {
-        import sys;
-        sys.stderr.write(f"NA_DEBUG demote {full_name}\n");
-        for _refusal in refusals {
-            sys.stderr.write(f"NA_DEBUG   {_refusal.full()}\n");
-        }
-    }
-    if self._seam_warnings_on()
-        and not self.prog.options.native_required_for(self.module.loc.mod_path) {
-        import from jaclang.compiler.frontend.host { active_host }
-        import from jaclang.compiler.frontend.codeinfo { native_display_text }
-        _why = "; ".join(_r.located() for _r in refusals);
-        _help = next(
-            iter(
-                _r.help
-                for _r in refusals
-                if _r.help
-            ),
-            None
-        );
-        active_host().note(
-            native_display_text(
-                f"native seam -- demoting {full_name} to Python-only "
-                f"(un-lowerable): {_why}"
-                    + (f"\nhelp: {_help}" if _help else "")
-            ),
-            style="warning"
-        );
-    }
     if stub_body {
-        try {
-            import from jaclang.compiler.driver.na_coverage { na_coverage_seam }
-            _code_tag = f"[{_first.code}] " if _first.code else "";
-            na_coverage_seam(
-                self.module.loc.mod_path,
-                f"{full_name}: {_code_tag}" + _first.located(),
-                late=_first.late
-            );
-        } except Exception {}
-        self._record_lowering_issue(
-            NativeLoweringIssue(
-                symbol=full_name,
-                kind=NativeLoweringKind.CALLABLE,
-                source=self.module.loc.mod_path,
-                code=_first.code,
-                detail=_first.full()
-            )
-        );
         func.blocks.clear();
         blk = func.append_basic_block(name="entry");
         b = ir.IRBuilder(blk);
         self._get_or_declare_extern("abort", ir.VoidType(), []);
         b.call(self.extern_funcs["abort"], []);
         b.unreachable();
-        self._seam_stub_ids.add(id(func));
     }
     if not keep_func {
         self.method_funcs.pop(full_name, None);
     }
     self.scope.unbind_function(full_name);
     self._native_skipped_methods.add(full_name);
-    self._demoted_names.add(full_name);
     self._unit_exports.pop(full_name, None);
-    if full_name in self.osp_thunk_funcs {
-        self.emit(
-            E5092,
-            node_override=self.module,
-            kind="event ability",
-            name=full_name,
-            help_text=(
-                "This ability could not be lowered ("
-                + _first.headline()
-                + "). A walker runs its abilities through the native graph "
-                "engine, which has no caller to refuse, so the module cannot "
-                "stay native with it."
-            )
-        );
-    }
-}
-
-impl NaIRGenPass._seam_warnings_on -> bool {
-    if self._na_debug_on() or bool(self.prog.options.native_debug) {
-        return True;
-    }
-
-    defaults = active_host().project_defaults();
-    return defaults.check.warn_native_seams if defaults is not None else True;
 }
 
 impl NaIRGenPass._opaque_field_if_unlowerable(
@@ -1356,51 +1165,7 @@ impl NaIRGenPass._opaque_field_if_unlowerable(
     if len(self.ctx.errors_had) <= local_mark {
         return None;
     }
-    _own = list(self.ctx.errors_had[local_mark:]);
-    _first = _own[0];
-    _code = _first.code.code if _first.code is not None else "";
-    _why = str(_first).split('\n')[0];
-
-    if self._seam_warnings_on()
-        and not self.prog.options.native_required_for(self.module.loc.mod_path) {
-        import from jaclang.compiler.frontend.host { active_host }
-        import from jaclang.compiler.frontend.codeinfo { native_display_text }
-        active_host().note(
-            native_display_text(
-                f"native seam -- erasing field {arch_name}.{fname} to an "
-                f"opaque slot (un-lowerable declaration): "
-                    + "; ".join(str(e) for e in _own)
-            ),
-            style="warning"
-        );
-        import from jaclang.compiler.driver.compile_options { env_na_debug as _er_dbg }
-        if _er_dbg() {
-            import sys as _er_sys;
-            _er_sys.stderr.write(
-                f"NA_DEBUG erased in unit {self.module.loc.mod_path}; known structs: "
-                f"{sorted(self.struct_types.keys())[:40]}\n"
-            );
-        }
-    }
-    try {
-        import from jaclang.compiler.driver.na_coverage { na_coverage_seam }
-        na_coverage_seam(
-            self.module.loc.mod_path,
-            f"{arch_name}.{fname}: " + (f"[{_code}] " if _code else "") + _why
-        );
-    } except Exception {}
-    self._record_lowering_issue(
-        NativeLoweringIssue(
-            symbol=f"{arch_name}.{fname}",
-            kind=NativeLoweringKind.FIELD,
-            source=self.module.loc.mod_path,
-            code=_code,
-            detail=_own[0].pretty_print()
-        )
-    );
-    if not self.prog.options.native_required_for(self.module.loc.mod_path) {
-        del self.ctx.errors_had[local_mark:];
-    }
+    _why = str(self.ctx.errors_had[local_mark]).split('\n')[0];
     if arch_name not in self.struct_field_opaque {
         self.struct_field_opaque[arch_name] = {};
     }
@@ -1997,22 +1762,6 @@ impl NaIRGenPass._codegen_instantiation(
         return None;
     }
     if self._reject_scalar_type_args(nd, type_name) {
-        return None;
-    }
-    _demoted_init = self._demoted_init_of(type_name);
-    if _demoted_init is not None {
-        self.emit(
-            E5092,
-            node_override=nd,
-            kind="constructor",
-            name=f"{type_name}() via {_demoted_init}",
-            help_text=(
-                "The initializer was demoted to its Python implementation, so "
-                "native construction has no initializer to call and would "
-                "leave the object half-built. Construct this class from a "
-                "Python/@sv context, or make the initializer lowerable."
-            )
-        );
         return None;
     }
     struct_type = self.struct_types[type_name];
@@ -2639,7 +2388,7 @@ impl NaIRGenPass._codegen_instantiation(
                         kind="constructor",
                         name=f"{type_name}() via {pname}",
                         help_text=(
-                            "The post-initializer was demoted to its Python "
+                            "The post-initializer has no native "
                             "implementation, so native construction has no "
                             "post-initializer to call and would leave the "
                             "object half-built. Construct this class from a "
@@ -2890,9 +2639,9 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
                 kind="method",
                 name=_sfull,
                 help_text=(
-                    f"'{method_name}' has no native lowering and was demoted "
-                    f"to its Python implementation; it cannot be called from "
-                    f"native code. Call it from a Python/@sv context instead."
+                    f"'{method_name}' has no native implementation, so it "
+                    f"cannot be called from native code. Call it from a "
+                    f"Python/@sv context instead."
                 )
             );
             return None;
@@ -3392,28 +3141,28 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
             _is_mono_method = True;
         }
     }
-    _demoted = False;
+    _unavailable = False;
     if func is None or not _is_mono_method {
         if f"{type_name}.{method_name}" in self._native_skipped_methods {
-            _demoted = True;
+            _unavailable = True;
         } else {
             _owner = self._resolve_method_owner(type_name, method_name);
             if _owner is not None
                 and f"{_owner}.{method_name}" in self._native_skipped_methods {
-                _demoted = True;
+                _unavailable = True;
             }
         }
     }
-    if _demoted {
+    if _unavailable {
         self.emit(
             E5092,
             node_override=nd,
             kind="method",
             name=f"{type_name}.{method_name}",
             help_text=(
-                f"'{method_name}' has no native lowering and was demoted to "
-                f"its Python implementation; it cannot be called from native "
-                f"code. Call it from a Python/@sv context instead."
+                f"'{method_name}' has no native implementation, so it cannot "
+                f"be called from native code. Call it from a Python/@sv "
+                f"context instead."
             )
         );
         return None;

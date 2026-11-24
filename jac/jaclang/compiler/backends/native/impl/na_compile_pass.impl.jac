@@ -192,9 +192,6 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
     options = self.prog.options;
     verifying = False;
     try {
-        if options.native_required_for(module.loc.mod_path) {
-            unit_fallbacks(module.gen).require();
-        }
         registry = self.prog.native_units();
         cached = None
             if options.no_ir_cache
@@ -295,10 +292,6 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
         } else {
             self.ctx.emit(E5020, error=str(e));
         }
-        import from jaclang.compiler.passes.placement_pass { settle_native_module }
-        settle_native_module(
-            module, self.prog, self.ctx.errors_had, self.ctx.warnings_had
-        );
     }
     return ir_in;
 }
@@ -400,10 +393,3 @@ impl native_linked_ir_text(module: uni.Module) -> str {
     return str(module.gen.llvm_ir);
 }
 
-
-impl unit_fallbacks(gen: CodeGenTarget) -> NativeFallbacks {
-    if gen.native_fallbacks is None {
-        gen.native_fallbacks = native_fallbacks_in_ir(str(gen.llvm_ir));
-    }
-    return gen.native_fallbacks;
-}
