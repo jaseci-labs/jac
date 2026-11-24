@@ -1615,7 +1615,7 @@ graph import {
     jac0core.handoff ++> [
         cli.cli.start_cli
             | cli.manifest_route.resolve_cli_version
-            | compiler.driver.jir._handoff { handoff },
+            | compiler.driver.jir { handoff },
         client.targets.desktop.native.host_boot.host_executable
             | dist.fused_binary.running_executable { process_executable },
         compiler.driver.jir.require_exact_compiler_products { update_handoff },
@@ -10275,9 +10275,11 @@ graph import compiler.driver {
             SEC_DEPS,
             SEC_DIAG,
             SEC_IFACE,
+            SEC_INTEROP,
             SEC_PATH_ROOT,
             SEC_PLACEMENT,
             cache_mode,
+            compute_stub_module_key,
             deps_section,
             get_module_cache_path,
             is_compiler_tree_path,
@@ -10286,21 +10288,22 @@ graph import compiler.driver {
             jir_cacheable_source_path,
             module_cache_key,
             module_ct_deps_section,
-            read_dep_hashes,
+            read_dep_rows,
             read_jir,
             read_jir_paths,
             read_section_bytes,
             write_module_cache
         },
-        ifacecache.IfaceRegistry._deps_match { read_dep_rows },
         ifacecache.IfaceRegistry._encode_iface { PRECOMPILE_SENTINEL },
         ifacecache.artifact_cache_path { get_module_cache_path },
         nativecache {
             NativeStamp,
             SEC_NBITCODE,
             SEC_NCTDEPS,
+            SEC_NDEPS,
             SEC_NIFACE,
             SEC_NOBJ,
+            absolutize_ct_deps_section,
             cache_mode,
             ct_dep_text_fresh,
             current_native_stamp,
@@ -10309,7 +10312,9 @@ graph import compiler.driver {
             module_cache_invalid_reason,
             module_cache_key,
             module_ct_deps_section,
+            native_deps_section,
             native_section_payload,
+            read_dep_rows,
             read_jir,
             read_native_dep_hashes,
             read_section_bytes,
@@ -10340,18 +10345,6 @@ graph import compiler.driver {
             precompiled_jir_matches_source
         },
         compiler.JacCompiler._restore_sections { JirPaths, SEC_PATH_ROOT },
-        ifacecache.IfaceRegistry._deps_match { compute_stub_module_key },
-        ifacecache.IfaceRegistry._persist_in_context { SEC_INTEROP },
-        ifacecache.IfaceRegistry.client_boundary_facts { SEC_INTEROP, read_dep_rows },
-        ifacecache.IfaceRegistry.note_dep { compute_stub_module_key },
-        nativecache.NativeUnitRegistry.emit_objects { write_module_cache },
-        nativecache.NativeUnitRegistry.known_native_deps { read_dep_rows },
-        nativecache.NativeUnitRegistry.object_for { write_module_cache },
-        nativecache.NativeUnitRegistry.product_sections {
-            SEC_NDEPS,
-            absolutize_ct_deps_section,
-            native_deps_section
-        },
     ]
     module_analysis ++> module_compile {
         ModuleAnalysis,
@@ -10394,8 +10387,9 @@ graph import compiler.driver {
         application._tree_source { CompilationProduct, require },
         compiler.JacCompiler._format_program
             | ifacecache.IfaceRegistry._ensure_flow_graph { require },
-        compiler.JacCompiler.ensure_client_codegen
-            | ifacecache.IfaceRegistry._ensure_in_context { require },
+        compiler.JacCompiler.ensure_client_codegen | ifacecache.IfaceRegistry.ensure {
+            require
+        },
         compiler.JacCompiler.jac_file_linter { require },
         ifacecache.IfaceRegistry._prepare { product_facts },
         nativecache.NativeBuildSession.lower { invalidate, require, unavailable },
@@ -10426,8 +10420,8 @@ graph import compiler.driver {
     pipeline_types --> [
         ifacecache.IfaceRegistry._ensure_flow_graph
             | nativecache.NativeBuildSession.lower { CompilationProduct },
-        ifacecache.IfaceRegistry._ensure_in_context { CompilationProduct },
         ifacecache.IfaceRegistry._prepare { CompilationProduct },
+        ifacecache.IfaceRegistry.ensure { CompilationProduct },
     ]
     program ++> [
         application_edges.application_edges
@@ -10505,11 +10499,11 @@ graph import compiler.driver {
         jir.seed_definition_texts { DEF_DEP_SEP },
     ]
     unit_products --> [
-        ifacecache.IfaceRegistry._persist_in_context {
+        ifacecache.IfaceRegistry.client_boundary_facts { interop_manifest_of },
+        ifacecache.IfaceRegistry.persist_after_compile {
             interop_record,
             placement_record
         },
-        ifacecache.IfaceRegistry.client_boundary_facts { interop_manifest_of },
     ]
     wiring ++> [
         compiler.JacCompiler.jac_str_formatter {

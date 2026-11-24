@@ -379,16 +379,12 @@ impl require_exact_compiler_products {
     update_handoff(exact=True);
 }
 
-impl _handoff -> dict[str, object] {
-    return handoff();
-}
-
 impl dev_source -> str {
-    return str(_handoff().get("compiler_source") or "");
+    return str(handoff().get("compiler_source") or "");
 }
 
 impl dev_carry_enabled -> bool {
-    record = _handoff();
+    record = handoff();
     if record.get("exact") {
         return False;
     }
@@ -682,15 +678,15 @@ impl _compute_module_key_uncached(source_path: str) -> str {
     return h.hexdigest();
 }
 
+impl _section_table(data: bytes) -> dict[int, bytes] {
+    magic: any = SECTIONS_MAGIC;
+    pos = data.find(magic, HEADER_SIZE);
+    return read_sections(data, pos + len(magic)) if pos >= 0 else {};
+}
+
 impl read_section_bytes(data: bytes, sec_type: int) -> (bytes | None) {
     try {
-        magic: any = SECTIONS_MAGIC;
-        pos = data.find(magic, HEADER_SIZE);
-        if pos < 0 {
-            return None;
-        }
-        sections = read_sections(data, pos + len(magic));
-        return sections.get(sec_type);
+        return _section_table(data).get(sec_type);
     } except Exception {
         return None;
     }
@@ -703,14 +699,6 @@ impl _read_key_section(data: bytes, sec_type: int) -> (str | None) {
     } except Exception {
         return None;
     }
-}
-
-impl read_modkey(data: bytes) -> (str | None) {
-    return _read_key_section(data, SEC_MODKEY);
-}
-
-impl read_envkey(data: bytes) -> (str | None) {
-    return _read_key_section(data, SEC_ENVKEY);
 }
 
 impl _ct_dep_rows(text: str) -> list[tuple[(str, str, str)]] {
@@ -1025,14 +1013,6 @@ impl read_dep_rows(data: bytes, base_dir: str = "") -> list[DepRow] {
     return out;
 }
 
-impl read_dep_hashes(data: bytes, base_dir: str = "") -> list[tuple[str, str]] {
-    out: list[tuple[str, str]] = [];
-    for row in read_dep_rows(data, base_dir) {
-        out.append((row.path, row.digest, ));
-    }
-    return out;
-}
-
 impl native_deps_section(dep_digests: dict[str, str]) -> bytes {
     lines: list[str] = [];
     for path in sorted(dep_digests) {
@@ -1053,25 +1033,11 @@ impl parse_native_dep_rows(raw: bytes, anchor: str = "") -> list[tuple[str, str]
     return out;
 }
 
-impl _dep_row_path(stored: str, base_dir: str) -> str {
-    prefix = PRECOMPILE_SENTINEL + "/";
-    if base_dir and stored.startswith(prefix) {
-        return os.path.normpath(os.path.join(base_dir, stored[len(prefix):]));
-    }
-    return stored;
-}
-
 impl read_native_dep_hashes(
-    data: bytes, stamp: NativeStamp, base_dir: str = "", anchor: str = ""
+    data: bytes, stamp: NativeStamp, anchor: str = ""
 ) -> list[tuple[str, str]] {
     raw = native_section_payload(read_section_bytes(data, SEC_NDEPS), stamp);
-    if not raw {
-        return [];
-    }
-    return [
-        (_dep_row_path(path, base_dir), digest, )
-        for (path, digest) in parse_native_dep_rows(raw, anchor)
-    ];
+    return parse_native_dep_rows(raw, anchor) if raw else [];
 }
 
 impl compute_stub_module_key(source_path: str) -> str {
@@ -1111,7 +1077,7 @@ impl module_jir_key_sections(source_path: str) -> dict[int, bytes] {
 }
 
 impl jir_env_matches(jir_data: bytes, source_path: str) -> bool {
-    stored = read_envkey(jir_data);
+    stored = _read_key_section(jir_data, SEC_ENVKEY);
     if stored is None {
         return False;
     }
@@ -1119,7 +1085,7 @@ impl jir_env_matches(jir_data: bytes, source_path: str) -> bool {
 }
 
 impl jir_matches_source(jir_data: bytes, source_path: str) -> bool {
-    stored = read_modkey(jir_data);
+    stored = _read_key_section(jir_data, SEC_MODKEY);
     if stored is None {
         return False;
     }
@@ -1140,7 +1106,7 @@ impl compute_precompile_module_key(source_path: str, compiler_digest: str = "") 
 impl precompiled_jir_matches_source(
     jir_data: bytes, source_path: str, compiler_digest: str = "", package_root: str = ""
 ) -> bool {
-    stored = read_modkey(jir_data);
+    stored = _read_key_section(jir_data, SEC_MODKEY);
     if stored is None {
         return False;
     }
@@ -1153,7 +1119,7 @@ impl jir_cacheable_source_path(source_path: str) -> bool {
 }
 
 impl cache_mode -> tuple[bool, bool] {
-    record = _handoff();
+    record = handoff();
     return (bool(record.get("rebuild")), bool(record.get("no_precompile")));
 }
 
@@ -1386,17 +1352,7 @@ impl read_jir(cache_path: Path) -> bytes {
 }
 
 impl read_bytecode_only(data: bytes) -> (bytes | None) {
-    try {
-        magic_bytes: any = SECTIONS_MAGIC;
-        pos = data.find(magic_bytes, HEADER_SIZE);
-        if pos < 0 {
-            return None;
-        }
-        sections = read_sections(data, pos + len(magic_bytes));
-        return sections.get(SEC_BYTECODE);
-    } except Exception {
-        return None;
-    }
+    return read_section_bytes(data, SEC_BYTECODE);
 }
 
 impl write_precompiled_jir(
@@ -1435,13 +1391,7 @@ impl write_precompiled_jir(
 
 impl read_debug_source(data: bytes) -> (str | None) {
     try {
-        magic_bytes: any = SECTIONS_MAGIC;
-        pos = data.find(magic_bytes, HEADER_SIZE);
-        if pos < 0 {
-            return None;
-        }
-        sections = read_sections(data, pos + len(magic_bytes));
-        src = sections.get(SEC_DEBUG_SRC);
+        src = read_section_bytes(data, SEC_DEBUG_SRC);
         return zlib.decompress(src).decode('utf-8') if src is not None else None;
     } except Exception {
         return None;
@@ -1496,12 +1446,7 @@ impl _mergeable_sections(
         if header is None or not header.is_compatible() {
             return ({}, 0, False);
         }
-        magic: any = SECTIONS_MAGIC;
-        pos = data.find(magic, HEADER_SIZE);
-        if pos < 0 {
-            return ({}, 0, False);
-        }
-        secs = read_sections(data, pos + len(magic));
+        secs = _section_table(data);
         if secs.get(SEC_MODKEY) != key_sections.get(SEC_MODKEY) {
             return ({}, 0, False);
         }
@@ -1709,11 +1654,7 @@ impl drop_python_lane_products(source_path: str) -> None {
         try {
             data = cache_path.read_bytes();
             header = parse_header(data[:HEADER_SIZE]);
-            magic: any = SECTIONS_MAGIC;
-            pos = data.find(magic, HEADER_SIZE);
-            secs = read_sections(data, pos + len(magic))
-                if header is not None and pos >= 0
-                else {};
+            secs = _section_table(data) if header is not None else {};
         } except OSError {
             return;
         }
