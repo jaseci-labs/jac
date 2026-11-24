@@ -1593,9 +1593,7 @@ impl grammar(output: str = "", strict: bool = False) -> int {
     }
 
     import from typing { cast }
-    pass_ = cast(
-        GrammarExtractPass, run_utility(CompilationProduct.GRAMMAR, mod, prog)
-    );
+    pass_ = cast(GrammarExtractPass, run_pass(GrammarExtractPass, mod, prog));
     if len(pass_.rules) == 0 {
         console.error("No grammar rules extracted.");
         return 1;

@@ -845,12 +845,13 @@ graph import {
         NativeUnitRegistry
     }
     type compiler.driver.nativecache ++> project.compiler_host { NativeUnitRegistry }
-    compiler.driver.pipeline ++> [
-        cli.commands.analysis.grammar
-            | cli.commands.transform.py2jac
-            | project.compiler_host.ProjectHost.parse_python { run_utility },
-        dist.publish.npm_sources._compile_module { CompilationProduct, require },
-    ]
+    compiler.driver.pass_driver ++> cli.commands.analysis.grammar
+        | cli.commands.transform.py2jac
+        | project.compiler_host.ProjectHost.parse_python { run_pass }
+    compiler.driver.pipeline ++> dist.publish.npm_sources._compile_module {
+        CompilationProduct,
+        require
+    }
     compiler.driver.pipeline as pipeline --> scale.tests.apps.test_fleet_from_apps;
     compiler.driver.pipeline_runner ++> [
         client.compiler.ViteCompiler._compile_wasm_module { wasm_artifact_inputs },
@@ -862,9 +863,6 @@ graph import {
         cli.commands.analysis._check_file_job { compile_application },
         dist.source.project.export_project { native_application },
     ]
-    compiler.driver.pipeline_types ++> cli.commands.analysis.grammar
-        | cli.commands.transform.py2jac
-        | project.compiler_host.ProjectHost.parse_python { CompilationProduct }
     compiler.driver.program ++> [
         cli.commands.analysis._annex_moves
             | cli.commands.architecture
@@ -1147,6 +1145,8 @@ graph import {
         inferred_hints
     }
     compiler.passes.ownership_hints --> cli.commands.analysis.explain { inferred_hints }
+    compiler.passes.pyast_load_pass ++> cli.commands.transform.py2jac
+        | project.compiler_host.ProjectHost.parse_python { PyastBuildPass }
     compiler.placement.placement ++> cli.commands.fix._verify_claims {
         element_display_name
     }
@@ -5221,10 +5221,15 @@ graph import compiler {
     ]
     type driver.nativecache ++> frontend.host { NativeUnitRegistry }
     driver.pass_driver ++> [
-        tests.test_client_codegen_facts { run_pass },
+        tests.test_client_codegen_facts
+            | tests.test_module_exports
+            | tools.cfg_dot.cfg_dot_from_file
+            | tools.jac_formatter_pass.format_module
+            | tools.lang_tools.AstTool.ir { run_pass },
         tools.jac_auto_lint_pass.JacAutoLintPass.__post_init__ {
             diagnostic_policy_for
         },
+        tools.jac_formatter_pass.unparse_module { run_pass },
     ]
     driver.pass_driver as pass_driver ++> tests.test_pipeline_products;
     driver.pipeline ++> [
@@ -5236,10 +5241,6 @@ graph import compiler {
             CompilationProduct,
             require
         },
-        tests.test_module_exports
-            | tools.cfg_dot.cfg_dot_from_file
-            | tools.jac_formatter_pass.format_module
-            | tools.lang_tools.AstTool.ir { run_utility },
         tests.test_pipeline_products {
             _LOADING,
             product_facts,
@@ -5252,7 +5253,6 @@ graph import compiler {
         placement.placement_solver.solve_module_placement._invalidate_stale_codegen {
             invalidate
         },
-        tools.jac_formatter_pass.unparse_module { run_utility },
     ]
     driver.pipeline_types ++> [
         backends.es.esast_gen_pass
@@ -5297,20 +5297,16 @@ graph import compiler {
             | passes.type_checker_pass
             | passes.variant_agreement_pass
             | placement.placement_solver { AnalysisFact, PassContract },
-        tests.test_module_exports
-            | tools.cfg_dot.cfg_dot_from_file
-            | tools.jac_formatter_pass.format_module
-            | tools.lang_tools.AstTool.ir { CompilationProduct },
         tests.test_pipeline_products {
             AnalysisFact,
             CompilationProduct,
             ProductTask,
             TaskState
         },
+        tools.lang_tools.AstTool.ir { CompilationProduct },
     ]
     driver.pipeline_types --> [
-        placement.placement_solver.invalidate_importers_es
-            | tools.jac_formatter_pass.unparse_module { CompilationProduct },
+        placement.placement_solver.invalidate_importers_es { CompilationProduct },
         placement.placement_solver.solve_module_placement._invalidate_stale_codegen {
             CompilationProduct
         },
@@ -8725,7 +8721,7 @@ graph import compiler {
         settle_native_module
     }
     passes.pyast_load_pass ++> [
-        driver.pipeline.python_ast_passes | tools.lang_tools { PyastBuildPass },
+        tests.test_module_exports | tools.lang_tools { PyastBuildPass },
         tools.lang_tools.AstTool.py_uni_nodes { PyastBuildPass },
     ]
     passes.rc_facts_pass ++> [
@@ -9007,32 +9003,24 @@ graph import compiler {
         },
     ]
     target_spec ++> backends.native.link_glue.link_glue_ir { triple_osarch }
-    tools.cfg_dot ++> driver.pipeline.cfg_dot_passes { CoalesceBBPass }
     tools.code_intel ++> tests.test_code_intel { CodeIntelligence }
-    tools.comment_attach_pass ++> [
-        driver.pipeline.format_lintfix_passes { CommentAttachPass },
-        driver.pipeline.format_passes { CommentAttachPass },
-    ]
+    tools.comment_attach_pass ++> driver.compiler.JacCompiler._format_program {
+        CommentAttachPass
+    }
     tools.doc_ir as doc --> frontend.codeinfo.CodeGenTarget.doc_ir.getter;
     type tools.doc_ir ++> frontend.codeinfo { Doc }
-    tools.doc_ir_gen_pass ++> [
-        driver.pipeline.doc_passes { DocIRGenPass },
-        driver.pipeline.format_lintfix_passes { DocIRGenPass },
-        driver.pipeline.format_passes { DocIRGenPass },
-    ]
-    tools.grammar_extract_pass ++> driver.pipeline.grammar_passes { GrammarExtractPass }
+    tools.doc_ir_gen_pass ++> driver.compiler.JacCompiler._format_program {
+        DocIRGenPass
+    }
     tools.jac_auto_lint_pass ++> [
-        driver.pipeline.analysis_passes { JacLintCheckPass },
-        driver.pipeline.format_lintfix_passes { JacAutoLintPass },
-        driver.pipeline.lint_passes { JacLintCheckPass },
+        driver.compiler.JacCompiler._format_program { JacAutoLintPass },
+        driver.compiler.JacCompiler.jac_file_linter | driver.pipeline.analysis_passes {
+            JacLintCheckPass
+        },
     ]
-    tools.jac_formatter_pass ++> [
-        driver.pipeline.format_lintfix_passes { JacFormatPass },
-        driver.pipeline.format_passes { JacFormatPass },
-        driver.pipeline.format_text_passes { JacFormatPass },
-    ]
-    tools.normalize_pass ++> driver.pipeline.normalize_passes { NormalizePass }
-    tools.unparse_pass ++> driver.pipeline.unparse_passes { UnparsePass }
+    tools.jac_formatter_pass ++> driver.compiler.JacCompiler._format_program {
+        JacFormatPass
+    }
     type_registry ++> [
         backends.es.esast_gen_pass.EsastGenPass._audit_free_identifiers
             | backends.es.jac_runtime_js._build_exc_runtime_js
@@ -10167,11 +10155,7 @@ graph import compiler.driver {
             push_native_target
         },
         pass_driver { CancelToken },
-        pipeline_runner.native_application {
-            CompileOptions,
-            pop_native_target,
-            push_native_target
-        },
+        pipeline_runner.native_application { CompileOptions },
         pipeline_runner.wasm_ir_units {
             CompileOptions,
             pop_native_target,
@@ -10365,7 +10349,6 @@ graph import compiler.driver {
         ifacecache.IfaceRegistry.analysis_profile { diagnostic_policy_for },
         module_compile.report_missing_native_ir { deliver_alerts },
         pipeline.execute_passes { build_diagnostic_policy, run_pass },
-        pipeline.run_utility { run_pass },
     ]
     pass_driver --> [
         application.prepare_application { compile_progress },
@@ -10373,6 +10356,7 @@ graph import compiler.driver {
     ]
     pipeline ++> [
         application_edges.application_edges { CompilationProduct, require },
+        module_analysis { cancelled },
         module_analysis.ModuleAnalysis.ready { product_ready },
         module_analysis.ModuleAnalysis.require
             | nativecache.NativeBuildSession._finish { require },
@@ -10382,13 +10366,12 @@ graph import compiler.driver {
     ]
     pipeline --> [
         application._tree_source { CompilationProduct, require },
-        compiler.JacCompiler._format_program
+        compiler.JacCompiler._format_program { execute_passes },
+        compiler.JacCompiler.ensure_client_codegen
             | ifacecache.IfaceRegistry._ensure_flow_graph { require },
-        compiler.JacCompiler.ensure_client_codegen | ifacecache.IfaceRegistry.ensure {
-            require
-        },
-        compiler.JacCompiler.jac_file_linter { require },
+        compiler.JacCompiler.jac_file_linter { execute_passes },
         ifacecache.IfaceRegistry._prepare { product_facts },
+        ifacecache.IfaceRegistry.ensure { require },
         nativecache.NativeBuildSession.lower { invalidate, require, unavailable },
     ]
     pipeline_runner --> [
@@ -11249,7 +11232,11 @@ graph import compiler.tests {
 graph import compiler.tools {
     cfg_dot ++> lang_tools { cfg_dot_from_file }
     doc_ir as doc ++> doc_ir_gen_pass | jac_formatter_pass;
+    doc_ir_gen_pass ++> jac_formatter_pass.format_module | lang_tools.AstTool.ir {
+        DocIRGenPass
+    }
     jac_formatter_pass ++> lang_tools { unparse_module }
+    normalize_pass ++> jac_formatter_pass.unparse_module { NormalizePass }
     reactive_use_walk ++> jac_auto_lint_pass { ReactiveUseWalker }
     treeprinter ++> lang_tools {
         print_ast_tree,
@@ -11257,6 +11244,7 @@ graph import compiler.tools {
         printgraph_ast_tree,
         printgraph_symtab_tree
     }
+    unparse_pass ++> jac_formatter_pass.unparse_module { UnparsePass }
 }
 
 graph import compiler.types {

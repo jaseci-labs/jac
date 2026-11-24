@@ -757,12 +757,11 @@ impl JacCompiler._format_program(
     if current_mod is None {
         return prog;
     }
-    import from jaclang.compiler.driver.pipeline { require }
-    require(
-        prog,
-        current_mod,
-        CompilationProduct.FORMAT_LINTFIX if auto_lint else CompilationProduct.FORMAT
-    );
+    import from jaclang.compiler.driver.pipeline { execute_passes }
+    passes = [CommentAttachPass, JacAutoLintPass, DocIRGenPass, JacFormatPass]
+        if auto_lint
+        else [CommentAttachPass, DocIRGenPass, JacFormatPass];
+    execute_passes(prog, current_mod, passes, cancel_token=prog.options.cancel_token);
     prog.reset_module_root(uni.ProgramModule(main_mod=current_mod));
     return prog;
 }
@@ -773,8 +772,10 @@ impl JacCompiler.jac_file_linter(file_path: str) -> JacProgram {
     if current_mod is None {
         return prog;
     }
-    import from jaclang.compiler.driver.pipeline { require }
-    require(prog, current_mod, CompilationProduct.LINT);
+    import from jaclang.compiler.driver.pipeline { execute_passes }
+    execute_passes(
+        prog, current_mod, [JacLintCheckPass], cancel_token=prog.options.cancel_token
+    );
     prog.reset_module_root(uni.ProgramModule(main_mod=current_mod));
     return prog;
 }

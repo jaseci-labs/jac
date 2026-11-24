@@ -48,13 +48,6 @@ impl run_native_checks(task: ModuleAnalysis) {
     }
 }
 
-impl admits_client_dependencies(task: ModuleAnalysis) -> bool {
-    options = task.options;
-    return not (
-        task.parse_failed or task.blocked or options.symtab_ir_only or options.no_cgen
-    );
-}
-
 impl run_client_dependencies(task: ModuleAnalysis) {
     options = task.options;
     program = task.program;
