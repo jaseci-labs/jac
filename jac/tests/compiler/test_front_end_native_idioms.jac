@@ -303,7 +303,13 @@ test "a test block still binds the assert names to symbols" {
 test "version-condition comparisons match the operator table they replaced" {
     import sys;
     import ast as py_ast;
-    import from jaclang.compiler.frontend.unitree { IfStmt, PythonModuleAst, Source }
+    import from typing { cast }
+    import from jaclang.compiler.frontend.unitree {
+        IfStmt,
+        Module,
+        PythonModuleAst,
+        Source
+    }
     import from jaclang.compiler.driver.pass_driver { run_pass }
     import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
     import from jaclang.compiler.frontend.helpers { evaluate_version_condition }
@@ -319,8 +325,11 @@ test "version-condition comparisons match the operator table they replaced" {
     prog = JacProgram();
     mod = run_pass(
         PyastBuildPass,
-        PythonModuleAst(
-            py_ast.parse(code), orig_src=Source(code, "test_version_ops.py")
+        cast(
+            Module,
+            PythonModuleAst(
+                py_ast.parse(code), orig_src=Source(code, "test_version_ops.py")
+            )
         ),
         prog
     ).module;
