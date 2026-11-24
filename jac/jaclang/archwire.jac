@@ -607,21 +607,7 @@ graph import {
     compiler.boundary_audit ++> client.compiler.ViteCompiler.prepare_bundle {
         boundary_audit
     }
-    compiler.driver.application ++> cli.commands.execution._load_executable
-        | dist.seal.prepare_serve_payloads
-        | dist.source.project.export_project
-        | scale.tests.data.test_eager_spawn
-        | scale.tests.microservices.test_microservice
-        | scale.tests.server.test_host_serving
-        | scale.tests.server.test_served_app_route
-        | scale.tests.server.test_sv_outbox_endpoints { prepare_application }
-    compiler.driver.application --> [
-        cli.commands.execution.serve
-            | client.targets.client_dev_common.dev_proxy_paths
-            | scale.server.inprocess.prepare_inprocess_runtime { prepare_application },
-        server.hmr.HotReloader._reload_server_module { reprepare_application },
-    ]
-    compiler.driver.bccache ++> [
+    compiler.driver.annex_discovery ++> [
         cli.commands.analysis._annex_moves
             | project.compiler_host.ProjectHost.base_file
             | server.hmr
@@ -643,11 +629,25 @@ graph import {
         project.compiler_host.ProjectHost.package_init { host_layout_tables },
         project.compiler_host.ProjectHost.path_facts { host_layout_tables },
     ]
-    compiler.driver.bccache --> [
+    compiler.driver.annex_discovery --> [
         cli.commands.analysis._format_single_file_worker { discover_annex_files },
         cli.commands.analysis.lint.lint_fix_file { discover_annex_files },
         cli.commands.analysis.precommit { discover_annex_files },
         testing.test_runner._suite_source { discover_base_file },
+    ]
+    compiler.driver.application ++> cli.commands.execution._load_executable
+        | dist.seal.prepare_serve_payloads
+        | dist.source.project.export_project
+        | scale.tests.data.test_eager_spawn
+        | scale.tests.microservices.test_microservice
+        | scale.tests.server.test_host_serving
+        | scale.tests.server.test_served_app_route
+        | scale.tests.server.test_sv_outbox_endpoints { prepare_application }
+    compiler.driver.application --> [
+        cli.commands.execution.serve
+            | client.targets.client_dev_common.dev_proxy_paths
+            | scale.server.inprocess.prepare_inprocess_runtime { prepare_application },
+        server.hmr.HotReloader._reload_server_module { reprepare_application },
     ]
     compiler.driver.client_graph ++> [
         client.jac_client_compiler.JacClientCompiler._module_text { append_link },
@@ -1567,7 +1567,7 @@ graph import {
             is_jac,
             is_retired_native_marker
         },
-        compiler.driver.bccache { ANNEX_FOLDER, MODULE_SUFFIXES },
+        compiler.driver.annex_discovery { ANNEX_FOLDER, MODULE_SUFFIXES },
         compiler.tools.code_intel {
             ANNEX_FOLDER,
             ANNEX_SUFFIXES,
@@ -1600,7 +1600,7 @@ graph import {
         testing.test_runner.run_file { base_stem, is_annex_path_of },
     ]
     jac0core.ext_registry --> [
-        compiler.driver.bccache.host_layout_tables {
+        compiler.driver.annex_discovery.host_layout_tables {
             ANNEX_FOLDER,
             INIT_FILES,
             JAC_SUFFIX,
@@ -4952,9 +4952,8 @@ graph import compiler {
         },
     ]
     type capability_notes ++> driver.progstate { CapabilityNote }
-    driver.bccache ++> tests.test_batch_decl_identity | tests.test_global_narrowing {
-        discover_base_file
-    }
+    driver.annex_discovery ++> tests.test_batch_decl_identity
+        | tests.test_global_narrowing { discover_base_file }
     driver.boundary_classify ++> [
         backends.es.esast_gen_pass.EsastGenPass._is_client_native_import {
             import_binds_client_native
@@ -6807,7 +6806,7 @@ graph import compiler {
     ]
     frontend.source_layout ++> [
         backends.es.scoped_styles | driver.jir._related_files { style_annex_of },
-        driver.bccache { LayoutTables, annex_files_of, base_file_of },
+        driver.annex_discovery { LayoutTables, annex_files_of, base_file_of },
     ]
     frontend.srcloc ++> [
         driver.ifacecache._span_from_record { Span },
@@ -10063,6 +10062,9 @@ graph import compiler.backends.py {
 }
 
 graph import compiler.driver {
+    annex_discovery ++> ifacecache.IfaceRegistry._entry_fresh | jir._related_files {
+        discover_annex_files
+    }
     application ++> [
         build_services.CompilerBuildServices.prepare_application {
             prepare_application
@@ -10073,9 +10075,6 @@ graph import compiler.driver {
     ]
     application_edges ++> build_services.CompilerBuildServices.application_edges {
         application_edges
-    }
-    bccache ++> ifacecache.IfaceRegistry._entry_fresh | jir._related_files {
-        discover_annex_files
     }
     boundary_classify ++> [
         program.JacProgram.declared_codespace { _default_codespace_for },

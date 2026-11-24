@@ -5,7 +5,10 @@ portable module."""
 import os;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.compiler.driver.bccache { discover_annex_files, discover_base_file }
+import from jaclang.compiler.driver.annex_discovery {
+    discover_annex_files,
+    discover_base_file
+}
 
 def _names(paths: list[str], top: str) -> list[str] {
     return sorted(os.path.relpath(p, top) for p in paths);

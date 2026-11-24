@@ -912,8 +912,8 @@ A short index, organised by the role each file plays in the pipeline.
 
 - [`compiler/driver/jir.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/jir.jac)
   -- section format
-- [`compiler/driver/bccache.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/bccache.jac)
-  -- cache layout
+- [`compiler/driver/annex_discovery.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/annex_discovery.jac)
+  -- annex file discovery
 
 ---
 

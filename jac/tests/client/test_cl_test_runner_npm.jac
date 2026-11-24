@@ -11,7 +11,7 @@ propagates instead of silently falling back to the annex.
 
 import from pathlib { Path }
 import from unittest.mock { patch }
-import jaclang.compiler.driver.bccache as bccache;
+import jaclang.compiler.driver.annex_discovery as annex_discovery;
 import from jaclang.testing.cl_test_runner {
     module_entry_for,
     module_is_client,
@@ -40,7 +40,7 @@ test "a client test annex resolves to the module it belongs to" {
     assert module_entry_for(ANNEX) == BASE , "an annex must resolve to its module";
     assert module_entry_for(ORPHAN) == ORPHAN , "no base module means its own unit";
     assert module_is_client(ANNEX) , "an annex must inherit its module's placement";
-    with patch.object(bccache, "discover_base_file", side_effect=OSError) {
+    with patch.object(annex_discovery, "discover_base_file", side_effect=OSError) {
         try {
             module_entry_for(ANNEX);
             assert False , "a resolution error must not fall back to the annex";

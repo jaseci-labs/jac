@@ -455,7 +455,7 @@ impl lint(
             }
             error_count = fixed_count + unfixable_count;
 
-            import from jaclang.compiler.driver.bccache { discover_annex_files }
+            import from jaclang.compiler.driver.annex_discovery { discover_annex_files }
             annex_paths = (
                 discover_annex_files(str(path_obj), '.impl.jac')
                 + discover_annex_files(str(path_obj), '.test.jac')
@@ -1274,7 +1274,9 @@ impl precommit(
             try {
                 checkout_paths = list(rel_targets);
                 try {
-                    import from jaclang.compiler.driver.bccache { discover_annex_files }
+                    import from jaclang.compiler.driver.annex_discovery {
+                        discover_annex_files
+                    }
                     rel_set = {r for r in rel_targets};
                     annex_rel: list[str] = [];
                     for rel in rel_targets {
@@ -2037,7 +2039,7 @@ impl _format_single_file_worker(
     annex_formatted_map: dict[str, str] = {};
     annex_logical_map: dict[str, str] = {};
     if lintfix {
-        import from jaclang.compiler.driver.bccache { discover_annex_files }
+        import from jaclang.compiler.driver.annex_discovery { discover_annex_files }
 
         annex_paths = (
             discover_annex_files(file_path, '.impl.jac')
