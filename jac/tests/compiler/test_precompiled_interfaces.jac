@@ -52,8 +52,7 @@ test "precompiled placement of a nested module resolves after relocation" {
         (package / "model.jac").write_text("obj Box { has value: int; }\n");
         source = nested / "api.jac";
         source.write_text(
-            "import from ..model { Box }\n"
-                + "def make() -> Box { return Box(42); }\n"
+            "import from ..model { Box }\n" + "def make() -> Box { return Box(42); }\n"
         );
         data = precompile_unit(str(source), str(package), collect=False);
         assert data is not None;
