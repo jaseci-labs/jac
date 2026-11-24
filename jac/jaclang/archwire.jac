@@ -10470,7 +10470,8 @@ graph import compiler.driver {
         },
         toolchain { fail_loud_on_compiler_source },
     ]
-    source_failures --> application._prepare_revision | source_products.python_source {
+    source_failures --> application._prepare_revision.expand
+        | source_products.python_source {
         bootstrap_tier_failure_details,
         module_scoped_failure_details
     }
