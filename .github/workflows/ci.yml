@@ -395,7 +395,7 @@ jobs:
           fi
 
       - name: Save the dev vendored runtimes
-        if: steps.dev-assets-cache.outputs.cache-hit != 'true' && (github.ref == 'refs/heads/main' || github.head_ref == 'ci/cache-pretest')
+        if: steps.dev-assets-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v4
         with:
           path: |
