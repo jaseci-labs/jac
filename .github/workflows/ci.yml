@@ -29,6 +29,9 @@ on:
   push:
     branches: [main]
 
+# The `ci:sealed` label runs ci-sealed.yml's sealed lanes on a pull request
+# too (the `sealed` job below), for changes that can move the sealed binary.
+#
 # Adding a label that does not add a lane (one outside the list below, which
 # the `changes` job repeats) must neither rerun the suites nor cancel the run in
 # flight, so that run gets a group of its own and only Contribution Checks and
@@ -38,7 +41,7 @@ concurrency:
   group: >-
     ci-${{ github.event.pull_request.number || github.ref }}${{
     github.event.action == 'labeled'
-    && github.event.label.name != 'type-error-report'
+    && !contains(fromJSON('["type-error-report", "ci:sealed"]'), github.event.label.name)
     && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -54,7 +57,7 @@ jobs:
   changes:
     if: >-
       github.event.action != 'labeled'
-      || github.event.label.name == 'type-error-report'
+      || contains(fromJSON('["type-error-report", "ci:sealed"]'), github.event.label.name)
     runs-on: ubuntu-latest
     outputs:
       core: ${{ steps.filter.outputs.core }}
@@ -73,7 +76,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            scope=$(bash scripts/ci_plan.sh scope HEAD^1 HEAD | head -n 1 | cut -d= -f2)
+            selection=$(bash scripts/ci_plan.sh scope HEAD^1 HEAD)
+            scope=${selection%%$'\n'*}
+            scope=${scope#scope=}
             lanes=$(bash scripts/ci_plan.sh plan .github/ci/lanes.json HEAD^1 HEAD)
           else
             scope=full
@@ -864,6 +869,13 @@ jobs:
   # Aggregate gate: branch protection requires only this context. A NEW job
   # must be added to needs below by hand; always() so failures upstream fail
   # the gate instead of skipping it (skipped required checks count as passing).
+  # A pull request labelled `ci:sealed` runs the sealed lanes here, so their
+  # result gates it the same as the dev-kit lanes.
+  sealed:
+    needs: changes
+    if: contains(github.event.pull_request.labels.*.name, 'ci:sealed')
+    uses: ./.github/workflows/ci-sealed.yml
+
   everything-passed:
     name: Everything Passed
     if: always()
@@ -875,6 +887,7 @@ jobs:
       - jac-check
       - contribution-checks
       - test
+      - sealed
       - test-native-aarch64
       - test-bootstrap
       - test-launcher-jac

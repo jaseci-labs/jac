@@ -8,15 +8,14 @@ name: CI (sealed)
 # (ci.yml); these lanes run:
 #   - every 6 hours on main (schedule),
 #   - on demand (Actions > CI (sealed) > Run workflow),
-#   - on a pull request carrying the `ci:sealed` label, on every push to it.
+#   - on a pull request carrying the `ci:sealed` label: ci.yml calls this
+#     workflow, so its result gates that PR's Everything Passed.
 
 on:
   workflow_dispatch:
   schedule:
     - cron: "17 */6 * * *"
-  pull_request:
-    branches: [main, 'release/**']
-    types: [opened, synchronize, reopened, labeled]
+  workflow_call:
 
 concurrency:
   group: ci-sealed-${{ github.event.pull_request.number || github.ref }}
@@ -381,7 +380,7 @@ jobs:
       actions: read
     env:
       JAC_CI_PERF: ${{ github.workspace }}/scripts/ci_perf.jac
-      JAC_CI_PERF_POLICY: ${{ github.workspace }}/.github/pack-smoke-perf.json
+      JAC_CI_PERF_POLICY: ${{ github.workspace }}/scripts/ci_perf.json
     steps:
       - uses: actions/checkout@v5
         with:
@@ -910,7 +909,7 @@ jobs:
 
       # Wall time is compared with the median of main's last runs and only
       # annotated; exit status, the hang ceilings and peak RSS are the gates.
-      # See .github/pack-smoke-performance.md.
+      # See scripts/ci_perf.md.
       - name: Report performance against main
         timeout-minutes: 3
         if: always()
