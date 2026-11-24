@@ -10382,8 +10382,9 @@ graph import compiler.driver {
         application._tree_source { CompilationProduct, require },
         compiler.JacCompiler._format_program
             | ifacecache.IfaceRegistry._ensure_flow_graph { require },
-        compiler.JacCompiler.ensure_client_codegen
-            | ifacecache.IfaceRegistry.ensure { require },
+        compiler.JacCompiler.ensure_client_codegen | ifacecache.IfaceRegistry.ensure {
+            require
+        },
         compiler.JacCompiler.jac_file_linter { require },
         ifacecache.IfaceRegistry._prepare { product_facts },
         nativecache.NativeBuildSession.lower { invalidate, require, unavailable },

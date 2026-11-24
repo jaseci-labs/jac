@@ -867,8 +867,7 @@ impl IfaceRegistry._serve_analysis(compiler: any, resolved: str, options: any) -
     self._prepare(ent, mod);
     self._replay_records(prof, err0, warn0);
     self.direct_deps[resolved] = {
-        row.path: row.digest
-        for row in read_dep_rows(data, base_dir)
+        row.path: row.digest for row in read_dep_rows(data, base_dir)
     };
     ent.replayed_token = self.closure_token;
     self._event("analysis_replay");

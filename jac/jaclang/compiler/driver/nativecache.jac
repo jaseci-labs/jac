@@ -48,7 +48,6 @@ obj NativeUnitRegistry {
     ) -> NativeStamp;
 
     def _module_jir(resolved: str) -> (tuple[bytes, str] | None);
-
     def _entry_fresh(ent: NativeUnitEntry) -> bool;
     def _register(
         resolved: str, iface: NativeIface, stamp: NativeStamp, digest: str = ""

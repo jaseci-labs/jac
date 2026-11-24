@@ -41,7 +41,9 @@ def _alert_record(alert: any) -> dict[str, any];
 
 def _alert_from_record(rec: dict[str, any]) -> any;
 
-def _alert_key(alert: any, real: bool = False) -> tuple[str, int, int, str | None, str];
+def _alert_key(
+    alert: any, real: bool = False
+) -> tuple[str, int, int, str | None, str];
 
 def _record_key(rec: dict[str, any]) -> tuple[object, ...];
 
@@ -114,7 +116,6 @@ obj IfaceRegistry(CatalogResolver) {
 
     def _register_from_disk(resolved: str, check_deps: bool) -> (IfaceEntry | None);
     def _deps_match(data: bytes, base_dir: str = "") -> bool;
-
     def _materialize(ent: IfaceEntry) -> any;
     def _restore_placement(ent: IfaceEntry);
     def _prepare(ent: IfaceEntry, mod: any);
@@ -130,7 +131,6 @@ obj IfaceRegistry(CatalogResolver) {
     def analysis_profile(options: any) -> str;
     def _ensure_flow_graph(mod: any) -> None;
     def _encode_iface(codec: IfaceCodec, mod: any, paths: JirPaths) -> (bytes | None);
-
     def _disk_iface_digest(resolved: str) -> str;
     def _existing_profiles(resolved: str) -> dict[str, any];
     def client_boundary_facts(dep_path: str) -> (list[str] | None);
