@@ -702,11 +702,10 @@ graph TD
     STR --> NaStr
 ```
 
-Thirteen emitter families are defined: one per primitive type (`int`,
+Twelve emitter families are defined: one per primitive type (`int`,
 `float`, `complex`, `str`, `bytes`, `list`, `dict`, `set`, `frozenset`,
 `tuple`, `range`), plus `BuiltinEmitter` for top-level functions like
-`print()`, `len()`, `range()`, `sorted()`, and `ExceptionEmitter` for the
-exception machinery. The codegen pass calls `StrEmitter.emit_op_add(...)`
+`print()`, `len()`, `range()` and `sorted()`. The codegen pass calls `StrEmitter.emit_op_add(...)`
 and the backend's subclass produces an ES `BinaryExpression` or an LLVM
 `call @str_concat`; the Python backend emits an ordinary `BinOp` whose
 semantics come from CPython directly.
