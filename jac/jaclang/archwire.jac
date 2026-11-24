@@ -10369,12 +10369,12 @@ graph import compiler.driver {
     ]
     pipeline --> [
         application._tree_source { CompilationProduct, require },
-        compiler.JacCompiler._format_program
-            | compiler.JacCompiler.jac_file_linter { execute_passes },
+        compiler.JacCompiler._format_program { execute_passes },
         compiler.JacCompiler.ensure_client_codegen
-            | ifacecache.IfaceRegistry._ensure_flow_graph
-            | ifacecache.IfaceRegistry.ensure { require },
+            | ifacecache.IfaceRegistry._ensure_flow_graph { require },
+        compiler.JacCompiler.jac_file_linter { execute_passes },
         ifacecache.IfaceRegistry._prepare { product_facts },
+        ifacecache.IfaceRegistry.ensure { require },
         nativecache.NativeBuildSession.lower { invalidate, require, unavailable },
     ]
     pipeline_runner --> [
