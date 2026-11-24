@@ -7,6 +7,24 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### Native code that cannot lower is a compile error, with no fallback to Python (unreleased)
+
+The native backend no longer falls back to Python. Before, a native function or method the backend could not lower was renamed `<name>.__jac_demoted`, reported with a `⚠ native seam -- demoting ...` warning, and run as Python under `jac run` while the rest of the module stayed native; a module that was only pinned or inferred native and failed to lower was quietly compiled in the server codespace. Now native code that cannot lower is always a compile error (`E5090` or `E5092`) naming the callable and the reason, with a `help:` line when the fix is known. `jac run`, `jac check` and `jac build --native` report the same errors, which is what `jac build --native` already did.
+
+A `"native"` pin under `[placement.pins]` or a native app kind is a declaration, not a preference: if the module cannot lower, the compile fails. Unlowerable `test` blocks in native modules are errors too. Native placement is still inferred under `[placement] default = "native"` or `--native`, and a module with a native blocker (Python imports, `pub` endpoints, `root` access, ...) still stays in the server codespace. Calling server functions or using `sv import` from native code is unchanged.
+
+| Before | Now |
+|---|---|
+| `⚠ native seam -- demoting ...` warning, the function runs as Python | `E5090`/`E5092` error naming the callable; the compile fails |
+| a native-pinned or inferred-native module that failed to lower compiled on the server | the same module is a compile error |
+| `jac check --native-coverage` reports native, demoted and server counts plus native seams | it reports native and server counts |
+| `[check] warn_native_seams` controls the warning | removed |
+| `JAC_NA_DEBUG=1` prints `NA_DEBUG demote <Type>.<method>` | it prints the diagnostics for each un-lowerable callable; `NA_DEBUG raise` for emitter crashes is unchanged |
+
+**Impact:** code that used to run with a demotion warning now fails to compile. For each error, fix the construct the message names (often by adding types, for example binding a call through an `any` value as `Callable[[...], R]`), or move the code to the server codespace: drop the module's `"native"` pin, pin it `"server"` under `[placement.pins]`, or put the server-only part in a server module and call it from native code. Clients are unaffected: an element that fails the client capability checks is still not pulled to the client.
+
+---
+
 ### Inline Python (`::py::`) is removed from the language (unreleased)
 
 `::py:: ... ::py::` blocks are gone. The lexer no longer recognizes the fence, the grammar has no inline-Python element, and the compiler has no node for it, so a file that still contains one fails to parse. There is no deprecation period and no dedicated diagnostic: the fence now reads as stray `:` tokens, and `E0103` (unterminated inline Python block) is retired.

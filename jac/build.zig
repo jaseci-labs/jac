@@ -289,9 +289,8 @@ pub fn build(b: *std.Build) void {
     ).step;
 
     // --- launcher stub: the in-checkout compiler compiles launcher/ natively --
-    // A native build treats any native-seam demotion in the stub's closure as
-    // a hard error: a function demoted to Python-only cannot run before Python
-    // exists. (The whole-program type-check gate is not used here: it cannot
+    // A native build fails on any function in the stub's closure that cannot
+    // lower, which matters here because the stub runs before Python exists. (The whole-program type-check gate is not used here: it cannot
     // see the bundled per-OS native floors the launcher imports.) Needs the
     // LLVMPY_* shim placed in-tree and the target's C floor archives.
     const build_stub = tool.run("jac", &.{ "build", "--native" });

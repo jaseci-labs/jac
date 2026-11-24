@@ -42,8 +42,7 @@ plan recompiled the whole closure.
 
 `NativeIface` is everything a consumer links against: exports (symbol,
 kind, parameter and return types, default argument tokens, ownership convention, `:pub`), class
-layouts, enums, the initializer and entry symbols, the demoted function
-set, clib paths, the module layout, and the dependency edges. Its digest
+layouts, enums, the initializer and entry symbols, clib paths, the module layout, and the dependency edges. Its digest
 covers all of that except the edges and coverage. So an ordinary body edit or a renamed
 local leaves the digest alone and rebuilds one
 object; a new or removed export, a changed signature or ownership
@@ -114,10 +113,9 @@ moved is recompiled during the walk.
 
 A lowering diagnostic is a routing fact before it is a report. The IR
 generator records every code its lowering hits, suppressed or not, because
-the demotion of a function is decided by those records; the pass driver
+whether a function lowered is decided by those records; the pass driver
 applies the suppression policy when it delivers alerts, so a suppressed code
-never reaches a user. Outside a demotion window a suppressed lowering error
-still withholds the unit: suppression silences the report, not the fact that
+never reaches a user. A suppressed lowering error still withholds the unit: suppression silences the report, not the fact that
 the body did not lower, and the unit's failure names the diagnostic.
 
 Refusals live on one table, `NativeLegality`. The static rules fill it during
@@ -253,8 +251,7 @@ their ASTs, under the symbols their interfaces record. Two imported modules
 may each define one name (hashlib's private `new` next to hmac's public
 `new`): the consumer keeps the first binding under the bare name and every
 imported function under a module-qualified key, so `hmac.new(...)` finds
-hmac's. A private function of another module is neither declared nor able
-to mark the bare name as demoted, and two `:pub` definitions of one name are
+hmac's. A private function of another module is not declared, and two `:pub` definitions of one name are
 left to the plan, which reports the collision (E5026) before anything
 links. Inherited-method thunks a subclass gets from its base keep external
 linkage and are recorded as exports, since callers look them up by the
@@ -393,9 +390,8 @@ sessions. These are local measurements, not a controlled CI comparison.
 
 - `EXC_BAD_ACCESS (code=2)` at an address inside a read-write page, from
   JIT code, is the target-machine mismatch described above.
-- A plan with fewer units than expected means edges were lost: check the
-  consumer's demoted set (a demoted caller records no edge) and whether its
-  dependency was served from the catalog when it compiled.
+- A plan with fewer units than expected means edges were lost: check whether the
+  consumer's dependency was served from the catalog when it compiled.
 - `JAC_NA_DEBUG=1` prints the plan's unsettled units per round, each typed
   import the walk resolved and with what, and the stack of any unit compile
   that raised.

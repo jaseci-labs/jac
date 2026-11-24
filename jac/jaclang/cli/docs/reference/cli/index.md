@@ -1990,7 +1990,7 @@ Editors normally launch this for you; configure your editor's LSP client to run 
 
 ### jac build --native
 
-Compile one `.jac` file through LLVM to a self-contained native artifact: a binary when the module has a `with entry { }` block, a C-ABI shared library otherwise (`--lib` forces the library form). The whole module is forced into the native codespace, so anything that cannot lower is a loud error rather than a demotion, and every native artifact refuses a demoted function.
+Compile one `.jac` file through LLVM to a self-contained native artifact: a binary when the module has a `with entry { }` block, a C-ABI shared library otherwise (`--lib` forces the library form). The whole module is forced into the native codespace, so anything that cannot lower is a compile error naming the callable.
 
 ```bash
 jac build filename.jac --native [-o OUTPUT] [--memory managed|rc|nogc] [--lib] [--target-triple TARGET] [--debug]
