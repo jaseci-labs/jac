@@ -784,7 +784,7 @@ impl decode_records(text: str) -> (tuple[bool, list[WireRec], list[RuleRec]] | N
         for wire in wires {
             wire.items = [(name, alias) for (name, alias) in wire.items];
         }
-        def patterns(rows: list) -> list[PatternRec] {
+        def patterns(rows: list[list[any]]) -> list[PatternRec] {
             return [
                 PatternRec(dotted=d, is_glob=g, is_string=s, text=t)
                 for (d, g, s, t) in rows
