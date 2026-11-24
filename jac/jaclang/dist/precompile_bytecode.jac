@@ -42,6 +42,8 @@ glob _unit_program: list[JacProgram] = [];
 
 def _native_extra(jac_path: str, pkg_root: str) -> dict[int, bytes];
 
+def _placement_section(data: bytes, jac_path: str, pkg_root: str) -> (bytes | None);
+
 def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, bytes];
 
 glob _unit_native_program: list[any] = [];

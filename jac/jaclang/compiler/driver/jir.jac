@@ -261,8 +261,6 @@ def definition_digest(path: str, qualname: str) -> str;
 
 def _compute_definition_digest(files: list[str], qualname: str) -> str;
 
-def rebase_placement_section(raw: bytes, base: str) -> bytes;
-
 def rebase_ct_deps_section(raw: bytes, base: str) -> bytes;
 
 def _stale_ct_rows(
