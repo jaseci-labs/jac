@@ -452,7 +452,7 @@ impl JcirGenPass._sv_endpoint_effects(binding: InteropBinding, key: str) -> list
 }
 
 impl JcirGenPass._sv_consumer_app_expr -> str {
-    consumer = module_app(self.module);
+    consumer = self.module.app;
     if consumer {
         return "'" + consumer + "'";
     }

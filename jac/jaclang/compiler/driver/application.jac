@@ -2,32 +2,18 @@ import hashlib;
 import marshal;
 import os;
 import sys;
-import tempfile;
 import time;
 import from pathlib { Path }
 import type from jaclang.compiler.frontend { unitree as uni }
-glob _FORMAT: int = 9,
+glob _FORMAT: int = 10,
      SLOW_PREPARE_SECONDS: int = 45,
      _SKIP: set[str] = {'.jac', '.git', '.venv', 'venv', 'node_modules', '__pycache__'};
 
-def _stamp(path: str, previous: any = None) -> tuple[int, int, str];
-
 def _runtime_output(name: str) -> bool;
 
-def _inventory(
-    `root: any,
-    inputs: bool = False,
-    previous: (dict[str, tuple[int, int, str]] | None) = None
-) -> dict[str, tuple[int, int, str]];
+def _inventory(`root: any, inputs: bool = False) -> dict[str, str];
 
-def _client_inventory(
-    `root: str,
-    dirs: list[str],
-    files: list[str],
-    previous: (dict[str, tuple[int, int, str]] | None) = None
-) -> dict[str, tuple[int, int, str]];
-
-def _digests(inventory: dict[str, tuple[int, int, str]]) -> dict[str, str];
+def _client_inventory(`root: str, dirs: list[str], files: list[str]) -> dict[str, str];
 
 def _identity -> tuple[str, str | None, str];
 
@@ -50,8 +36,6 @@ obj ManifestSource {
         client: any = None;
 }
 
-def _import_edges_of(rows: list[str]) -> list[tuple[bool, str, list[str]]];
-
 def _tree_source(
     program: any, mod: uni.Module, imported: bool = True
 ) -> ManifestSource;
@@ -69,6 +53,14 @@ def _warn_private_declarations(application: PreparedApplication, console: any);
 
 
 def _check(program: any, before: any);
+
+def _surface_sources(manifests: list[dict[str, any]], `root: str) -> set[str];
+
+def _drain(pending: set[str], code: dict[str, any], visit: any);
+
+def _name_applications(applications: list[PreparedApplication]);
+
+def _drop_client(revision: PreparedApplication);
 
 def _prepare_sealed(
     `entry: str, program: any, image_root: str, entries: list[str]

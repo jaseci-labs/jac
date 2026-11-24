@@ -15,6 +15,10 @@ def classify_import(imp: uni.Import) -> BareImportVerdict;
 def module_own_native_anchor(module: (uni.Module | None)) -> bool;
 
 
+def _native_import_target(
+    nd: uni.Import, prog: JacProgram
+) -> tuple[(str | None), bool];
+
 def plain_native_import_target(nd: uni.Import, prog: JacProgram) -> (str | None);
 
 def import_declares_native_target(
@@ -56,8 +60,6 @@ enum CrossAppKind {
 def bridgeable_import_target(nd: uni.Import) -> (str | None);
 
 def is_service_app_entry(path: str) -> bool;
-
-def module_app(module: (uni.Module | None)) -> (str | None);
 
 def same_workspace(consumer_path: str, provider_path: str) -> bool;
 

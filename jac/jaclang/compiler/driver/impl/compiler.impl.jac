@@ -700,14 +700,12 @@ impl JacCompiler._persist_native_unit(
         registry = actual_program.native_units();
         registry.record_module(result, actual_program.options);
         sections = registry.product_sections(full_target);
-        interop = interop_record(result);
-        if interop {
-            sections[SEC_INTEROP] = json.dumps(interop).encode('utf-8');
-        }
-        placement = placement_record(result, actual_program);
-        if placement {
-            sections[SEC_PLACEMENT] = placement.encode('utf-8');
-        }
+        boundary = UnitProducts(
+            path=full_target,
+            interop=interop_json(result),
+            placement=placement_record(result, actual_program)
+        );
+        sections.update(unit_sections(boundary, None));
         write_module_cache(full_target, None, extra_sections=sections);
     } except Exception as exc {
         import logging;
@@ -1096,13 +1094,10 @@ impl unit_sections(
     if products.interop {
         sections[SEC_INTEROP] = products.interop.encode("utf-8");
     }
-    if products.client {
-        artifact = client_artifact_from_json(products.client);
-        if artifact is not None {
-            sections[SEC_CLIENT] = client_artifact_bytes(
-                stamp_client_artifact(artifact)
-            );
-        }
+    if products.client is not None {
+        sections[SEC_CLIENT] = client_artifact_bytes(
+            stamp_client_artifact(products.client)
+        );
     }
     if products.placement {
         sections[SEC_PLACEMENT] = products.placement.encode("utf-8");
@@ -1112,7 +1107,7 @@ impl unit_sections(
         sections[SEC_CTDEPS] = ct_deps_section(
             products.ct_file_deps,
             products.ct_body_deps,
-            definitions=definition_deps(products)
+            definitions=products.ct_def_deps
         );
     }
     return sections;

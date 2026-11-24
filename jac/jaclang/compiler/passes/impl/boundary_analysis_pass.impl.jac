@@ -638,7 +638,7 @@ impl BoundaryAnalysisPass._record_app_edge(nd: Import) -> None {
     if provider_app is None {
         return;
     }
-    consumer_app = module_app(self.module) or '';
+    consumer_app = self.module.app or '';
     if provider_app == consumer_app {
         return;
     }
@@ -653,7 +653,7 @@ impl BoundaryAnalysisPass._record_app_edge(nd: Import) -> None {
 }
 
 impl BoundaryAnalysisPass._bridge_targets(mod: Module) -> list[tuple[(str, str)]] {
-    consumer_app = module_app(mod) or '';
+    consumer_app = mod.app or '';
     targets: list[tuple[(str, str)]] = [];
     for imp in mod.get_all_sub_nodes(Import) {
         provider_app = import_provider_app(imp);
@@ -722,7 +722,7 @@ impl BoundaryAnalysisPass._parsed_provider_of(nd: Import) -> (Module | None) {
 impl BoundaryAnalysisPass._reject_owned_type_import(
     nd: Import, item: ModuleItem, kind: str
 ) -> None {
-    consumer = module_app(self.module) or self.module.name;
+    consumer = self.module.app or self.module.name;
     self.ctx.emit(
         E5108,
         node_override=item,
@@ -742,7 +742,7 @@ impl BoundaryAnalysisPass._check_provider_pub(nd: Import, item: ModuleItem) -> N
         != ClientImportVerdict.DEAD {
         return;
     }
-    consumer = module_app(self.module) or self.module.name;
+    consumer = self.module.app or self.module.name;
     self.ctx.emit(
         E5106,
         node_override=item,
