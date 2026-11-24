@@ -1291,6 +1291,7 @@ graph import {
     }
     data.pgembed ++> [
         cli.commands.db._catalog_runtime
+            | scale.tests.data.test_gateway_owned_identity
             | scale.tests.data.test_pg_stream
             | scale.tests.server.test_backplane
             | scale.tests.server.test_pg_job_store
@@ -1357,6 +1358,7 @@ graph import {
             TxnIsolation
         },
         cli.commands.db._open_project_store
+            | scale.tests.data.test_gateway_owned_identity
             | scale.tests.data.test_pg_stream
             | scale.tests.server.test_backplane
             | scale.tests.server.test_pg_job_store
@@ -2839,6 +2841,7 @@ graph import {
     ]
     server.identity.identity_storage ++> [
         scale.sso.oauth_session { primary_username },
+        scale.tests.data.test_gateway_owned_identity { PgIdentityStorage },
         scale.tests.data.test_identity_password { IdentityStorage },
     ]
     server.identity.identity_storage --> scale.tests.data.test_auth_cutover {
@@ -13218,11 +13221,13 @@ graph import scale {
     admin --> tests.server.test_admin;
     admin as admin_pkg ++> tests.misc.test_ops_signals;
     admin.admin_portal ++> [
+        tests.data.test_gateway_owned_identity | tests.server.test_auth_policy_startup {
+            JacAPIServerAdmin
+        },
         tests.misc.test_metrics._distribution_for {
             _calculate_metrics_summary,
             _parse_prometheus_text
         },
-        tests.server.test_auth_policy_startup { JacAPIServerAdmin },
     ]
     admin.admin_portal --> tests.misc.test_metrics {
         _calculate_metrics_summary,
