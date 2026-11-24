@@ -1028,36 +1028,6 @@ impl solve_program_placement(entry_mod: uni.Module, prog: JacProgram) {
     work.drain(prog);
 }
 
-impl invalidate_importers_es(prog: JacProgram, mod_path: str) -> list[uni.Module] {
-    cleared: list[uni.Module] = [];
-    key = os.path.realpath(mod_path);
-    for m in list(prog.mod.hub.values()) {
-        if m.loc is None or os.path.realpath(m.loc.mod_path) == key {
-            continue;
-        }
-        for imp in m.get_all_sub_nodes(uni.Import) {
-            if imp.from_loc is None {
-                continue;
-            }
-            try {
-                target = imp.from_loc.resolve_relative_path();
-            } except Exception {
-                continue;
-            }
-            if isinstance(target, str) and os.path.realpath(target) == key {
-                import from jaclang.compiler.driver.pipeline { invalidate }
-                import from jaclang.compiler.driver.pipeline_types {
-                    CompilationProduct
-                }
-                invalidate(prog, m, CompilationProduct.CLIENT);
-                cleared.append(m);
-                break;
-            }
-        }
-    }
-    return cleared;
-}
-
 impl PlacementApplyPass._run_impl(ir_in: uni.Module) -> uni.Module {
     if ir_in.loc is not None {
         self.prog.analysis.placement_refusals.pop(

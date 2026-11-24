@@ -1,6 +1,6 @@
 comptime SPEC_EXPLAIN: CommandSpec = CommandSpec(
          name="explain",
-         help="Explain what the compiler inferred: memory (ownership, drops), placement (demotions), ir (optimized LLVM IR)",
+         help="Explain what the compiler inferred: memory (ownership, drops), placement (codespaces), ir (optimized LLVM IR)",
          args=[
              Arg.create(
                  "topic",
@@ -33,7 +33,7 @@ comptime SPEC_EXPLAIN: CommandSpec = CommandSpec(
              ),
              (
                  "jac explain placement app.jac",
-                 "Every demotion and the diagnostics that caused it"
+                 "Every element's codespace and the diagnostics that decided it"
              ),
              ("jac explain ir app.jac", "Write app.ll and print the symbol map")
          ],
@@ -103,7 +103,7 @@ comptime SPEC_EXPLAIN: CommandSpec = CommandSpec(
                  typ=bool,
                  `default=False,
                  short="",
-                 help="Compile with codegen and report per-module native outcome (native / demoted / server) ranked by reason (needs the native toolchain)"
+                 help="Compile with codegen and report per-module native outcome (native / server) ranked by reason (needs the native toolchain)"
              ),
              Arg.create(
                  "placements",

@@ -186,7 +186,7 @@ test "one name imported from two modules dispatches to each module's function" {
     (prog, mod) = _compile_main(tmp, aot=False);
     bindings = mod.gen.interop_manifest.bindings;
     assert "f" in bindings and "g" in bindings , (
-        f"bindings: {list(bindings)}; refusal: {mod.gen.native_refusal}; "
+        f"bindings: {list(bindings)}; "
         f"engine: {mod.gen.native_engine}"
     );
     sym_f = bindings["f"].symbol;

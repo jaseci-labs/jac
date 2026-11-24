@@ -886,8 +886,7 @@ impl NativeBuildSession.lower(
         self.registry._event("native_unit_lower");
         self.registry.note_slow_step("lowering", resolved, started);
         if len(self.prog.errors_had) > errors_before or mod.gen.native_iface is None {
-            refusal = mod.gen.native_refusal
-                or unavailable(CompilationProduct.NATIVE_LOWER);
+            refusal = unavailable(CompilationProduct.NATIVE_LOWER);
             if refusal {
                 self.registry.failures[resolved] = refusal;
             } elif mod.gen.native_iface is None {

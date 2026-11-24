@@ -17,9 +17,6 @@ def config_pins_for(source_path: str) -> dict[str, str];
 def config_pin_for(source_path: str, element_name: str) -> str;
 
 
-def config_element_pin(source_path: str, element_name: str) -> str;
-
-
 def config_module_pin(source_path: str) -> str;
 
 

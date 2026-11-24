@@ -1,11 +1,5 @@
 impl CoverageRecord.as_dict -> dict[str, any] {
-    return {
-        'outcome': self.outcome,
-        'code': self.code,
-        'detail': self.detail,
-        'seams': list(self.seams),
-        'late': self.late
-    };
+    return {'outcome': self.outcome, 'code': self.code, 'detail': self.detail};
 }
 
 impl _replayed_text(rec: dict[str, any], key: str, fallback: str) -> str {
@@ -25,39 +19,9 @@ impl na_coverage_record(path: str, outcome: str, code: str = '', detail: str = '
     if not _na_coverage_state["enabled"] or not path {
         return;
     }
-    key = os.path.realpath(path);
-    prev = _na_coverage.get(key);
-    if prev is not None
-        and prev.outcome in _STICKY_OUTCOMES
-        and outcome not in _STICKY_OUTCOMES {
-        return;
-    }
-    seams: list[str] = prev.seams if prev is not None else [];
-    _na_coverage[key] = CoverageRecord(
-        outcome=outcome,
-        code=code,
-        detail=detail,
-        seams=seams,
-        late=prev.late if prev is not None else 0
+    _na_coverage[os.path.realpath(path)] = CoverageRecord(
+        outcome=outcome, code=code, detail=detail
     );
-}
-
-impl na_coverage_seam(path: str, reason: str, late: bool = False) {
-    if not _na_coverage_state["enabled"] or not path {
-        return;
-    }
-    key = os.path.realpath(path);
-    rec = _na_coverage.get(key);
-    if rec is None {
-        rec = CoverageRecord(outcome='native', code='', detail='', seams=[]);
-        _na_coverage[key] = rec;
-    }
-    if reason not in rec.seams {
-        rec.seams.append(reason);
-        if late {
-            rec.late += 1;
-        }
-    }
 }
 
 impl na_coverage_capture(path: str) -> dict[str, any] {
@@ -79,23 +43,10 @@ impl na_coverage_replay(path: str, rec: dict[str, any]) {
     if key in _na_coverage {
         return;
     }
-    seams: list[str] = [];
-    held = rec.get('seams');
-    if isinstance(held, `list) {
-        for item in held {
-            if isinstance(item, str) {
-                seams.append(item);
-            }
-        }
-    }
-    replayed_late = rec.get('late');
-    late: int = replayed_late if isinstance(replayed_late, int) else 0;
     _na_coverage[key] = CoverageRecord(
         outcome=_replayed_text(rec, 'outcome', 'native'),
         code=_replayed_text(rec, 'code', ''),
-        detail=_replayed_text(rec, 'detail', ''),
-        seams=seams,
-        late=late
+        detail=_replayed_text(rec, 'detail', '')
     );
 }
 
