@@ -96,6 +96,24 @@ fixture_tests() {
   done <<<"$hits"
 }
 
+# Tests that import a changed test file: a test_* file can be a shared helper
+# (tests/client/test_helpers.jac), so its importers run with it. A non-test
+# file naming it selects that file's test tree; archwire.jac lists test
+# modules as wiring targets, not importers, and is left out.
+test_dependents() {
+  local path=$1 stem hit
+  stem=$(basename "$path" .jac)
+  { git -C "$root" grep -l -w -F -- "$stem" -- 'jac/*.jac' ':!*/fixtures/*' ':!jac/jaclang/archwire.jac' || true; } |
+    while IFS= read -r hit; do
+      [ "$hit" = "$path" ] && continue
+      if is_test_name "$hit"; then
+        printf '%s\n' "$hit"
+      elif in_test_tree "$hit"; then
+        tests_under "$(dirname "$hit")"
+      fi
+    done
+}
+
 scope() {
   local base=$1 head=$2 status old new path wired selected=""
   while IFS=$'\t' read -r status old new; do
@@ -121,6 +139,7 @@ scope() {
         selected+=$(fixture_tests "$path")$'\n'
       elif is_test_name "$path"; then
         if [ -e "$root/$path" ]; then selected+="$path"$'\n'; fi
+        selected+=$(test_dependents "$path")$'\n'
       else
         echo "scope=full"; return
       fi

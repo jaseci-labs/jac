@@ -42,6 +42,15 @@ printf 'edit\n' >> jac/tests/native/test_loops.jac
 commit test-edit
 expect $'scope=tests\njac/tests/native/test_loops.jac' "a test file selects itself"
 
+printf 'def shared {}\n' > jac/tests/native/test_helpers.jac
+printf 'import from .test_helpers { shared }\n' > jac/tests/native/test_uses_helper.jac
+commit add-helper
+printf 'def shared { pass; }\n' > jac/tests/native/test_helpers.jac
+commit edit-helper
+expect $'scope=tests\njac/tests/native/test_helpers.jac\njac/tests/native/test_uses_helper.jac' "a test-named helper selects its importers"
+git rm -q jac/tests/native/test_helpers.jac jac/tests/native/test_uses_helper.jac
+commit drop-helper
+
 printf 'note\n' > release_notes/1.md
 printf 'edit\n' >> jac/tests/native/test_misc.jac
 commit note-and-test
