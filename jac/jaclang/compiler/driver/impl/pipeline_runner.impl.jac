@@ -33,7 +33,7 @@ impl wasm_ir_units(
         if (ir is None) or (ir.gen.llvm_ir is None) {
             rec = coverage.get(os.path.realpath(os.path.abspath(file_path)));
             reason = "the module did not lower to native IR"
-                + " (no demotion recorded; it likely compiled as a"
+                + " (no native outcome recorded; it likely compiled as a"
                 + " non-native codespace)";
             if rec {
                 code = f" [{rec['code']}]" if rec['code'] else '';

@@ -402,7 +402,6 @@ obj CodeGenTarget {
         native_iface: (NativeIface | None) = None,
         native_deps: list[str] = [],
         native_codespace: bool = False,
-        native_refusal: str = "",
         placement_mode: str = "",
         native_undecided: bool = False,
         native_closed_why: str = "",

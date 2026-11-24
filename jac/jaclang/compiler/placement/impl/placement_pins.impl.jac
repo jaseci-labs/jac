@@ -66,24 +66,6 @@ impl config_pin_for(source_path: str, element_name: str) -> str {
     return match_pin(source_path, ws.project_root, pins, element_name);
 }
 
-impl config_element_pin(source_path: str, element_name: str) -> str {
-    if not source_path or not element_name {
-        return '';
-    }
-    ws = active_host().workspace(source_path);
-    if ws is None {
-        return '';
-    }
-    module = module_dot_path(source_path, ws.project_root);
-    for (pattern, space) in config_pins_for(source_path).items() {
-        if fnmatch.fnmatchcase(f'{module}.{element_name}', pattern)
-            and not fnmatch.fnmatchcase(module, pattern) {
-            return space;
-        }
-    }
-    return '';
-}
-
 impl config_module_pin(source_path: str) -> str {
     return config_pin_for(source_path, '');
 }

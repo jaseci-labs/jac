@@ -14,19 +14,10 @@ import tempfile;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.codeinfo { InteropBinding, InteropContext }
 import from jaclang.compiler.capability_notes { capability_notes_of }
-import from jaclang.compiler.driver.session_compile { drop_native_bindings }
-import from jaclang.compiler.placement.placement_solver {
-    invalidate_importers_es,
-    native_placement_candidate
-}
-import from tests.support { JAC_ROOT }
+import from jaclang.compiler.placement.placement_solver { native_placement_candidate }
 
-glob PIN_FIXTURE_DIR = os.path.join(
-         JAC_ROOT, "tests", "compiler", "fixtures", "codespace", "native_demoted_pin"
-     ),
-     SEAM_SRC = (
+glob SEAM_SRC = (
          "def helper(x: int) -> str {\n"
          "    s = \"abc\";\n"
          "    return f\"{s!a}{x}\";\n"
@@ -646,33 +637,4 @@ test "a docstring-only module is not a candidate for native placement" {
     (ok, why) = native_placement_candidate(mod, prog);
     assert not ok , "an empty module was a native candidate";
     assert "empty module" in why , why;
-}
-
-test "importer invalidation clears ES output and NATIVE bindings" {
-    prog = JacProgram();
-    app = prog.compile(os.path.join(PIN_FIXTURE_DIR, "app.jac"));
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    models_path = os.path.realpath(os.path.join(PIN_FIXTURE_DIR, "models.jac"));
-    app.gen.js = "stale na glue";
-    manifest = app.gen.interop_manifest;
-    manifest.bindings["double"] = InteropBinding(
-        name="double",
-        source_context=InteropContext.NATIVE,
-        callers={InteropContext.CLIENT},
-        source_module=models_path
-    );
-    manifest.bindings["unrelated"] = InteropBinding(
-        name="unrelated",
-        source_context=InteropContext.SERVER,
-        callers={InteropContext.CLIENT},
-        source_module=models_path
-    );
-    cleared = invalidate_importers_es(prog, models_path);
-    assert app in cleared , "the importer must be found by the hub walk";
-    assert app.gen.js == "" , "stale ES output must be cleared";
-    for m in cleared {
-        drop_native_bindings(m, models_path);
-    }
-    assert "double" not in manifest.bindings , "the NATIVE binding naming the module must be dropped";
-    assert "unrelated" in manifest.bindings , "bindings in other contexts must survive";
 }

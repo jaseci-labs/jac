@@ -1,5 +1,3 @@
-import os;
-
 obj SessionContext {
     has caller: JacProgram,
         target: JacProgram,
@@ -74,5 +72,3 @@ def compile_once(
     use_str: (str | None),
     options: CompileOptions
 ) -> uni.Module;
-
-def drop_native_bindings(mod: uni.Module, resolved: str);
