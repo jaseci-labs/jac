@@ -38,7 +38,7 @@ rm -rf jac/jaclang/vendor jac/jaclang/compiler/__pycache__ jac/jaclang/compiler/
 printf 'app edit\n' >> jac/jaclang/scale/app.jac
 commit app
 after=$(keys)
-same compiler; same python
+same compiler; same python; same devassets
 changed payload; changed binary
 
 before=$after
@@ -53,7 +53,7 @@ before=$after
 printf 'compiler edit\n' >> jac/jaclang/compiler/pass.jac
 commit compiler
 after=$(keys)
-changed compiler; same python; changed binary
+changed compiler; same python; changed binary; same devassets
 
 before=$after
 git mv jac/jaclang/compiler/pass.jac jac/jaclang/compiler/renamed.jac
@@ -71,7 +71,7 @@ before=$after
 printf ' ' >> jac/bootstrap/pins.json
 commit pin
 after=$(keys)
-changed python; same compiler; changed binary
+changed python; same compiler; changed binary; changed devassets
 
 before=$after
 printf fetch >> jac/bootstrap/fetch_pbs.zig
@@ -89,12 +89,19 @@ before=$after
 printf shim >> jac/native/shim.cpp
 commit shim
 after=$(keys)
-changed binary; same python
+changed binary; same python; changed devassets
 before=$after
 mkdir -p jac/examples/tiny_jacyac
 printf example > jac/examples/tiny_jacyac/web.jac
 commit tiny-example
 after=$(keys)
 changed binary; same compiler; same python
+
+before=$after
+mkdir -p jac/jaclang/dist/payload
+printf payload > jac/jaclang/dist/payload/fetch.jac
+commit payload-tool
+after=$(keys)
+changed devassets; same python
 
 echo 'CI cache mutation tests passed'
