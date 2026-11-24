@@ -57,3 +57,14 @@ tree jac/launcher jac/jaclang/dist/fused jac/jaclang/dist/payload \
 tree jac/launcher jac/bootstrap jac/build.zig jac/build.zig.zon jac/native \
   jac/jaclang/client/js_runtime.jac jac/jaclang/compiler/backends/native/wasm_rt |
   emit layers
+# The dev kit's vendored runtimes (bun, static musl, wasm libc): the payload
+# tool that fetches or builds them, its pins (BUN_VERSION lives in
+# js_runtime.jac, WASM_FLOOR_MANIFEST in floors.jac), and the sources it
+# compiles into the musl and wasm archives.
+tree jac/bootstrap jac/build.zig jac/build.zig.zon jac/native \
+  jac/jaclang/dist/payload jac/jaclang/client/js_runtime.jac \
+  jac/jaclang/compiler/backends/native/floors.jac \
+  jac/jaclang/compiler/backends/native/wasm_rt \
+  jac/jaclang/compiler/backends/native/musl_compat \
+  jac/jaclang/compiler/backends/native/compiler_rt |
+  emit devassets
