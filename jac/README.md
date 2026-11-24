@@ -33,13 +33,21 @@ This is the main source code repository for the [Jac] programming language. It c
 
 ## Quick Start
 
-Jac ships as a single self-contained native binary -- no Python, pip, or uv required. To install it, run:
+Jac ships as two self-contained native binaries -- no Python, pip, or uv required.
+
+[neojac](https://github.com/jaseci-labs/neojac), Jac's most advanced compiler:
+
+```bash
+curl -fsSL https://github.com/jaseci-labs/neojac/releases/latest/download/install.sh | bash
+```
+
+`jac`, Jac's reference compiler, built from this source tree:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
 
-Run `jac` in the terminal to see whether it is installed correctly.
+Run `neojac version` or `jac` in the terminal to see whether it is installed correctly.
 
 Read ["Getting Started"] from [Docs] for more information.
 
