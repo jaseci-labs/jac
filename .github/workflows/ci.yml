@@ -846,10 +846,6 @@ jobs:
             # On the dev kit a native worker peaks under 2 GB (run
             # 42685685266), so four fit the 16 GB runner.
             jobs: "4"
-            # The tier census runs the whole corpus on both tiers (~9 min) and
-            # only moves when the native backend does: pull requests that leave
-            # it alone skip it; pushes and the schedule always run it.
-            native_only: tests/compiler/backends/native/test_tier_census.jac
           - chunk: passes-native-2
             paths: "tests/compiler/backends/native/test_native_[abcghs]*.jac"
             sealed: "1"
@@ -894,8 +890,7 @@ jobs:
         run: |
           set -uxo pipefail
           WORK="$(mktemp -d)"
-          HOME="$WORK" JAC_TEST_RSS_LOG=1 JAC_TEST_JOBS=${{ matrix.jobs || 'auto' }} JAC_TEST_STRICT=1 jac test ${{ matrix.paths }} \
-            ${{ (matrix.native_only && github.event_name == 'pull_request' && needs.changes.outputs.native != 'true') && format('--ignore {0}', matrix.native_only) || '' }}
+          HOME="$WORK" JAC_TEST_RSS_LOG=1 JAC_TEST_JOBS=${{ matrix.jobs || 'auto' }} JAC_TEST_STRICT=1 jac test ${{ matrix.paths }}
       - name: Preserve failed native executables
         if: failure() && startsWith(matrix.chunk, 'passes-native')
         uses: actions/upload-artifact@v4
