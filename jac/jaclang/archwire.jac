@@ -1524,6 +1524,7 @@ graph import {
             | compiler.backends.native.link_plan
             | compiler.backends.native.llvm.shim_path.write_shim_record
             | compiler.backends.native.native_link
+            | compiler.driver.application._write
             | compiler.types.stubcat.build
             | scale.deploy.target.kubernetes.target.KubernetesTarget.write_plan
             | scale.injector.binary { atomic_write },
@@ -4980,7 +4981,6 @@ graph import compiler {
             import_provider_app,
             import_provider_route
         },
-        backends.py.jcir_gen_pass.JcirGenPass._sv_consumer_app_expr { module_app },
         backends.py.jcir_gen_pass.JcirGenPass.exit_import {
             CrossAppKind,
             classify_cross_app_import,
@@ -4991,8 +4991,7 @@ graph import compiler {
         },
         passes.boundary_analysis_pass.BoundaryAnalysisPass._bridge_targets {
             bridgeable_import_target,
-            import_provider_app,
-            module_app
+            import_provider_app
         },
         passes.boundary_analysis_pass.BoundaryAnalysisPass._check_app_cycle {
             bridgeable_import_target
@@ -5000,8 +4999,7 @@ graph import compiler {
         passes.boundary_analysis_pass.BoundaryAnalysisPass._check_provider_pub {
             ClientImportVerdict,
             classify_client_import_item,
-            import_provider_app,
-            module_app
+            import_provider_app
         },
         passes.boundary_analysis_pass.BoundaryAnalysisPass._parsed_provider_of {
             parsed_import_source
@@ -5011,8 +5009,7 @@ graph import compiler {
             symbol_linked_source_module
         },
         passes.boundary_analysis_pass.BoundaryAnalysisPass._record_app_edge {
-            import_provider_app,
-            module_app
+            import_provider_app
         },
         passes.boundary_analysis_pass.BoundaryAnalysisPass._register_client_bridged_import {
             ClientImportVerdict,
@@ -5027,8 +5024,7 @@ graph import compiler {
             import_provider_app
         },
         passes.boundary_analysis_pass.BoundaryAnalysisPass._reject_owned_type_import {
-            import_provider_app,
-            module_app
+            import_provider_app
         },
         passes.placement_pass.PlacementPass._run_undecided
             | placement.placement_facts.settle_server
@@ -5816,9 +5812,9 @@ graph import compiler {
             get_effective_default_codespace_override,
             set_effective_default_codespace
         },
-        driver.boundary_classify.bridgeable_import_target { is_shared_runtime_module },
-        driver.boundary_classify.plain_native_import_target
+        driver.boundary_classify._native_import_target
             | types.stubcat.build._cached_catalog { jaclang_pkg_root },
+        driver.boundary_classify.bridgeable_import_target { is_shared_runtime_module },
         driver.compile_options.CompileOptions.__post_init__
             | driver.jir._analysis_fingerprint_for { effective_native_target },
         driver.compile_options.CompileOptions.native_required_for {
@@ -8858,9 +8854,8 @@ graph import compiler {
     ]
     placement.placement_pins ++> [
         driver.boundary_classify { BareImportVerdict, classify_bare_import },
+        driver.boundary_classify._native_import_target { effective_module_pin },
         driver.boundary_classify.import_declares_native_target { effective_module_pin },
-        driver.boundary_classify.native_only_import_target { effective_module_pin },
-        driver.boundary_classify.plain_native_import_target { effective_module_pin },
         driver.program.JacProgram.declared_codespace {
             config_kind_space,
             effective_module_pin
@@ -8914,7 +8909,7 @@ graph import compiler {
         },
     ]
     placement.placement_solver --> [
-        driver.boundary_classify.plain_native_import_target { _materialize_module },
+        driver.boundary_classify._native_import_target { _materialize_module },
         driver.module_analysis.run_analysis { placement_work },
         driver.program.JacProgram.parse_source { native_placement_candidate },
         frontend.codeinfo._inferred_native_path { native_default_path_ok },
@@ -10091,12 +10086,9 @@ graph import compiler.driver {
     application_edges ++> build_services.CompilerBuildServices.application_edges {
         application_edges
     }
-    bccache ++> [
-        application._stamp { LISTING_SETTLE_NS },
-        ifacecache.IfaceRegistry._entry_fresh | jir._related_files {
-            discover_annex_files
-        },
-    ]
+    bccache ++> ifacecache.IfaceRegistry._entry_fresh | jir._related_files {
+        discover_annex_files
+    }
     boundary_classify ++> [
         program.JacProgram.declared_codespace { _default_codespace_for },
         program.JacProgram.infers_native_codespace { _default_codespace_for },
@@ -10217,6 +10209,7 @@ graph import compiler.driver {
     type ifacecache ++> program { IfaceRegistry }
     jir ++> [
         application._capture_input { ct_dep_digest },
+        application._client_inventory { compute_content_sha256 },
         application._context_sections {
             HEADER_SIZE,
             SECTIONS_MAGIC,
@@ -10225,7 +10218,8 @@ graph import compiler.driver {
             read_sections
         },
         application._identity { compiler_generation },
-        application._prepare_revision { ct_dep_digest },
+        application._inventory { compute_content_sha256 },
+        application._prepare_revision { compute_content_sha256, ct_dep_digest },
         application._prepare_sealed {
             HEADER_SIZE,
             PRECOMPILE_SENTINEL,
@@ -10234,7 +10228,6 @@ graph import compiler.driver {
             read_bytecode_only,
             read_sections
         },
-        application._stamp { compute_content_sha256 },
         compiler {
             FLAG_CARRIED,
             FLAG_PRECOMPILED,
@@ -10472,19 +10465,19 @@ graph import compiler.driver {
         },
         toolchain { fail_loud_on_compiler_source },
     ]
-    source_failures --> application._prepare_revision | source_products.python_source {
+    source_failures --> application._prepare_revision.expand
+        | source_products.python_source {
         bootstrap_tier_failure_details,
         module_scoped_failure_details
     }
     unit_products ++> [
-        application._import_edges_of { DEF_DEP_SEP as EDGE_SEP },
-        application._tree_source { import_edge_rows },
+        application._tree_source { import_edges },
         compiler {
             UnitProducts,
             client_artifact_from_json,
             client_artifact_json,
             client_artifact_of,
-            definition_deps,
+            interop_json,
             interop_manifest_of,
             interop_record,
             placement_record,

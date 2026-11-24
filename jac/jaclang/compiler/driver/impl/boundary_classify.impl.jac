@@ -132,7 +132,9 @@ impl module_own_native_anchor(module: (uni.Module | None)) -> bool {
     return False;
 }
 
-impl plain_native_import_target(nd: uni.Import, prog: JacProgram) -> (str | None) {
+impl _native_import_target(
+    nd: uni.Import, prog: JacProgram
+) -> tuple[(str | None), bool] {
     if (
         nd.is_service_import
         or nd.is_typed
@@ -140,11 +142,11 @@ impl plain_native_import_target(nd: uni.Import, prog: JacProgram) -> (str | None
         or nd.from_loc is None
         or not nd.items
     ) {
-        return None;
+        return (None, False);
     }
     resolved = nd.from_loc.resolve_relative_path();
     if not isinstance(resolved, str) or not resolved.endswith('.jac') {
-        return None;
+        return (None, False);
     }
     real_resolved = os.path.realpath(resolved);
     import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
@@ -154,27 +156,26 @@ impl plain_native_import_target(nd: uni.Import, prog: JacProgram) -> (str | None
         and (os.sep + 'na_stdlib' + os.sep) not in real_resolved
         and not real_resolved.startswith(os.path.join(jaclang_root, 'osprey') + os.sep)
     ) {
-        return None;
+        return (None, False);
     }
     if effective_module_pin(resolved, prog) == 'native' {
-        return resolved;
+        return (resolved, True);
     }
-    target = hub_module_for_path(resolved, prog);
-    if target is None {
-        import from jaclang.compiler.placement.placement_solver { _materialize_module }
-        target = _materialize_module(resolved, prog);
+    import from jaclang.compiler.placement.placement_solver { _materialize_module }
+    target = _materialize_module(resolved, prog);
+    if target is not None
+        and (
+            target.decided_codespace == 'native'
+            or target.declares_codespace(CodeContext.NATIVE)
+            or module_own_native_anchor(target)
+        ) {
+        return (resolved, False);
     }
-    if target is None {
-        return None;
-    }
-    if (
-        target.decided_codespace == 'native'
-        or target.declares_codespace(CodeContext.NATIVE)
-        or module_own_native_anchor(target)
-    ) {
-        return resolved;
-    }
-    return None;
+    return (None, False);
+}
+
+impl plain_native_import_target(nd: uni.Import, prog: JacProgram) -> (str | None) {
+    return _native_import_target(nd, prog)[0];
 }
 
 impl import_declares_native_target(
@@ -195,11 +196,8 @@ impl import_declares_native_target(
 }
 
 impl native_only_import_target(nd: uni.Import, prog: JacProgram) -> (str | None) {
-    resolved = plain_native_import_target(nd, prog);
-    if resolved is None {
-        return None;
-    }
-    if effective_module_pin(resolved, prog) == 'native' {
+    (resolved, pinned) = _native_import_target(nd, prog);
+    if resolved is None or pinned {
         return resolved;
     }
     target = hub_module_for_path(resolved, prog);
@@ -338,13 +336,6 @@ impl is_service_app_entry(path: str) -> bool {
     return app is not None and app.has_server;
 }
 
-impl module_app(module: (uni.Module | None)) -> (str | None) {
-    if module is None {
-        return None;
-    }
-    return module.app;
-}
-
 impl same_workspace(consumer_path: str, provider_path: str) -> bool {
     host = active_host();
     cws = host.workspace(consumer_path);
@@ -372,7 +363,8 @@ impl import_provider_spec(nd: uni.Import) -> (AppSpec | None) {
         return None;
     }
     consumer_mod = nd.find_parent_of_type(uni.Module);
-    if module_app(consumer_mod) == provider_app.name {
+    consumer_app = consumer_mod.app if consumer_mod is not None else None;
+    if consumer_app == provider_app.name {
         return None;
     }
     return provider_app;

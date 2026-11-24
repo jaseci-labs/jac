@@ -298,8 +298,8 @@ impl ImportWiringPass._check_module(mod: Module, spec: WiringSpec) -> None {
         self._check_import(spec, imp, consumer, scope_path_of(imp), declared);
     }
     owners: (dict[str, list[(Ability | ImplDef)]] | None) = None;
-    for wire in spec.consumer_wires(consumer) {
-        for scope in spec.consumer_scopes(consumer, wire) {
+    for (wire, scopes) in spec.consumer_wires(consumer) {
+        for scope in scopes {
             target = ".".join([consumer, *scope]);
             if scope {
                 if owners is None {
@@ -513,9 +513,7 @@ impl unused_wire_bindings(mod: Module) -> list[UnusedBinding] {
             };
     }
     reads = ScopeReads(mod=mod);
-    for (wire, scope) in [
-        (w, ".".join(s)) for w in wires for s in spec.consumer_scopes(consumer, w)
-    ] {
+    for (wire, scope) in [(w, ".".join(s)) for (w, scopes) in wires for s in scopes] {
         for binding in wire.bindings() {
             name = binding.bound_name();
             at = bound.get((scope, binding.key()));
