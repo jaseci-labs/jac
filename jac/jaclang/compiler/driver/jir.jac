@@ -152,8 +152,6 @@ def py_emitter_digest -> str;
 
 def require_exact_compiler_products;
 
-def _handoff -> dict[str, object];
-
 def dev_source -> str;
 
 def dev_carry_enabled -> bool;
@@ -209,13 +207,11 @@ def unit_source_digest(path: str) -> str;
 
 def _compute_module_key_uncached(source_path: str) -> str;
 
+def _section_table(data: bytes) -> dict[int, bytes];
+
 def read_section_bytes(data: bytes, sec_type: int) -> (bytes | None);
 
 def _read_key_section(data: bytes, sec_type: int) -> (str | None);
-
-def read_modkey(data: bytes) -> (str | None);
-
-def read_envkey(data: bytes) -> (str | None);
 
 def _ct_dep_rows(text: str) -> list[tuple[(str, str, str)]];
 
@@ -287,16 +283,12 @@ def deps_section(rows: list[DepRow]) -> bytes;
 
 def read_dep_rows(data: bytes, base_dir: str = "") -> list[DepRow];
 
-def read_dep_hashes(data: bytes, base_dir: str = "") -> list[tuple[str, str]];
-
 def native_deps_section(dep_digests: dict[str, str]) -> bytes;
 
 def parse_native_dep_rows(raw: bytes, anchor: str = "") -> list[tuple[str, str]];
 
-def _dep_row_path(stored: str, base_dir: str) -> str;
-
 def read_native_dep_hashes(
-    data: bytes, stamp: NativeStamp, base_dir: str = "", anchor: str = ""
+    data: bytes, stamp: NativeStamp, anchor: str = ""
 ) -> list[tuple[str, str]];
 
 def compute_stub_module_key(source_path: str) -> str;

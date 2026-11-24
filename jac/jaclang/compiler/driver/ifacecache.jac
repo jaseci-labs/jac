@@ -41,6 +41,10 @@ def _alert_record(alert: any) -> dict[str, any];
 
 def _alert_from_record(rec: dict[str, any]) -> any;
 
+def _alert_key(alert: any, real: bool = False) -> tuple[str, int, int, str | None, str];
+
+def _record_key(rec: dict[str, any]) -> tuple[object, ...];
+
 obj IfaceEntry {
     has path: str,
         digest: str,
@@ -72,7 +76,6 @@ obj IfaceRegistry(CatalogResolver) {
         _iface_bytes: dict[str, EncodedInterface] = {},
         _incoherent: set[str] = set(),
         verifying: bool = False,
-        cold: bool = False,
         closure_token: int = 0,
         _pkg_dir_memo: str = "";
 
@@ -109,12 +112,8 @@ obj IfaceRegistry(CatalogResolver) {
         resolved: str, mod: any, options: any, err_start: int, warn_start: int
     );
 
-    def _module_jir_in_context(resolved: str) -> (tuple[bytes, str] | None);
     def _register_from_disk(resolved: str, check_deps: bool) -> (IfaceEntry | None);
     def _deps_match(data: bytes, base_dir: str = "") -> bool;
-    def _ensure_in_context(
-        path: str, compile_on_miss: bool = True
-    ) -> (IfaceEntry | None);
 
     def _materialize(ent: IfaceEntry) -> any;
     def _restore_placement(ent: IfaceEntry);
@@ -126,16 +125,11 @@ obj IfaceRegistry(CatalogResolver) {
     def _replay_records(prof: dict[str, any], err0: int, warn0: int);
     def eligible(compiler: any, resolved: str, options: any) -> bool;
     def ready -> bool;
-    def _serve_in_context(compiler: any, resolved: str, options: any) -> any;
     def _serve_symtab(resolved: str, profile_key: (str | None)) -> any;
     def _serve_analysis(compiler: any, resolved: str, options: any) -> any;
     def analysis_profile(options: any) -> str;
     def _ensure_flow_graph(mod: any) -> None;
     def _encode_iface(codec: IfaceCodec, mod: any, paths: JirPaths) -> (bytes | None);
-    def _prepare_interface_in_context(resolved: str, mod: any) -> bool;
-    def _persist_in_context(
-        resolved: str, mod: any, options: any, err_start: int, warn_start: int
-    ) -> None;
 
     def _disk_iface_digest(resolved: str) -> str;
     def _existing_profiles(resolved: str) -> dict[str, any];

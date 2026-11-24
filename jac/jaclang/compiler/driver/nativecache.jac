@@ -11,7 +11,6 @@ obj NativeUnitEntry {
         digest: str,
         iface: NativeIface,
         stamp: NativeStamp,
-        source: str = "",
         source_key: (str | None) = None,
         object_bytes: (bytes | None) = None,
         bitcode: (bytes | None) = None,
@@ -29,8 +28,7 @@ obj NativeUnitRegistry {
         failures: dict[str, str] = {},
         compiled_paths: list[str] = [],
         progress: (Callable[[str], None] | None) = None,
-        progress_steps: int = 0,
-        cold: bool = False;
+        progress_steps: int = 0;
 
     def postinit;
     def note_step(verb: str, path: str = "", detail: str = "") -> float;
@@ -42,9 +40,6 @@ obj NativeUnitRegistry {
     static def _source_key(path: str) -> (str | None);
     def _miss(path: str, why: str);
     def _event(name: str);
-    def _add_time(name: str, seconds: float);
-    def _timed(name: str, started: float);
-    def phase_summary -> str;
     def note_codegen(path: str, object_emitted: bool = True);
     def note_link(reused: bool);
     def _options -> CompileOptions;
@@ -52,17 +47,11 @@ obj NativeUnitRegistry {
         options: (CompileOptions | None) = None, path: str = ""
     ) -> NativeStamp;
 
-    def _module_jir(
-        resolved: str, stamp: (NativeStamp | None) = None
-    ) -> (tuple[bytes, str] | None);
+    def _module_jir(resolved: str) -> (tuple[bytes, str] | None);
 
     def _entry_fresh(ent: NativeUnitEntry) -> bool;
     def _register(
-        resolved: str,
-        iface: NativeIface,
-        stamp: NativeStamp,
-        source: str,
-        digest: str = ""
+        resolved: str, iface: NativeIface, stamp: NativeStamp, digest: str = ""
     ) -> NativeUnitEntry;
 
     def record(
@@ -135,8 +124,6 @@ obj NativeUnitRegistry {
     def bitcode_for(
         path: str, options: (CompileOptions | None) = None
     ) -> (bytes | None);
-
-    def _live_gen(resolved: str) -> (CodeGenTarget | None);
 }
 
 obj NativeIRSnapshot {
@@ -152,7 +139,7 @@ obj SessionHeap {
         thresholds: tuple[int, int, int] = (0, 0, 0);
 
     def take -> bool;
-    def settle -> float;
+    def settle;
     def release;
 }
 
@@ -182,6 +169,8 @@ obj NativeBuildSession {
     def _finish(paths: list[str]);
     def close;
 }
+
+def _keeps_unit_ir(opts: CompileOptions) -> bool;
 
 def _ir_symbols(unit_ir: any) -> (tuple[set[str], set[str]] | None);
 
