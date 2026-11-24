@@ -19,13 +19,15 @@ def client_artifact_from_bytes(raw: bytes) -> (ClientArtifact | None);
 
 def cached_client_artifact(full_target: str) -> (ClientArtifact | None);
 
+def client_artifact_current(artifact: ClientArtifact) -> bool;
+
 def cached_client_pulls(full_target: str) -> str;
 
 def unit_sections(
     products: UnitProducts, bytecode: (bytes | None)
 ) -> dict[int, bytes];
 
-obj JacCompiler(SessionHooks) {
+obj JacCompiler {
     has _selfhost: (SelfHostCache | None) = None,
         _reentrant_depth: int = 0,
         _closure_opts: (CompileOptions | None) = None,
@@ -65,7 +67,6 @@ obj JacCompiler(SessionHooks) {
     ) -> (uni.Module | None);
 
     def ensure_client_codegen(mod: uni.Module, target_program: JacProgram) -> bool;
-    def _cached_client_artifact(full_target: str) -> (ClientArtifact | None);
     def last_client_artifact(
         full_target: str, target_program: JacProgram
     ) -> (ClientArtifact | None);
@@ -110,7 +111,6 @@ obj JacCompiler(SessionHooks) {
         full_target: str, result: uni.Module, actual_program: JacProgram
     ) -> None;
 
-    def _release_compile_scratch(target_program: JacProgram) -> None;
     def compile(
         file_path: str,
         target_program: JacProgram,
@@ -119,8 +119,6 @@ obj JacCompiler(SessionHooks) {
     ) -> uni.Module;
 
     def enter_compile(ctx: SessionContext) -> CompileFrame;
-    def assemble_python(program: JacProgram, module: uni.Module);
-    def assemble_native(program: JacProgram, module: uni.Module, checking: bool);
     def leave_compile(ctx: SessionContext, frame: CompileFrame);
     def finish_compile(frame: CompileFrame);
     def check_crash(crash: Exception, file_path: str);
@@ -130,13 +128,6 @@ obj JacCompiler(SessionHooks) {
         target_program: JacProgram,
         use_str: (str | None),
         options: CompileOptions
-    ) -> uni.Module;
-
-    def _compile_pipeline(
-        file_path: str,
-        actual_program: JacProgram,
-        use_str: (str | None) = None,
-        options: CompileOptions = CompileOptions()
     ) -> uni.Module;
 
     static def _prepare_tool_program(
