@@ -290,11 +290,11 @@ impl _surface_sources(manifests: list[dict[str, any]], `root: str) -> set[str] {
     };
 }
 
-impl _drain(pending: set[str], code: dict[str, any], visit: any) {
+impl _drain(pending: set[str], code: dict[str, any], expand: any) {
     while pending {
         path = pending.pop();
         if path not in code {
-            pending.update(visit(path) - code.keys());
+            pending.update(expand(path) - code.keys());
         }
     }
 }
@@ -372,7 +372,7 @@ impl _prepare_sealed(
         }
     }
     compiler = program._get_compiler();
-    def visit(path: str) -> set[str] {
+    def expand(path: str) -> set[str] {
         if Path(path).suffix == '.py' {
             code = compiler.get_bytecode(path, program);
             if code is None {
@@ -410,7 +410,7 @@ impl _prepare_sealed(
         revision.native[path] = compiler.get_native_interop_setup(path, program);
         return imports_of(revision.code[path], path);
     }
-    _drain(pending, revision.code, visit);
+    _drain(pending, revision.code, expand);
     revision.applications = [
         PreparedApplication(
             image_root,
@@ -777,7 +777,7 @@ impl _prepare_revision(
     for path in entries {
         pending.update(package_sources(path, `root));
     }
-    def visit(path: str) -> set[str] {
+    def expand(path: str) -> set[str] {
         if path not in entries
             and compiler.selfhost.is_selfhost(
                 compiler.selfhost.resolve(path, program)
@@ -810,7 +810,7 @@ impl _prepare_revision(
         specs_of[path] = specs;
         return resolve_imports(specs, path, `root);
     }
-    _drain(pending, revision.code, visit);
+    _drain(pending, revision.code, expand);
 
     project_facts: dict[str, tuple[str, any]] = {
         path: (mod.app or '', mod.persistence)

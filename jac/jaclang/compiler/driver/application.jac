@@ -56,7 +56,7 @@ def _check(program: any, before: any);
 
 def _surface_sources(manifests: list[dict[str, any]], `root: str) -> set[str];
 
-def _drain(pending: set[str], code: dict[str, any], visit: any);
+def _drain(pending: set[str], code: dict[str, any], expand: any);
 
 def _name_applications(applications: list[PreparedApplication]);
 

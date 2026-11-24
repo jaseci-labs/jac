@@ -120,7 +120,7 @@ impl interop_record(module: uni.Module) -> dict[str, any] {
         'surface': {name: rec.to_dict() for (name, rec) in manifest.surface.items()},
         'endpoint_effects': dict(manifest.endpoint_effects),
         'native_host_imports': dict(manifest.native_host_imports),
-        'app_edges': [list(edge) for edge in manifest.app_edges],
+        'app_edges': [list(app_edge) for app_edge in manifest.app_edges],
         'provider_routes': dict(manifest.provider_routes)
     };
 }
