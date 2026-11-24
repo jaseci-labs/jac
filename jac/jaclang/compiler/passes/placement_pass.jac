@@ -72,8 +72,7 @@ def settle_native_module(
 
 walker PlacementPass(CompilerPass) {
     static has contract: PassContract = PassContract(
-        requires=(AnalysisFact.TYPE_OF, ),
-        provides=(AnalysisFact.CAPABILITY, AnalysisFact.CLIENT_CAPABILITY, )
+        requires=(AnalysisFact.TYPE_OF, ), provides=(AnalysisFact.CAPABILITY, )
     );
 
     def _emit_refusal(refusal: NativeRefusal, required_by: str) -> None;

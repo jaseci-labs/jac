@@ -132,46 +132,6 @@ impl native_object_passes(request: ProductRequest) -> PassSchedule {
     return [NativeCompilePass];
 }
 
-impl format_passes(request: ProductRequest) -> PassSchedule {
-    return [CommentAttachPass, DocIRGenPass, JacFormatPass];
-}
-
-impl format_lintfix_passes(request: ProductRequest) -> PassSchedule {
-    return [CommentAttachPass, JacAutoLintPass, DocIRGenPass, JacFormatPass];
-}
-
-impl lint_passes(request: ProductRequest) -> PassSchedule {
-    return [JacLintCheckPass];
-}
-
-impl python_ast_passes(request: ProductRequest) -> PassSchedule {
-    return [PyastBuildPass];
-}
-
-impl grammar_passes(request: ProductRequest) -> PassSchedule {
-    return [GrammarExtractPass];
-}
-
-impl cfg_dot_passes(request: ProductRequest) -> PassSchedule {
-    return [CoalesceBBPass];
-}
-
-impl normalize_passes(request: ProductRequest) -> PassSchedule {
-    return [NormalizePass];
-}
-
-impl unparse_passes(request: ProductRequest) -> PassSchedule {
-    return [UnparsePass];
-}
-
-impl doc_passes(request: ProductRequest) -> PassSchedule {
-    return [DocIRGenPass];
-}
-
-impl format_text_passes(request: ProductRequest) -> PassSchedule {
-    return [JacFormatPass];
-}
-
 impl place_module(program: JacProgram, module: Module) -> bool {
     refresh_placement_module(module, program);
     solve_program_placement(module, program);
@@ -302,11 +262,6 @@ impl resolve(
     }
     if spec.blocker() {
         return (spec.bootstrap(req), False, False);
-    }
-    if req.native and PRODUCTS[CompilationProduct.NATIVE_LOWER].blocker() {
-        req = ProductRequest(
-            gen_mtir=req.gen_mtir, native=False, endpoint_effects=req.endpoint_effects
-        );
     }
     spec.precheck();
     token = _LOADING.set(_LOADING.get() + [product]);
@@ -489,7 +444,6 @@ impl require(
         task = ProductTask(product, TaskState.RUNNING);
         build.tasks[product] = task;
     }
-    start = time.perf_counter();
     before = len(program.errors_had);
     try {
         for need in spec.needs {
@@ -519,8 +473,6 @@ impl require(
     } except Exception {
         task.state = TaskState.FAILED;
         raise;
-    } finally {
-        task.elapsed = time.perf_counter() - start;
     }
 }
 
@@ -572,18 +524,4 @@ impl execute_passes(
         build.done.add(step.__name__);
     }
     return module;
-}
-
-impl run_utility(
-    product: CompilationProduct,
-    ir: any,
-    program: JacProgram,
-    cancel_token: (CancelToken | None) = None
-) -> any {
-    if not PRODUCTS[product].tool {
-        raise ValueError(f"{product.value} is not a utility product");
-    }
-    step = product_passes(product)[0];
-    contract_of(step);
-    return run_pass(step, ir, program, cancel_token=cancel_token);
 }

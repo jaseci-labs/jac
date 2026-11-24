@@ -6,8 +6,6 @@ def admits_native_checks(task: ModuleAnalysis) -> bool;
 
 def run_native_checks(task: ModuleAnalysis);
 
-def admits_client_dependencies(task: ModuleAnalysis) -> bool;
-
 def run_client_dependencies(task: ModuleAnalysis);
 
 def admits_interface(task: ModuleAnalysis) -> bool;
@@ -30,7 +28,7 @@ glob CODEGEN_PLAN: tuple[PlanStep, ...] = (
          ),
          PlanStep(
              name="CLIENT_DEPENDENCIES",
-             admit=admits_client_dependencies,
+             admit=admits_codegen,
              run=run_client_dependencies
          ),
          PlanStep(name="INTERFACE", admit=admits_interface, run=run_interface),

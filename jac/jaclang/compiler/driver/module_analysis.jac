@@ -11,7 +11,6 @@ obj ModuleAnalysis {
         parse_failed: bool = False,
         blocked: bool = False,
         native: bool = False,
-        placement_only: bool = False,
         session: (SessionHooks | None) = None;
 
     def postinit;
@@ -29,8 +28,6 @@ obj PlanStep {
         admit: Callable[[ModuleAnalysis], bool],
         run: Callable[[ModuleAnalysis], None];
 }
-
-def cancelled(options: CompileOptions) -> bool;
 
 def always(task: ModuleAnalysis) -> bool;
 

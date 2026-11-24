@@ -10,11 +10,7 @@ import os;
 import re;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.compiler.driver.compile_options {
-    CompileOptions,
-    effective_codegen_fingerprint,
-    link_fingerprint_mismatches
-}
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.jir { compute_module_key }
 
 
@@ -35,7 +31,7 @@ def _pinned_opts(**overrides: any) -> CompileOptions {
 
 
 test "identical codegen options produce an identical fingerprint" {
-    assert _pinned_opts().codegen_fingerprint() == _pinned_opts().codegen_fingerprint();
+    assert _pinned_opts().codegen_identity() == _pinned_opts().codegen_identity();
 }
 
 test "forced server compilation retains Python standard-library imports" {
@@ -56,7 +52,7 @@ test "forced server compilation retains Python standard-library imports" {
 }
 
 test "every codegen option flip changes the fingerprint" {
-    base_fp = _pinned_opts().codegen_fingerprint();
+    base_fp = _pinned_opts().codegen_identity();
     flips: list[any] = [
         _pinned_opts(memory_profile="nogc"),
         _pinned_opts(memory_profile="rc"),
@@ -72,7 +68,7 @@ test "every codegen option flip changes the fingerprint" {
     ];
     seen: set = {base_fp};
     for flipped in flips {
-        fp = flipped.codegen_fingerprint();
+        fp = flipped.codegen_identity();
         assert fp != base_fp , (
             f"flip did not change fingerprint: {flipped.codegen_identity()}"
         );
@@ -91,7 +87,7 @@ test "client layout separates dependency caches" {
 }
 
 test "diagnostic-only options do not enter the fingerprint" {
-    base_fp = _pinned_opts().codegen_fingerprint();
+    base_fp = _pinned_opts().codegen_identity();
     diag = _pinned_opts(
         dump_ir_path="/tmp/out.ll",
         debug_ir=True,
@@ -99,7 +95,7 @@ test "diagnostic-only options do not enter the fingerprint" {
         nogc_debug=True,
         na_debug=True
     );
-    assert diag.codegen_fingerprint() == base_fp;
+    assert diag.codegen_identity() == base_fp;
     # Strict dependency checking only changes diagnostics, so it keys the
     # diagnostic profile, not the module's cache file.
     strict = _pinned_opts();
@@ -156,16 +152,6 @@ test "clone_for_native_import carries the full codegen identity" {
     assert parent_id.split(";")[0] == child_id.split(";")[0];
 }
 
-test "link_fingerprint_mismatches names every non-matching participant" {
-    current = _pinned_opts().codegen_fingerprint();
-    other = _pinned_opts(memory_profile="nogc").codegen_fingerprint();
-    got = link_fingerprint_mismatches(
-        [("a.jac", current), ("b.jac", other), ("c.jac", "")], current
-    );
-    assert got == ["b.jac", "c.jac"];
-    assert link_fingerprint_mismatches([("a.jac", current)], current) == [];
-}
-
 test "native debug enters the options object from the option, not the environment" {
     assert CompileOptions().rc_debug_codegen == False;
     assert CompileOptions(native_debug=True).rc_debug_codegen == True;
@@ -201,12 +187,12 @@ test "JIR module key follows the target override, not native-only codegen flags"
 }
 
 test "the codegen fingerprint tracks the native debug option, not the environment" {
-    base = CompileOptions().codegen_fingerprint();
-    assert CompileOptions(native_debug=True).codegen_fingerprint() != base;
+    base = CompileOptions().codegen_identity();
+    assert CompileOptions(native_debug=True).codegen_identity() != base;
     saved = os.environ.pop("JAC_RC_DEBUG_CODEGEN", None);
     try {
         os.environ["JAC_RC_DEBUG_CODEGEN"] = "1";
-        assert CompileOptions().codegen_fingerprint() == base , (
+        assert CompileOptions().codegen_identity() == base , (
             "a compile-time environment variable must not enter the options"
         );
     } finally {
@@ -793,7 +779,7 @@ test "native-only policy is retained in dependency and cache identities" {
     for options in (strict, scoped) {
         assert registry.analysis_profile(options)
             != registry.analysis_profile(ordinary);
-        assert options.codegen_fingerprint() != ordinary.codegen_fingerprint();
+        assert options.codegen_identity() != ordinary.codegen_identity();
         assert options.analysis_fingerprint() != ordinary.analysis_fingerprint();
         for inherited in (options.for_symbols(), options.clone_for_native_import()) {
             assert inherited.native_required == options.native_required;
