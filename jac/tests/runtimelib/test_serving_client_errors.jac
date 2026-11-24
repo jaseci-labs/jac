@@ -208,6 +208,14 @@ async def _pool_outcome(scenario: str) -> tuple[bool, bool] {
             _release(other);
         }
     }
+    if scenario == "expired elsewhere" {
+        (stale, stale_peer) = await _pooled_pair(("http", "gone", 80));
+        peers.append(stale_peer);
+        _release(stale);
+        stale.idle_since -= IDLE_TIMEOUT;
+        loop: any = asyncio.get_running_loop();
+        loop._jac_idle_swept = 0.0;
+    }
     (conn, peer) = await _pooled_pair(origin);
     peers.append(peer);
     if scenario == "too old" {
@@ -234,7 +242,7 @@ async def _pool_outcome(scenario: str) -> tuple[bool, bool] {
     for p in peers {
         p.close();
     }
-    return (taken is conn, closed);
+    return (taken is conn and ("http", "gone", 80) not in _idle_pool(), closed);
 }
 
 
@@ -246,7 +254,8 @@ test "the idle pool hands back only clean, recent connections" {
         "unread bytes": (False, True),
         "peer closed": (False, True),
         "other origin": (False, False),
-        "pool full": (False, True)
+        "pool full": (False, True),
+        "expired elsewhere": (True, False)
     };
     outcomes = {scenario: asyncio.run(_pool_outcome(scenario)) for scenario in cases};
     assert outcomes == cases , outcomes;
