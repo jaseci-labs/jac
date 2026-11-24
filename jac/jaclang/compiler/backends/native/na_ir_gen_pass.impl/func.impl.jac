@@ -197,9 +197,7 @@ impl NaIRGenPass._maybe_declare_ability(
         self.decorated_fns.pop(name, None);
 
         _fd_imported = _fdm is not None and _fdm is not self.module;
-        self._drop_if_unlowerable(
-            name, func, _sig_mark, stub_body=not _fd_imported
-        );
+        self._drop_if_unlowerable(name, func, _sig_mark, stub_body=not _fd_imported);
     }
 }
 

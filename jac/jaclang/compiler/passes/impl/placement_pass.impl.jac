@@ -899,10 +899,14 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
             elem.code_context = CodeContext.SERVER;
         }
     }
-    for elem in tentative {
-        if isinstance(elem, Test) and elem.code_context == CodeContext.SERVER {
-            for refusal in legality.unit_refusals(elem) {
-                self._emit_refusal(refusal, "it is a test in a native module");
+    if mod_path
+        and self.prog.options is not None
+        and self.prog.options.native_required_for(mod_path) {
+        for elem in tentative {
+            if isinstance(elem, Test) and elem.code_context == CodeContext.SERVER {
+                for refusal in legality.unit_refusals(elem) {
+                    self._emit_refusal(refusal, "the module is native-required");
+                }
             }
         }
     }

@@ -5282,12 +5282,8 @@ graph import compiler {
             TaskState
         },
     ]
-    driver.pipeline_types --> [
-        placement.placement_solver.solve_module_placement._invalidate_stale_codegen {
-            CompilationProduct
-        },
-        tools.jac_formatter_pass.unparse_module { CompilationProduct },
-    ]
+    driver.pipeline_types --> placement.placement_solver.solve_module_placement._invalidate_stale_codegen
+        | tools.jac_formatter_pass.unparse_module { CompilationProduct }
     driver.program ++> [
         backends.es.client_kernel_cache._lower
             | placement.placement_facts.discover_spaces
@@ -5828,10 +5824,10 @@ graph import compiler {
     ]
     type frontend.codeinfo ++> [
         backends.native.link_glue | backends.native.link_plan { InteropBinding },
-        backends.py.codegen_shim
-            | driver.compiler
-            | driver.nativecache { CodeGenTarget },
         backends.native.na_ir_gen_pass { NativeModuleLayout },
+        backends.py.codegen_shim | driver.compiler | driver.nativecache {
+            CodeGenTarget
+        },
         driver.boundary_classify { InteropManifest },
         driver.client_graph { ClientArtifact, ClientManifest },
         driver.progstate { ClientArtifact, CodeGenTarget },
@@ -6573,6 +6569,7 @@ graph import compiler {
     ]
     frontend.host --> [
         backends.es.client_paths.client_output_path
+            | backends.native.na_ir_gen_pass.NaIRGenPass._register_imported_archetype
             | driver.compilation_context.context_program
             | driver.compile_options.CompileOptions.effective_triple
             | driver.jir._memoized
@@ -6591,8 +6588,7 @@ graph import compiler {
             | passes.ownership_check_pass.OwnershipCheckPass._nogc_resolve_provenance {
             active_host
         },
-        backends.native.na_ir_gen_pass.NaIRGenPass._register_imported_archetype
-            | driver.program.JacProgram.iface_registry { active_host },
+        driver.program.JacProgram.iface_registry { active_host },
         driver.program.JacProgram.invalidate_module { active_host },
         driver.program.JacProgram.load_dependency_module { active_host },
         driver.program.JacProgram.native_units { active_host },
@@ -8743,13 +8739,13 @@ graph import compiler {
         frontend.codeinfo.native_arch_scope { binds_bare_arch_names },
     ]
     placement.placement ++> [
-        passes.placement_pass.element_requirements { element_display_name },
         driver.compiler.JacCompiler.native_entry_engine { summary_store },
         driver.unit_products.placement_record | symbol_utils.report_placement_warnings {
             get_module_summary
         },
         passes.placement_pass.PlacementPass._run_undecided { record_decided },
         passes.placement_pass.build_native_legality { native_blocker_scan },
+        passes.placement_pass.element_requirements { element_display_name },
         symbol_utils.client_bridged_endpoint { project_has_server },
         symbol_utils.report_serverless_kind_errors { project_kind_name },
         symbol_utils.serverless_server_evidence {

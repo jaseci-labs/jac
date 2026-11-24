@@ -392,4 +392,3 @@ impl native_linked_ir_text(module: uni.Module) -> str {
     }
     return str(module.gen.llvm_ir);
 }
-

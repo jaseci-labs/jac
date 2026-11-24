@@ -1120,9 +1120,7 @@ impl NaIRGenPass._codegen_method(
         self._leave_function(state);
     }
 
-    self._drop_if_unlowerable(
-        full_name, func, _local_mark, keep_func=_is_virtual
-    );
+    self._drop_if_unlowerable(full_name, func, _local_mark, keep_func=_is_virtual);
 }
 
 impl NaIRGenPass._drop_if_unlowerable(

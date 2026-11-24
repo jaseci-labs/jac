@@ -1323,7 +1323,6 @@ walker NaIRGenPass(CompilerPass) {
     def _walk_imported_module_types(imported_mod: uni.Module) -> None;
     def _walk_imported_module_type_names(imported_mod: uni.Module) -> None;
     def _walk_imported_module_abilities(imported_mod: uni.Module) -> None;
-
     def _register_imported_hierarchy(imported_mod: uni.Module) -> None;
     def _report_unreachable_overrides -> None;
     def _own_prefix -> str;
@@ -1384,7 +1383,10 @@ walker NaIRGenPass(CompilerPass) {
     ) -> bool;
 
     def _drop_native_unit(
-        full_name: str, func: ir.Function, keep_func: bool = False, stub_body: bool = True
+        full_name: str,
+        func: ir.Function,
+        keep_func: bool = False,
+        stub_body: bool = True
     ) -> None;
 
     def _internal_error(
