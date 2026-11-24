@@ -72,8 +72,6 @@ async def _open_stream(
     scheme: str, host: str, port: int, timeout: float
 ) -> tuple[any, any];
 
-async def _connect(origin: tuple[str, str, int], timeout: float) -> _PooledConn;
-
 async def _read_response_head(reader: any, timeout: float) -> tuple[int, str, Headers];
 
 async def arequest(
