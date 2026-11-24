@@ -1,4 +1,4 @@
-"""Language tools tests.
+"""Language tools tests – migrated from test_lang_tools.py.
 
 Tests for the AstTool utility: DOT file generation, AST printing,
 Python AST printing, py2jac mode, symbol table output, and uninode
