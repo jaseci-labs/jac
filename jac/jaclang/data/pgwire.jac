@@ -5,11 +5,14 @@ import re;
 import logging;
 import secrets as _pysecrets;
 import socket;
+import ssl;
 import struct;
 import from collections { OrderedDict, deque }
 import from functools { lru_cache }
 glob logger = logging.getLogger(__name__),
      PROTOCOL_VERSION = 196608,
+     SSL_REQUEST_CODE = 80877103,
+     SSL_MODES = ('disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full'),
      READ_CHUNK = 65536,
      REWRITE_CACHE_SIZE = 1024,
      STATEMENT_CACHE_SIZE = 512,
@@ -32,6 +35,8 @@ def _named_to_positional(sql: str, params: dict[str, any]) -> tuple[str, list[an
 @lru_cache(maxsize=REWRITE_CACHE_SIZE)
 def _rewrite_named(sql: str, names: frozenset[str]) -> tuple[str, tuple[str, ...]];
 
+def _tls_context(sslmode: str, sslrootcert: str) -> ssl.SSLContext;
+
 
 obj PgWireConnection {
     has user: str,
@@ -42,6 +47,8 @@ obj PgWireConnection {
         password: (str | None) = None,
         timeout: (float | None) = None,
         application_name: str = 'jac',
+        sslmode: str = '',
+        sslrootcert: str = '',
         notifications: deque postinit,
         parameters: dict[str, str] postinit,
         _sock: (any | None) postinit,
@@ -56,6 +63,7 @@ obj PgWireConnection {
     def run(sql: str, **params: any) -> list[tuple[any, ...]];
     def close -> None;
     def _connect_socket -> None;
+    def _negotiate_tls -> None;
     def _startup -> None;
     def _authenticate(code: int, payload: bytes) -> None;
     def _scram_auth(payload: bytes) -> None;

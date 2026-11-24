@@ -276,7 +276,9 @@ impl PgStore._connect -> any {
         unix_socket_dir=info.unix_socket_dir,
         database=info.database,
         password=(info.password or None),
-        startup_params={'application_name': _app_identity()}
+        startup_params={'application_name': _app_identity()},
+        sslmode=(info.sslmode or None),
+        sslrootcert=(info.sslrootcert or None)
     );
 }
 

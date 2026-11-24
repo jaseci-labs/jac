@@ -49,7 +49,9 @@ impl holds_no_data(info: ConnInfo, database: str) -> bool {
             port=info.port,
             unix_socket_dir=info.unix_socket_dir,
             database=database,
-            password=info.password or None
+            password=info.password or None,
+            sslmode=info.sslmode or None,
+            sslrootcert=info.sslrootcert or None
         );
     } except Exception as e {
         logger.warning(f"could not inspect {database}: {e}");
@@ -102,7 +104,9 @@ impl admin_conninfo(info: ConnInfo) -> ConnInfo {
         user=info.user,
         password=info.password,
         database=MAINTENANCE_DB,
-        unix_socket_dir=info.unix_socket_dir
+        unix_socket_dir=info.unix_socket_dir,
+        sslmode=info.sslmode,
+        sslrootcert=info.sslrootcert
     );
 }
 
@@ -115,7 +119,9 @@ impl connect_admin(info: ConnInfo) -> any {
         port=admin.port,
         unix_socket_dir=admin.unix_socket_dir,
         database=admin.database,
-        password=admin.password or None
+        password=admin.password or None,
+        sslmode=admin.sslmode or None,
+        sslrootcert=admin.sslrootcert or None
     );
 }
 

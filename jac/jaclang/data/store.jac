@@ -48,7 +48,9 @@ obj ConnInfo {
         user: str = 'jac',
         password: str = '',
         database: str = 'jac',
-        unix_socket_dir: (str | None) = None;
+        unix_socket_dir: (str | None) = None,
+        sslmode: str = '',
+        sslrootcert: str = '';
 
     def dsn -> str;
 }
