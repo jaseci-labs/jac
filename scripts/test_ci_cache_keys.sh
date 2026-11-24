@@ -104,4 +104,16 @@ commit payload-tool
 after=$(keys)
 changed devassets; same python
 
+for input in client/js_runtime.jac compiler/backends/native/floors.jac \
+  compiler/backends/native/musl_compat/forwarders.c \
+  compiler/backends/native/compiler_rt/aarch64/lse.S \
+  compiler/backends/native/wasm_rt/libc.c; do
+  before=$after
+  mkdir -p "jac/jaclang/$(dirname "$input")"
+  printf edit >> "jac/jaclang/$input"
+  commit "$input"
+  after=$(keys)
+  changed devassets; same python
+done
+
 echo 'CI cache mutation tests passed'
