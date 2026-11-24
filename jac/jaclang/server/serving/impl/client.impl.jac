@@ -109,10 +109,9 @@ impl _usable(conn: _PooledConn, now: float) -> bool {
 
 impl _take_idle(origin: tuple[str, str, int]) -> (_PooledConn | None) {
     bucket = _idle_pool().get(origin, []);
-    now = time.monotonic();
     while bucket {
         conn = bucket.pop();
-        if _usable(conn, now) {
+        if _usable(conn, time.monotonic()) {
             return conn;
         }
         conn.writer.close();
@@ -164,13 +163,6 @@ impl _open_stream(
     } except OSError as e {
         raise ClientRequestNotSent(detail=f"{host}:{port}: {e}");
     }
-}
-
-impl _connect(origin: tuple[str, str, int], timeout: float) -> _PooledConn {
-    (reader, writer) = await _open_stream(origin[0], origin[1], origin[2], timeout);
-    return _PooledConn(
-        origin=origin, reader=reader, writer=writer, opened=time.monotonic()
-    );
 }
 
 impl _read_response_head(reader: any, timeout: float) -> tuple[int, str, Headers] {
