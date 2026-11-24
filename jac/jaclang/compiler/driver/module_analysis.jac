@@ -11,7 +11,7 @@ obj ModuleAnalysis {
         parse_failed: bool = False,
         blocked: bool = False,
         native: bool = False,
-        session: (SessionHooks | None) = None;
+        compiler: (JacCompiler | None) = None;
 
     def postinit;
     def parse;

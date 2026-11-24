@@ -4665,15 +4665,16 @@ graph import client.targets.react_native {
 graph import compiler {
     backends.es ++> tools.lang_tools { es_node_to_dict }
     backends.es --> tests.xbackend_equiv { EsastGenPass }
-    backends.es.backends.registry ++> driver.build_services.CompilerBuildServices.client_runtime_basename {
-        resolve_active_backend,
-        resolve_framework_backend
-    }
-    backends.es.backends.registry --> [
-        driver.compiler.JacCompiler._get_client_artifact
-            | driver.unit_products.client_artifact_of { resolve_active_backend },
-        driver.compiler.cached_client_pulls { resolve_active_backend },
+    backends.es.backends.registry ++> [
+        driver.build_services.CompilerBuildServices.client_runtime_basename {
+            resolve_active_backend,
+            resolve_framework_backend
+        },
+        driver.compiler.client_artifact_current { resolve_active_backend },
     ]
+    backends.es.backends.registry --> driver.unit_products.client_artifact_of {
+        resolve_active_backend
+    }
     backends.es.es_unparse ++> tools.lang_tools { es_to_js }
     backends.es.es_unparse --> [
         driver.unit_products.client_artifact_of { es_to_js_with_map },
@@ -5678,7 +5679,7 @@ graph import compiler {
             | driver.compiler.JacCompiler._wants_native_engine
             | driver.jir
             | driver.program.JacProgram.toolchain_dependency
-            | driver.selfhost.SelfHostCache.owns
+            | driver.selfhost.SelfHostCache.resolve
             | passes.endpoint_effect_pass.EndpointEffectPass.record_callables
             | passes.package_boundary_pass.PackageBoundaryPass.run_walk {
             is_compiler_source_path
@@ -5689,7 +5690,6 @@ graph import compiler {
             ClientArtifact,
             ClientManifest
         },
-        driver.compiler.JacCompiler._cached_client_artifact { ClientArtifact },
         driver.compiler.JacCompiler._load_native_from_cache { CodeGenTarget },
         driver.ifacecache.native_lowering_reads {
             is_compiler_source_path,
@@ -6638,7 +6638,7 @@ graph import compiler {
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._register_imported_archetype
             | driver.program.JacProgram.iface_registry { active_host },
-        driver.program.JacProgram.invalidate_module { active_host },
+        driver.program.JacProgram.invalidate_own_module { active_host },
         driver.program.JacProgram.load_dependency_module { active_host },
         driver.program.JacProgram.native_units { active_host },
         driver.program.JacProgram.release_compile_closure { active_host },
@@ -6729,7 +6729,7 @@ graph import compiler {
         tools.grammar_extract_pass { BUILTIN_TYPE_KINDS, TokenKind },
     ]
     frontend.relations ++> [
-        driver.program | driver.progstate | passes.scope_walk { ScopeChild },
+        driver.progstate | passes.scope_walk { ScopeChild },
         types.types {
             BaseOf,
             BoundOf,
@@ -10110,6 +10110,7 @@ graph import compiler.driver {
             program_for
         },
         application._semantic_metadata
+            | compiler.JacCompiler.product_program
             | ifacecache.IfaceRegistry.ensure
             | unit_products.dependency_span_rows { program_for },
         compiler.JacCompiler.get_bytecode
@@ -10126,19 +10127,20 @@ graph import compiler.driver {
             compilation_scope,
             owner_scope_options
         },
-        compiler.JacCompiler.product_program
-            | pipeline_runner.compile_application
-            | session_compile.select_context { bind_options, context_program },
         jir._module_projection { active_options },
         jir.compute_precompile_module_key | nativecache.NativeUnitRegistry._source_key {
             cache_scope
         },
-        source_products.python_text { cache_scope, owner_scope_options, program_for },
+        pipeline_runner.compile_application | session_compile.select_context {
+            bind_options,
+            context_program
+        },
+        source_products.python_text { cache_scope, owner_scope_options },
     ]
     compilation_context --> [
-        application._prepare_revision
-            | program.JacProgram.load_dependency_module
-            | source_products.python_source { program_for },
+        application._prepare_revision | program.JacProgram.load_dependency_module {
+            program_for
+        },
         application.prepare_application { bind_options, context_program },
         application.prepare_dynamic_module { program_for },
         jir._memoized { active_options },
@@ -10184,7 +10186,11 @@ graph import compiler.driver {
     compiler ++> build_services.CompilerBuildServices.compiler
         | program.JacProgram._get_compiler { JacCompiler }
     compiler --> nativecache.SessionHeap.take { COMPILE_GC_THRESHOLDS }
-    type compiler ++> build_services | program { JacCompiler }
+    type compiler ++> build_services
+        | module_analysis
+        | module_compile
+        | program
+        | session_compile { JacCompiler }
     context_passes ++> pipeline {
         AbsorbImportsPass,
         AppContextPass,
@@ -10357,13 +10363,11 @@ graph import compiler.driver {
     ]
     pipeline ++> [
         application_edges.application_edges { CompilationProduct, require },
-        compiler.JacCompiler.assemble_native
-            | module_analysis.ModuleAnalysis.require
-            | nativecache.NativeBuildSession._finish { require },
-        compiler.JacCompiler.assemble_python { require },
         module_analysis { cancelled },
         module_analysis.ModuleAnalysis.ready { product_ready },
-        module_compile { product_passes, unavailable },
+        module_analysis.ModuleAnalysis.require
+            | nativecache.NativeBuildSession._finish { require },
+        module_compile { product_passes, require, unavailable },
         source_failures.bootstrap_tier_failure_details { tier_reason },
         toolchain { schedule_loading },
     ]
@@ -10431,23 +10435,15 @@ graph import compiler.driver {
         | nativecache
         | pipeline
         | source_products { JacProgram }
-    progstate ++> program {
-        AnalysisCaches,
-        BuildScratch,
-        DepGraph,
-        DiagLedger,
-        ModuleHub
-    }
+    progstate ++> program { AnalysisCaches, DepGraph, DiagLedger, ModuleHub }
     selfhost ++> build_services.CompilerBuildServices.selfhost | compiler {
         SelfHostCache
     }
     type selfhost ++> build_services { SelfHostCache }
     session_compile ++> [
-        compiler { CompileFrame, SessionContext, SessionHooks },
+        compiler { CompileFrame, SessionContext },
         compiler.JacCompiler.compile { compile_in_session },
-        module_compile { SessionHooks },
     ]
-    type session_compile ++> module_analysis { SessionHooks }
     setup_progress ++> compiler { setup_progress }
     source_failures ++> [
         compiler {

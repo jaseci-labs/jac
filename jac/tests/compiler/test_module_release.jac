@@ -128,7 +128,7 @@ test "a compiler phase boundary collects both application and selfhost trees" {
 test "a compiler phase boundary rejects release during an active compile" {
     prog = JacProgram();
     (_, mod_ref, _, _) = _probe(prog);
-    prog.scratch.compile_depth += 1;
+    prog.compile_depth += 1;
     try {
         try {
             prog._get_compiler().release_compile_state(prog);
@@ -138,7 +138,7 @@ test "a compiler phase boundary rejects release during an active compile" {
         }
         assert False , "compiler state was released while compilation was active";
     } finally {
-        prog.scratch.compile_depth -= 1;
+        prog.compile_depth -= 1;
         prog._get_compiler().release_compile_state(prog);
     }
 }
