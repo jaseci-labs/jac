@@ -547,7 +547,7 @@ impl ProjectHost.parse_python(
         program,
         cancel_token=program.options.cancel_token if program.options else None
     );
-    return (built.module, len(built.ctx.errors_had) > 0);
+    return (cast(uni.Module, built.module), len(built.ctx.errors_had) > 0);
 }
 
 impl UnitCollectBudget.due -> bool {
