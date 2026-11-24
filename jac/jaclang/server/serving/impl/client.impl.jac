@@ -124,11 +124,36 @@ impl _take_idle(origin: tuple[str, str, int]) -> (_PooledConn | None) {
 
 impl _release(conn: _PooledConn) {
     conn.idle_since = time.monotonic();
+    _sweep_idle(conn.idle_since);
     bucket = _idle_pool().setdefault(conn.origin, []);
     if _usable(conn, conn.idle_since) and len(bucket) < MAX_IDLE_PER_ORIGIN {
         bucket.append(conn);
     } else {
         conn.writer.close();
+    }
+}
+
+impl _sweep_idle(now: float) {
+    loop: any = asyncio.get_running_loop();
+    if now - getattr(loop, '_jac_idle_swept', 0.0) < IDLE_TIMEOUT {
+        return;
+    }
+    loop._jac_idle_swept = now;
+    pool = _idle_pool();
+    for origin in list(pool) {
+        kept: list[_PooledConn] = [];
+        for conn in pool[origin] {
+            if _usable(conn, now) {
+                kept.append(conn);
+            } else {
+                conn.writer.close();
+            }
+        }
+        if kept {
+            pool[origin] = kept;
+        } else {
+            pool.pop(origin);
+        }
     }
 }
 

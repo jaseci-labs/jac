@@ -66,6 +66,8 @@ def _take_idle(origin: tuple[str, str, int]) -> (_PooledConn | None);
 
 def _release(conn: _PooledConn);
 
+def _sweep_idle(now: float);
+
 def _split_url(url: str) -> tuple[str, str, int, str];
 
 async def _open_stream(
