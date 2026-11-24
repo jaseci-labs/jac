@@ -1,0 +1,59 @@
+name: Lane test selection
+description: >-
+  Narrows a test lane to the files a test-only pull request selected
+  (scripts/ci_select_tests.sh). Outside the `tests` scope the lane runs
+  its usual command and `files` is empty.
+inputs:
+  scope:
+    description: needs.changes.outputs.scope (full or tests)
+    required: true
+  tests:
+    description: needs.changes.outputs.tests (selected files, one per line)
+    required: false
+    default: ""
+  paths:
+    description: The lane's test paths (globs allowed), relative to working-directory
+    required: true
+  ignore:
+    description: Paths the lane ignores, space separated
+    required: false
+    default: ""
+  working-directory:
+    description: Directory the lane's paths resolve against
+    required: false
+    default: "."
+outputs:
+  run:
+    description: "true when the lane has tests to run"
+    value: ${{ steps.select.outputs.run }}
+  files:
+    description: Space-separated files to test under the tests scope (empty for full)
+    value: ${{ steps.select.outputs.files }}
+runs:
+  using: composite
+  steps:
+    - id: select
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        SCOPE: ${{ inputs.scope }}
+        TESTS: ${{ inputs.tests }}
+        IGNORE: ${{ inputs.ignore }}
+      run: |
+        set -euo pipefail
+        if [ "$SCOPE" != "tests" ]; then
+          echo "run=true" >> "$GITHUB_OUTPUT"
+          echo "files=" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        files=$(printf '%s\n' "$TESTS" |
+          bash "$GITHUB_WORKSPACE/scripts/ci_select_tests.sh" filter --ignore "$IGNORE" -- ${{ inputs.paths }} |
+          tr '\n' ' ')
+        if [ -z "${files// /}" ]; then
+          echo "Test-only change: nothing selected in this lane."
+          echo "run=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "Test-only change: running $files"
+          echo "run=true" >> "$GITHUB_OUTPUT"
+        fi
+        echo "files=$files" >> "$GITHUB_OUTPUT"
