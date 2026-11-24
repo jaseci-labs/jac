@@ -4953,9 +4953,7 @@ graph import compiler {
     ]
     type capability_notes ++> driver.progstate { CapabilityNote }
     driver.annex_discovery ++> tests.test_batch_decl_identity
-        | tests.test_global_narrowing {
-        discover_base_file
-    }
+        | tests.test_global_narrowing { discover_base_file }
     driver.boundary_classify ++> [
         backends.es.esast_gen_pass.EsastGenPass._is_client_native_import {
             import_binds_client_native
