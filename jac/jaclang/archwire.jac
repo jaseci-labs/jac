@@ -6728,7 +6728,7 @@ graph import compiler {
         tools.grammar_extract_pass { BUILTIN_TYPE_KINDS, TokenKind },
     ]
     frontend.relations ++> [
-        driver.program | driver.progstate | passes.scope_walk { ScopeChild },
+        driver.progstate | passes.scope_walk { ScopeChild },
         types.types {
             BaseOf,
             BoundOf,
