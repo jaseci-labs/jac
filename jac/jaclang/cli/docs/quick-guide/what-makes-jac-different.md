@@ -81,7 +81,7 @@ Two rules to keep in mind:
 - **Pins always win.** Inference never moves a pinned element -- the most useful pin is `"server"` on a declaration you want kept server-side even though client code references it (the client call bridges over RPC instead).
 - **Mixed-module helpers follow placement constraints.** Use a `"native"` pin or `jac build --native` when native compilation is required, and check diagnostics for unsupported constructs. Whole-module native inference follows the rule below.
 
-- **Whole modules go native by inference.** Under the default `[placement] default = "native"`, an anchor-free module that can lower compiles native, and one that cannot demotes to the server with a note; extern C declarations seed native placement inside mixed files. To force the choice -- loud errors instead of demotion -- use `jac build --native` or `jac build --as native`.
+- **Whole modules go native by inference.** Under the default `[placement] default = "native"`, an anchor-free module without native blockers compiles native, one with a blocker (Python imports, `root` access, endpoints, ...) stays on the server, and native code that cannot lower is a compile error naming the callable; extern C declarations seed native placement inside mixed files. To force a whole module native, use `jac build --native` or `jac build --as native`.
 
 (`.jac` still exists as an **implementation variant** -- the per-space implementation of one logical module -- not as the way ordinary code is placed. Native has no per-file spelling at all: it is inferred, pinned, or forced.)
 

@@ -107,10 +107,12 @@ is never served, and a client import of it is `E5082`. The same verdict governs
 cross-app imports (`E5106` for a private element). No pin or config entry
 changes it.
 
-The analysis proposes; lowering disposes. A module that prefers native but
-fails to lower is demoted to the server with a note naming the cause, and a
-client-pulled element that fails ES lowering demotes the same way (its call
-sites bridge instead). The portability table
+The analysis proposes; lowering checks. Native code that fails to lower is a
+compile error (`E5090`/`E5092`) naming the callable and the cause: fix the
+construct, or move the code to the server (drop the `"native"` pin, or pin it
+`"server"`). An element that fails the client capability checks is simply not
+pulled to the client; it stays on the server and its call sites bridge
+instead. The portability table
 (`jaclang/runtime/portability.jac`) is the curated fact base for which
 python modules may follow their referents into another space -- it is
 honestly empty for the client today, so every python import pins server.
@@ -148,7 +150,7 @@ them from any other app lower to typed-async bridge stubs.
 
 - `jac check --placements` prints every element's space with the evidence
   chain behind it ("seeded client: jsx construction", "dual client: pulled
-  through plain import from app.jac", "demoted server: failed ES lowering"),
+  through plain import from app.jac"),
   plus an estimated boundary-crossing count.
 - Editor hover shows `placement: <space> (inferred)` for any symbol, with a
   `dual` tag when the element is emitted into both spaces.
