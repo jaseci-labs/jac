@@ -2174,11 +2174,11 @@ graph import {
         },
         client.client_diagnostics.ClientDiagnostic.render
             | compiler.passes.context.Alert.pretty_print { render_diagnostic },
-        compiler.passes.context.Alert.as_log { render_diagnostic_header },
         compiler.backends.es.es_unparse.JSCodeGenerator.dispatch
             | compiler.passes.import_wiring_pass
             | compiler.passes.pyast_load_pass.PyastBuildPass.convert
             | compiler.tools.lang_tools { pascal_to_snake },
+        compiler.passes.context.Alert.as_log { render_diagnostic_header },
         dist.seal.make_sealed_image { is_secret_file, path_matches_exclude },
         packages.artifact.package_copy_ignore
             | scale.injector.bundle.BundleSourceFilter.excludes { is_secret_file },
@@ -9676,13 +9676,7 @@ graph import compiler.backends.es {
         | framework_backend { AsyncBoundary, Effect, RefField, StateField, StateUpdate }
     scoped_styles ++> esast_gen_pass { ScopedStyleSheet, load_style_annex }
     view_ir ++> [
-        backends.react {
-            DynamicAttr,
-            EventAttr,
-            RefAttr,
-            StaticAttr,
-            ViewLocator
-        },
+        backends.react { DynamicAttr, EventAttr, RefAttr, StaticAttr, ViewLocator },
         backends.react.ReactBackend.lower_view {
             ComponentTag,
             DynamicChild,
