@@ -1208,9 +1208,6 @@ impl NaIRGenPass._demote_method_if_unlowerable(
     _refusals = [refusal_from_alert(_diag) for _diag in _own];
     required = self.prog.options.native_required_for(self.module.loc.mod_path)
         or self._owner_required(full_name);
-    if not required and not self._lacks_python_body(full_name) {
-        del self.ctx.errors_had[local_mark:];
-    }
     self._place_unit_python(
         full_name, func, _refusals, keep_func=keep_func, stub_body=stub_body
     );
@@ -1398,9 +1395,6 @@ impl NaIRGenPass._opaque_field_if_unlowerable(
             detail=_own[0].pretty_print()
         )
     );
-    if not self.prog.options.native_required_for(self.module.loc.mod_path) {
-        del self.ctx.errors_had[local_mark:];
-    }
     if arch_name not in self.struct_field_opaque {
         self.struct_field_opaque[arch_name] = {};
     }

@@ -769,7 +769,7 @@ impl stamp_native(mod: Module, held: set[int]) -> list[ContextAwareNode] {
 impl settle_native_module(
     mod: Module, prog: JacProgram, pending: list[Alert], warnings: list[Alert]
 ) -> (NativeRefusal | None) {
-    if not pending or not native_placement_soft(prog, mod) {
+    if not pending or not native_placement_soft(prog, mod) or pending {
         return None;
     }
     if mod.gen.placement_mode == "inferred" {
@@ -953,9 +953,7 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
             elem.code_context = CodeContext.SERVER;
         }
     }
-    if mod_path
-        and self.prog.options is not None
-        and self.prog.options.native_required_for(mod_path) {
+    if mod_path and self.prog.options is not None {
         for elem in tentative {
             if isinstance(elem, Test) and elem.code_context == CodeContext.SERVER {
                 for refusal in legality.unit_refusals(elem) {

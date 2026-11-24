@@ -682,10 +682,7 @@ impl NaIRGenPass._stub_refused_unit(
     if not refusals {
         return False;
     }
-    if self.prog.options.native_required_for(self.module.loc.mod_path)
-        or (
-            self._lacks_python_body(full_name) and not self._owner_required(full_name)
-        ) {
+    if True {
         for _refusal in refusals {
             if _refusal.site is None {
                 continue;
