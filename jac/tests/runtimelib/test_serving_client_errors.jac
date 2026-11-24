@@ -202,16 +202,16 @@ async def _pool_outcome(scenario: str) -> tuple[bool, bool] {
     peers.append(peer);
     if scenario == "too old" {
         conn.opened -= MAX_CONNECTION_AGE;
+    }
+    _release(conn);
+    if scenario == "idle too long" {
+        conn.idle_since -= IDLE_TIMEOUT;
     } elif scenario == "unread bytes" {
         peer.sendall(b"x");
     } elif scenario == "peer closed" {
         peer.close();
     }
     await asyncio.sleep(0.05);
-    _release(conn);
-    if scenario == "idle too long" {
-        conn.idle_since -= IDLE_TIMEOUT;
-    }
     taken = _take_idle(("http", "other", 80) if scenario == "other origin" else origin);
     closed = conn.writer.is_closing();
     leftovers = [conn] + [c for bucket in _idle_pool().values() for c in bucket];
