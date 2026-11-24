@@ -109,7 +109,7 @@ glob IR_LOADS: list[str] = [
          'jaclang.compiler.symbol_utils',
          'jaclang.compiler.expr_keys',
          'jaclang.compiler.type_registry',
-         'jaclang.compiler.driver.bccache',
+         'jaclang.compiler.driver.annex_discovery',
          'jaclang.compiler.frontend.codeinfo',
          'jaclang.compiler.frontend.diagnostic_utils',
          'jaclang.project.modresolver',
