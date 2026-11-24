@@ -94,7 +94,7 @@ runs:
         name: ${{ inputs.precompiled-name }}
         path: jac/jaclang/_precompiled
 
-    # The dev bundle comes from ci.yml's six dev-precompile legs, each a
+    # The dev bundle comes from ci.yml's three dev-precompile legs, each a
     # disjoint share of the same tree.
     - name: Fetch the dev precompile bundle
       if: inputs.dev == 'true'

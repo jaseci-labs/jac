@@ -476,18 +476,18 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  # The checkout's precompile bundle (jaclang/_precompiled), in six
-  # parallel legs of every sixth source (JAC_PRECOMPILE_SHARD). Each leg keeps
+  # The checkout's precompile bundle (jaclang/_precompiled), in three
+  # parallel legs of every third source (JAC_PRECOMPILE_SHARD). Each leg keeps
   # its own cache, and every unit is checked against its source and compiler,
   # so a restored tree only lets unchanged modules skip the recompile. The
-  # lanes merge the six artifacts back into one tree (jac-kit).
+  # lanes merge the three artifacts back into one tree (jac-kit).
   dev-precompile:
     runs-on: ubuntu-24.04
     needs: dev-kit
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v5
 
@@ -518,15 +518,15 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: jac/jaclang/_precompiled
-          key: jac-dev-precompiled-s${{ matrix.shard }}of6-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
+          key: jac-dev-precompiled-s${{ matrix.shard }}of3-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
           restore-keys: |
-            jac-dev-precompiled-s${{ matrix.shard }}of6-c${{ steps.inputs.outputs.compiler }}-
+            jac-dev-precompiled-s${{ matrix.shard }}of3-c${{ steps.inputs.outputs.compiler }}-
 
       - name: Precompile this leg's share of the checkout
         env:
           JAC_PRECOMPILE_JOBS: "4"
           JAC_PRECOMPILE_RSS_LOG: "1"
-          JAC_PRECOMPILE_SHARD: ${{ matrix.shard }}/6
+          JAC_PRECOMPILE_SHARD: ${{ matrix.shard }}/3
         run: |
           set -euo pipefail
           chmod +x jac/zig-out/bin/jac
@@ -535,16 +535,16 @@ jobs:
           DIR="$(find jac/jaclang/_precompiled -maxdepth 1 -type d -name 'cpython-*' | head -1)"
           [ -n "$DIR" ] || { echo "::error::no jac/jaclang/_precompiled/cpython-<ver> tree"; exit 1; }
           UNITS="$(find "$DIR" -name '*.jir' | wc -l | tr -d ' ')"
-          [ "$UNITS" -ge 65 ] || { echo "::error::precompile leg has only $UNITS units"; exit 1; }
+          [ "$UNITS" -ge 130 ] || { echo "::error::precompile leg has only $UNITS units"; exit 1; }
           rm -f jac/jaclang/_precompiled/PRECOMPILE_RESULT.json
-          echo "precompile leg ${{ matrix.shard }}/6: $UNITS units in $DIR"
+          echo "precompile leg ${{ matrix.shard }}/3: $UNITS units in $DIR"
 
       - name: Save this leg's precompile bundle
         if: steps.cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: jac/jaclang/_precompiled
-          key: jac-dev-precompiled-s${{ matrix.shard }}of6-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
+          key: jac-dev-precompiled-s${{ matrix.shard }}of3-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
 
       - name: Upload this leg's precompile bundle
         uses: actions/upload-artifact@v4
