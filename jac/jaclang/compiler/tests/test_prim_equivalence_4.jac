@@ -1,4 +1,5 @@
 """Share 4 of 4 of the prim equivalence cases (see prim_equiv_cases.jac)."""
+
 with entry {
     parametrize(
         "prim equivalence",
