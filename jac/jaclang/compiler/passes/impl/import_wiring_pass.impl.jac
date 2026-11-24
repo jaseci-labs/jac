@@ -513,9 +513,7 @@ impl unused_wire_bindings(mod: Module) -> list[UnusedBinding] {
             };
     }
     reads = ScopeReads(mod=mod);
-    for (wire, scope) in [
-        (w, ".".join(s)) for (w, scopes) in wires for s in scopes
-    ] {
+    for (wire, scope) in [(w, ".".join(s)) for (w, scopes) in wires for s in scopes] {
         for binding in wire.bindings() {
             name = binding.bound_name();
             at = bound.get((scope, binding.key()));

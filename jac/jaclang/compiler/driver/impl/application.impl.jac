@@ -283,8 +283,7 @@ impl _check(program: any, before: any) {
 
 impl _surface_sources(manifests: list[dict[str, any]], `root: str) -> set[str] {
     return {
-        os.path.realpath(os.path.join(`root, rec['src']))
-        for metadata in manifests
+        os.path.realpath(os.path.join(`root, rec['src'])) for metadata in manifests
         for rec in (metadata.get('surface') or {}).values()
         if rec.get('src')
     };

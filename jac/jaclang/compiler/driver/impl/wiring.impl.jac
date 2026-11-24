@@ -355,9 +355,7 @@ impl WiringSpec._scan_modules(
     }
 }
 
-impl WiringSpec.consumer_wires(
-    consumer: str
-) -> list[tuple[WireRec, list[list[str]]]] {
+impl WiringSpec.consumer_wires(consumer: str) -> list[tuple[WireRec, list[list[str]]]] {
     held = self._by_consumer.get(consumer);
     if held is not None {
         return held;
@@ -560,10 +558,7 @@ impl WiringSpec.import_provider(path_node: ModulePath) -> (str | None) {
 }
 
 impl WiringSpec.rules_governing(
-    provider: str,
-    consumer: str,
-    local: bool,
-    rules: (list[RuleRec] | None) = None
+    provider: str, consumer: str, local: bool, rules: (list[RuleRec] | None) = None
 ) -> list[RuleRec] {
     named = [
         rule
@@ -587,10 +582,7 @@ impl WiringSpec.rules_governing(
 }
 
 impl WiringSpec.rules_admitting(
-    provider: str,
-    consumer: str,
-    local: bool,
-    rules: (list[RuleRec] | None) = None
+    provider: str, consumer: str, local: bool, rules: (list[RuleRec] | None) = None
 ) -> list[RuleRec] {
     subjects = self.ruled_as(consumer);
     return [
@@ -788,9 +780,7 @@ impl decode_records(text: str) -> (tuple[bool, list[WireRec], list[RuleRec]] | N
         if raw["format"] != RECORDS_FORMAT {
             return None;
         }
-        wires = [
-            WireRec(**{f: rec[f] for f in _WIRE_FIELDS}) for rec in raw["wires"]
-        ];
+        wires = [WireRec(**{f: rec[f] for f in _WIRE_FIELDS}) for rec in raw["wires"]];
         for wire in wires {
             wire.items = [(name, alias) for (name, alias) in wire.items];
         }

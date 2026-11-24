@@ -123,17 +123,11 @@ obj WiringSpec {
     def import_bindings(imp: Import) -> list[tuple[WireBinding, UniNode]];
     def wire_suggestion(binding: WireBinding, consumer: str) -> str;
     def rules_governing(
-        provider: str,
-        consumer: str,
-        local: bool,
-        rules: (list[RuleRec] | None) = None
+        provider: str, consumer: str, local: bool, rules: (list[RuleRec] | None) = None
     ) -> list[RuleRec];
 
     def rules_admitting(
-        provider: str,
-        consumer: str,
-        local: bool,
-        rules: (list[RuleRec] | None) = None
+        provider: str, consumer: str, local: bool, rules: (list[RuleRec] | None) = None
     ) -> list[RuleRec];
 
     def top_package(module: str) -> str;
