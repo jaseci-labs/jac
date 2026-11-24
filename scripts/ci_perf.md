@@ -35,7 +35,7 @@ CPU or RSS figures.
 
 ## Policy file
 
-Limits live in `pack-smoke-perf.json`:
+Limits live in `ci_perf.json`:
 
 ```json
 {
