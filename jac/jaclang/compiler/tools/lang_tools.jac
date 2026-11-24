@@ -3,6 +3,7 @@ import inspect;
 import json;
 import os;
 import sys;
+import from typing { cast }
 
 obj AstKidInfo {
     has name: str,

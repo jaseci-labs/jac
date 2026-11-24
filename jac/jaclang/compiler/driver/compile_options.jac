@@ -57,8 +57,14 @@ obj CompileOptions {
 
     def postinit;
     def effective_triple -> str;
+    def _required_terms -> list[str];
+    def _memory_terms -> list[str];
+    def _codegen_terms -> list[str];
+    def _app_terms -> list[str];
+    def _lane_terms -> list[str];
+    def _flow_suffix -> str;
+    def _client_suffix -> str;
     def codegen_identity -> str;
-    def codegen_fingerprint -> str;
     def analysis_identity -> str;
     def artifact_identity -> str;
     def analysis_fingerprint -> str;
@@ -76,12 +82,6 @@ obj CompileOptions {
 glob NATIVE_LINK_MODE_OBJECTS: str = "objects",
      NATIVE_LINK_MODE_BITCODE: str = "bitcode",
      NATIVE_LINK_MODES: tuple[str, str] = ("objects", "bitcode");
-
-def effective_codegen_fingerprint -> str;
-
-def link_fingerprint_mismatches(
-    participants: list[tuple[str, str]], current_fp: str
-) -> list[str];
 
 def env_symmap_requested -> bool;
 

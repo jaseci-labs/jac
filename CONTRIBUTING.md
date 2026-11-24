@@ -247,10 +247,10 @@ the MCP server, and the client/desktop runtimes are all bundled into the binary.
 
 ### Step 0: Run CI with the macOS lane first
 
-Day-to-day CI turns the `macos-native` lane off. Before cutting a release, on
-a branch, replace `if: false` on `ci.yml`'s `macos-native` job with the
-commented `if:` above it (`if: false` blocks every trigger, including a manual
-dispatch), dispatch **CI**, and fix what it finds.
+Pull requests do not run the macOS native lane; it runs in **Nightly**. Before
+cutting a release, run **Nightly** from GitHub Actions on the release branch
+(Run workflow) and fix what its `macos-native` lane finds. For the sealed
+Linux lanes, run **CI (sealed)** the same way.
 
 ### Step 1: Create the Release PR
 

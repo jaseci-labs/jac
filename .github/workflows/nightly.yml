@@ -81,7 +81,7 @@ jobs:
   # The darwin native lane: sealed macOS kit + the Mach-O / wasm-floor /
   # libSystem-equivalence tests that consume it. Off the PR critical path
   # (44-68 min, and 60 runs of evidence that it duplicated the Linux seal
-  # refusal); see _macos-native.yml. ci.yml still runs it on a `macos` label.
+  # refusal); see _macos-native.yml.
   # This is also the only caller that runs on main, so it is what seeds the
   # shared macOS caches -- setup-jac gates every cache save to main.
   macos-native:

@@ -3,7 +3,7 @@ import os;
 import tempfile;
 import time;
 import from pathlib { Path }
-import from jaclang.compiler.driver.bccache {
+import from jaclang.compiler.driver.annex_discovery {
     _DIR_LISTINGS,
     _dir_entries,
     discover_annex_files

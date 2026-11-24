@@ -74,9 +74,8 @@ exclude = [
     "checker_*.jac",
     "*_err.jac",
 
-    # Examples and benchmarks are not shipped compiler or runtime code.
+    # Examples are not shipped compiler or runtime code.
     "jac/examples/*",
-    "scripts/bench*",
 ]
 
 [check.lint]

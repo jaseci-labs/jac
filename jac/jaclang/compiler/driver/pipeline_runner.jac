@@ -12,12 +12,7 @@ def wasm_artifact_inputs(
 
 
 def native_application(
-    program: JacProgram,
-    file_path: str,
-    target: str = '',
-    memory: str = '',
-    debug: bool = False,
-    no_ir_cache: bool = False
+    program: JacProgram, file_path: str
 ) -> tuple[uni.Module, CompileOptions];
 
 
