@@ -824,7 +824,6 @@ graph import {
     compiler.driver.jir --> [
         cli.commands.cache._live_keys { compiler_generation },
         cli.commands.execution._exec_file { scrub_cache_dirs },
-        dist.precompile_bytecode._native_extra { rebase_placement_section },
         dist.precompile_bytecode._precompile_unit { cache_mode },
     ]
     compiler.driver.jir as jir --> scale.tests.microservices.test_seed_determinism;
@@ -1154,7 +1153,10 @@ graph import {
     compiler.placement.placement_export --> [
         cli.commands.analysis._check_file_job { collect_placement_rows },
         cli.commands.analysis.explain { collect_placement_rows },
-        dist.precompile_bytecode._unit_extra { summary_from_bytes, summary_to_bytes },
+        dist.precompile_bytecode._placement_section {
+            summary_from_bytes,
+            summary_to_bytes
+        },
     ]
     compiler.placement.placement_facts ++> [
         dist.precompile_bytecode._application_sources {
@@ -1291,6 +1293,7 @@ graph import {
     }
     data.pgembed ++> [
         cli.commands.db._catalog_runtime
+            | scale.tests.data.test_gateway_owned_identity
             | scale.tests.data.test_pg_stream
             | scale.tests.server.test_backplane
             | scale.tests.server.test_pg_job_store
@@ -1357,6 +1360,7 @@ graph import {
             TxnIsolation
         },
         cli.commands.db._open_project_store
+            | scale.tests.data.test_gateway_owned_identity
             | scale.tests.data.test_pg_stream
             | scale.tests.server.test_backplane
             | scale.tests.server.test_pg_job_store
@@ -1611,7 +1615,7 @@ graph import {
     jac0core.handoff ++> [
         cli.cli.start_cli
             | cli.manifest_route.resolve_cli_version
-            | compiler.driver.jir._handoff { handoff },
+            | compiler.driver.jir { handoff },
         client.targets.desktop.native.host_boot.host_executable
             | dist.fused_binary.running_executable { process_executable },
         compiler.driver.jir.require_exact_compiler_products { update_handoff },
@@ -2839,6 +2843,7 @@ graph import {
     ]
     server.identity.identity_storage ++> [
         scale.sso.oauth_session { primary_username },
+        scale.tests.data.test_gateway_owned_identity { PgIdentityStorage },
         scale.tests.data.test_identity_password { IdentityStorage },
     ]
     server.identity.identity_storage --> scale.tests.data.test_auth_cutover {
@@ -10254,9 +10259,11 @@ graph import compiler.driver {
             SEC_DEPS,
             SEC_DIAG,
             SEC_IFACE,
+            SEC_INTEROP,
             SEC_PATH_ROOT,
             SEC_PLACEMENT,
             cache_mode,
+            compute_stub_module_key,
             deps_section,
             get_module_cache_path,
             is_compiler_tree_path,
@@ -10265,21 +10272,22 @@ graph import compiler.driver {
             jir_cacheable_source_path,
             module_cache_key,
             module_ct_deps_section,
-            read_dep_hashes,
+            read_dep_rows,
             read_jir,
             read_jir_paths,
             read_section_bytes,
             write_module_cache
         },
-        ifacecache.IfaceRegistry._deps_match { read_dep_rows },
         ifacecache.IfaceRegistry._encode_iface { PRECOMPILE_SENTINEL },
         ifacecache.artifact_cache_path { get_module_cache_path },
         nativecache {
             NativeStamp,
             SEC_NBITCODE,
             SEC_NCTDEPS,
+            SEC_NDEPS,
             SEC_NIFACE,
             SEC_NOBJ,
+            absolutize_ct_deps_section,
             cache_mode,
             ct_dep_text_fresh,
             current_native_stamp,
@@ -10288,7 +10296,9 @@ graph import compiler.driver {
             module_cache_invalid_reason,
             module_cache_key,
             module_ct_deps_section,
+            native_deps_section,
             native_section_payload,
+            read_dep_rows,
             read_jir,
             read_native_dep_hashes,
             read_section_bytes,
@@ -10319,18 +10329,6 @@ graph import compiler.driver {
             precompiled_jir_matches_source
         },
         compiler.JacCompiler._restore_sections { JirPaths, SEC_PATH_ROOT },
-        ifacecache.IfaceRegistry._deps_match { compute_stub_module_key },
-        ifacecache.IfaceRegistry._persist_in_context { SEC_INTEROP },
-        ifacecache.IfaceRegistry.client_boundary_facts { SEC_INTEROP, read_dep_rows },
-        ifacecache.IfaceRegistry.note_dep { compute_stub_module_key },
-        nativecache.NativeUnitRegistry.emit_objects { write_module_cache },
-        nativecache.NativeUnitRegistry.known_native_deps { read_dep_rows },
-        nativecache.NativeUnitRegistry.object_for { write_module_cache },
-        nativecache.NativeUnitRegistry.product_sections {
-            SEC_NDEPS,
-            absolutize_ct_deps_section,
-            native_deps_section
-        },
     ]
     module_analysis ++> module_compile {
         ModuleAnalysis,
@@ -10371,11 +10369,11 @@ graph import compiler.driver {
     ]
     pipeline --> [
         application._tree_source { CompilationProduct, require },
-        compiler.JacCompiler._format_program { execute_passes },
+        compiler.JacCompiler._format_program
+            | compiler.JacCompiler.jac_file_linter { execute_passes },
         compiler.JacCompiler.ensure_client_codegen
-            | ifacecache.IfaceRegistry._ensure_flow_graph { require },
-        compiler.JacCompiler.jac_file_linter { execute_passes },
-        ifacecache.IfaceRegistry._ensure_in_context { require },
+            | ifacecache.IfaceRegistry._ensure_flow_graph
+            | ifacecache.IfaceRegistry.ensure { require },
         ifacecache.IfaceRegistry._prepare { product_facts },
         nativecache.NativeBuildSession.lower { invalidate, require, unavailable },
     ]
@@ -10405,8 +10403,8 @@ graph import compiler.driver {
     pipeline_types --> [
         ifacecache.IfaceRegistry._ensure_flow_graph
             | nativecache.NativeBuildSession.lower { CompilationProduct },
-        ifacecache.IfaceRegistry._ensure_in_context { CompilationProduct },
         ifacecache.IfaceRegistry._prepare { CompilationProduct },
+        ifacecache.IfaceRegistry.ensure { CompilationProduct },
     ]
     program ++> [
         application_edges.application_edges
@@ -10484,11 +10482,11 @@ graph import compiler.driver {
         jir.seed_definition_texts { DEF_DEP_SEP },
     ]
     unit_products --> [
-        ifacecache.IfaceRegistry._persist_in_context {
+        ifacecache.IfaceRegistry.client_boundary_facts { interop_manifest_of },
+        ifacecache.IfaceRegistry.persist_after_compile {
             interop_record,
             placement_record
         },
-        ifacecache.IfaceRegistry.client_boundary_facts { interop_manifest_of },
     ]
     wiring ++> [
         compiler.JacCompiler.jac_str_formatter {
@@ -13207,11 +13205,13 @@ graph import scale {
     admin --> tests.server.test_admin;
     admin as admin_pkg ++> tests.misc.test_ops_signals;
     admin.admin_portal ++> [
+        tests.data.test_gateway_owned_identity | tests.server.test_auth_policy_startup {
+            JacAPIServerAdmin
+        },
         tests.misc.test_metrics._distribution_for {
             _calculate_metrics_summary,
             _parse_prometheus_text
         },
-        tests.server.test_auth_policy_startup { JacAPIServerAdmin },
     ]
     admin.admin_portal --> tests.misc.test_metrics {
         _calculate_metrics_summary,

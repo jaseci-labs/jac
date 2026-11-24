@@ -83,7 +83,6 @@ test "an interface read from disk keeps the digest it was verified against" {
             "/nonexistent/unit.jac",
             read,
             stamp,
-            "disk",
             digest=NativeIface.read_digest(raw) or ""
         );
     }
