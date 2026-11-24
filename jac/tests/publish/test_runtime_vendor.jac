@@ -49,6 +49,7 @@ test "source products of package-owned modules come from the compiler's own prog
     import jaclang;
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.source_products { python_source }
+    import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
     path = os.path.join(
         os.path.dirname(os.path.realpath(str(jaclang.__file__))),
         "runtime",
@@ -58,8 +59,7 @@ test "source products of package-owned modules come from the compiler's own prog
     (source, module) = python_source(path, program);
     assert source;
     assert module is not None;
-    cache = program._get_compiler().selfhost;
-    assert cache.owns(path);
+    assert is_compiler_source_path(path);
     assert os.path.realpath(path) not in program.mod.hub , (
         "the caller's program must not analyze the compiler's own module"
     );
