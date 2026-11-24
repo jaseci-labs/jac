@@ -1,25 +1,18 @@
 name: CI
 
-# One kit, one precompile, one consumer shape. `build-kit` builds the binary
-# from this checkout and publishes two artifacts: `jac-kit` (the binary and its
-# floors) and `jac-precompiled` (the JIR tree that binary's payload was built
-# from). Every lane runs through that binary. Most are sealed (jac-kit
-# `sealed: "true"` drops the checkout's `[dev] jaclang_source`), so the compiler
-# under test is the one the PR would ship. The lanes that must see the checkout
-# as the compiler's own tree keep the root jac.toml's reroute instead:
-# `jac-check`, the equivalence chunk of `test-compiler`, `test-launcher-jac`,
-# and the in-package suites under jaclang/byllm and jaclang/scale
-# (`test-packages-and-docs`, `test-scale`).
+# Pull requests and pushes test on the dev kit: `dev-kit` builds the dev
+# binary and its floors, `dev-precompile` precompiles the checkout in three
+# legs, and every test lane runs through that binary over the checkout.
 #
-# A reroute lane compiles nothing. jac-kit seeds `jac-precompiled` into the
-# checkout at jac/jaclang/_precompiled and requires `jac native status
-# --require precompiled`, so a bundled unit this compiler will not reuse fails
-# the lane instead of quietly recompiling the ~1300-module tree. Adding a reroute lane costs a download, not
-# a compile -- but adding one that needs a DIFFERENT compiler generation than
-# build-kit's will go red, which is the point.
+# The test lanes are data: .github/ci/lanes.json names each lane's paths,
+# workers, tools and packages, and the `changes` job turns it into the `test`
+# matrix (scripts/ci_plan.sh). A pull request that only touches tests runs just
+# the tests it can reach; every other run runs every lane. The plan also fails
+# if a test file belongs to no lane, so a new test cannot go unrun.
 #
-# The whole darwin native lane lives in nightly.yml; `macos-native` below reruns
-# it on a `macos` label. Its lanes are all sealed, so it publishes no bundle.
+# The sealed, release-shaped kit and the lanes that need it live in
+# ci-sealed.yml (schedule, manual runs, and the `ci:sealed` label). The darwin
+# native lane lives in nightly.yml.
 
 on:
   workflow_dispatch:
@@ -36,10 +29,6 @@ on:
   push:
     branches: [main]
 
-# The `ci:sealed` label runs the schedule-only sealed lanes (build-kit and the
-# lanes that need its sealed kit) on a pull request too, for changes that can
-# move the sealed binary.
-#
 # Adding a label that does not add a lane (one outside the list below, which
 # the `changes` job repeats) must neither rerun the suites nor cancel the run in
 # flight, so that run gets a group of its own and only Contribution Checks and
@@ -49,7 +38,7 @@ concurrency:
   group: >-
     ci-${{ github.event.pull_request.number || github.ref }}${{
     github.event.action == 'labeled'
-    && !contains(fromJSON('["macos", "type-error-report", "ci:sealed"]'), github.event.label.name)
+    && github.event.label.name != 'type-error-report'
     && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -65,19 +54,35 @@ jobs:
   changes:
     if: >-
       github.event.action != 'labeled'
-      || contains(fromJSON('["macos", "type-error-report", "ci:sealed"]'), github.event.label.name)
+      || github.event.label.name == 'type-error-report'
     runs-on: ubuntu-latest
     outputs:
       core: ${{ steps.filter.outputs.core }}
-      scale: ${{ steps.filter.outputs.scale }}
-      byllm: ${{ steps.filter.outputs.byllm }}
       docs: ${{ steps.filter.outputs.docs }}
       installer: ${{ steps.filter.outputs.installer }}
       native: ${{ steps.filter.outputs.native }}
-      pack_smoke: ${{ steps.filter.outputs.pack_smoke }}
-      site_journey: ${{ steps.filter.outputs.site_journey }}
+      scope: ${{ steps.plan.outputs.scope }}
+      lanes: ${{ steps.plan.outputs.lanes }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+      # A pull request checkout is the merge commit, so HEAD^1..HEAD is its diff.
+      - name: Plan the test lanes
+        id: plan
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            scope=$(bash scripts/ci_plan.sh scope HEAD^1 HEAD | head -n 1 | cut -d= -f2)
+            lanes=$(bash scripts/ci_plan.sh plan .github/ci/lanes.json HEAD^1 HEAD)
+          else
+            scope=full
+            lanes=$(bash scripts/ci_plan.sh plan .github/ci/lanes.json)
+          fi
+          echo "scope=$scope" >> "$GITHUB_OUTPUT"
+          echo "lanes=$lanes" >> "$GITHUB_OUTPUT"
+          echo "scope: $scope"
+          python3 -c 'import json,sys; [print("  %s: %d files" % (l["name"], l["count"])) for l in json.loads(sys.argv[1])]' "$lanes"
       - uses: dorny/paths-filter@v3
         id: filter
         with:
@@ -92,16 +97,9 @@ jobs:
               - 'scripts/test_ci_cache_keys.sh'
               - 'scripts/ci_carry_verdict.sh'
               - 'scripts/test_ci_carry_verdict.sh'
-            scale:
-              - 'jac/jaclang/scale/**'
-            byllm:
-              - 'jac/jaclang/byllm/**'
-            site_journey:
-              - 'scripts/site-browse-journey.sh'
-            pack_smoke:
-              - 'scripts/ci_perf.jac'
-              - 'scripts/ci_perf.test.jac'
-              - '.github/pack-smoke-perf.json'
+              - 'scripts/ci_plan.sh'
+              - 'scripts/test_ci_plan.sh'
+              - '.github/ci/**'
             docs:
               - 'jac/jaclang/cli/docs/**'
               - 'jac/jaclang/cli/skills/**'
@@ -113,9 +111,7 @@ jobs:
               # Without this an edit to the installer test ships unexercised.
               - '.github/workflows/_installer.yml'
             # Narrowing filter: the aarch64 and launcher lanes only run when a
-            # path that can move them changes (or on push/dispatch). The darwin
-            # lane no longer reads this filter -- it is nightly + `macos`-label
-            # only.
+            # path that can move them changes (or on push/dispatch).
             native:
               - 'jac/jaclang/compiler/backends/native/**'
               - 'jac/tests/compiler/backends/native/**'
@@ -140,185 +136,11 @@ jobs:
               - '.github/actions/**'
               - 'scripts/ci_cache_keys.sh'
 
-  # The kit lane builds this checkout and publishes it for every test lane.
-  build-kit:
-    # The sealed, release-shaped kit: the 6-hourly schedule and manual runs
-    # only, for the sealed lanes. Pull requests and pushes use dev-kit. Its
-    # original condition was none (always on).
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ci:sealed') }}
-    # The compiler runs from the bytecode the same build precompiles.
-    runs-on: ubuntu-24.04
-    needs: changes
-    steps:
-      - uses: actions/checkout@v5
-
-      # The runner label fixes the vCPU count, not the hardware behind it, and
-      # build times swing about 2x between hosts. Recording the host lets a
-      # slow kit be told apart from a slow change.
-      - name: Record the runner hardware
-        run: |
-          {
-            echo "### build-kit runner"
-            echo '```'
-            echo "vcpus: $(nproc)"
-            lscpu | grep -E '^(Model name|CPU family|Model:|BogoMIPS|CPU max MHz|CPU MHz|L3 cache|Thread\(s\) per core)' || true
-            free -g | awk '/^Mem:/ {print "memory_gb: total " $2 ", available " $7}'
-            echo "load_avg: $(cut -d' ' -f1-3 /proc/loadavg)"
-            echo '```'
-          } | tee -a "$GITHUB_STEP_SUMMARY"
-
-      - name: Build the jac binary (cached)
-        uses: ./.github/actions/setup-jac
-        with:
-          # This job runs `zig build` steps below, which go through the
-          # source-built interpreter and its native compiler object. A binary
-          # cache hit skips producing both, so ask for them explicitly.
-          need-build-inputs: "true"
-          bytecode-kit: "true"
-
-      - name: Set up Zig 0.16.0
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.16.0
-          use-cache: false
-
-      # Both restores above can miss independently of the binary cache, and the
-      # steps below cannot build the shim themselves (they only consume it).
-      - name: Ensure the LLVMPY shim is present
-        working-directory: jac
-        run: |
-          set -euo pipefail
-          if ls jaclang/compiler/backends/native/llvm/libjacllvm.* >/dev/null 2>&1; then
-            exit 0
-          fi
-          zig build fetch-llvm --summary all
-          zig build jacllvm --summary all
-
-      # Explicit: a binary-cache hit skips zig build, so these gitignored
-      # trees must be materialized either way. The wasm floor is in this list
-      # for the same reason as the rest: a full build writes it as a side effect, a
-      # cache hit does not, so leaving it implicit made the kit's contents a
-      # function of cache state -- present on a miss, missing on a hit, with
-      # if-no-files-found blind to it because the other paths matched.
-      - name: Materialize typeshed + vendored runtimes
-        working-directory: jac
-        run: |
-          zig build fetch-typeshed --summary all
-          zig build vendor-musl --summary all
-          zig build vendor-musl-linux-aarch64 --summary all
-          zig build vendor-wasm-libc --summary all
-
-      - name: Hermeticity + smoke (no system Python)
-        working-directory: jac
-        run: |
-          set -euxo pipefail
-          BIN="$PWD/zig-out/bin/jac"
-          # Outside the checkout: its jac.toml would reroute the binary to
-          # this tree's compiler source.
-          WORK="$(mktemp -d)"; cd "$WORK"
-          ldd "$BIN" || true
-          ! ldd "$BIN" | grep -qi python
-          # The bundled runtime is the pinned prebuilt CPython 3.14.
-          "$BIN" -c 'import sys; assert sys.implementation.name == "cpython", sys.implementation; assert sys.version_info[:2] == (3, 14), sys.version'
-          # The kit carries every artifact a release does.
-          "$BIN" native status
-          "$BIN" native status --require kit
-          printf 'obj P { has x:int=0; def sq->int { return self.x*self.x; } }\nwith entry { print(P(x=7).sq()); }\n' > "$WORK/obj.jac"
-          env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" --version
-          env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" -c 'import os, ssl; assert os.path.isfile(os.environ["SSL_CERT_FILE"]); assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0'
-          out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/obj.jac")"
-          grep -q 49 <<<"$out"
-
-      - name: Run real jac programs (end-to-end execution)
-        working-directory: jac
-        run: |
-          set -euxo pipefail
-          BIN="$PWD/zig-out/bin/jac"
-          WORK="$(mktemp -d)"; cd "$WORK"
-          cat > a.jac <<'JAC'
-          obj Point { has x: int; has y: int; def dist -> float { return (self.x*self.x + self.y*self.y) ** 0.5; } }
-          with entry {
-              p = Point(x=3, y=4);
-              print("dist", p.dist());
-              print([i*i for i in range(5)]);
-          }
-          JAC
-          out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/a.jac")"
-          grep -q "dist 5.0" <<<"$out"
-          grep -q "0, 1, 4, 9, 16" <<<"$out"
-
-      - name: jac test runner (self-contained test file)
-        working-directory: jac
-        run: |
-          set -euxo pipefail
-          BIN="$PWD/zig-out/bin/jac"
-          WORK="$(mktemp -d)"; cd "$WORK"
-          cat > "$WORK/test_smoke.jac" <<'JAC'
-          test "arithmetic" { assert 6 * 7 == 42; }
-          test "comprehension" { assert [i for i in range(3)] == [0, 1, 2]; }
-          test "strings" { assert "ja" + "c" == "jac"; }
-          JAC
-          env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_TEST_JOBS=0 "$BIN" test "$WORK/test_smoke.jac"
-
-      # if-no-files-found only fires when NO path matches, so a single missing
-      # tree ships a quietly incomplete kit to every consumer. Assert each one.
-      - name: Verify the kit is complete
-        working-directory: jac
-        run: |
-          set -euo pipefail
-          for p in zig-out/bin/jac jaclang/vendor/typeshed/stdlib \
-                   .pbs-build/linux-x86_64/musl/lib \
-                   .pbs-build/linux-aarch64/musl/lib \
-                   .pbs-build/wasm32/libc; do
-            [ -e "$p" ] || { echo "::error::kit is missing $p"; exit 1; }
-          done
-
-      - name: Upload the kit
-        uses: actions/upload-artifact@v4
-        with:
-          name: jac-kit
-          path: |
-            jac/zig-out/bin/jac
-            jac/jaclang/vendor/typeshed/stdlib
-            jac/.pbs-build/linux-x86_64/musl/lib
-            jac/.pbs-build/linux-aarch64/musl/lib
-            jac/.pbs-build/wasm32/libc
-          include-hidden-files: true
-          retention-days: 1
-          if-no-files-found: error
-
-      # The one precompile of this code version. Either `zig build` just
-      # produced it (binary-cache miss) or it was restored in lockstep with the
-      # binary it belongs to -- setup-jac keys the two together for exactly this
-      # reason. Every reroute lane requires this tree to serve every unit and
-      # recompiles nothing.
-      - name: Verify the precompile bundle is complete
-        working-directory: jac
-        run: |
-          set -euo pipefail
-          DIR="$(find .precompiled-build/cpython -maxdepth 1 -type d -name 'cpython-*' | head -1)"
-          [ -n "$DIR" ] || { echo "::error::no .precompiled-build/cpython/cpython-<ver> tree"; exit 1; }
-          [ -f .precompiled-build/cpython/MANIFEST.json ] || {
-            echo "::error::precompile tree has no MANIFEST.json, so the seal did not finish"; exit 1; }
-          UNITS="$(find "$DIR" -name '*.jir' | wc -l | tr -d ' ')"
-          [ "$UNITS" -ge 400 ] || { echo "::error::precompile tree has only $UNITS units"; exit 1; }
-          echo "precompile bundle: $UNITS units in $DIR"
-
-      - name: Upload the precompile bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: jac-precompiled
-          path: jac/.precompiled-build/cpython
-          include-hidden-files: true
-          retention-days: 1
-          if-no-files-found: error
-
   # The kit every pull request, push and scheduled test lane runs on: a -Ddev
   # binary (launcher + Python payload, jaclang linked from this checkout), the
   # checkout's own precompile bundle and stub catalog, and the floors, shim
-  # and bun at their checkout paths. No native prebuild, seal or pack: that
-  # sealed, release-shaped kit is build-kit's, on the 6-hourly schedule and
-  # manual runs, for the lanes that test sealed behavior.
+  # and bun at their checkout paths. No native prebuild, seal or pack: the
+  # sealed, release-shaped kit is ci-sealed.yml's build-kit.
   dev-kit:
     runs-on: ubuntu-24.04
     needs: changes
@@ -634,10 +456,12 @@ jobs:
             jac-check-cache-v3-s${{ matrix.shard }}-${{ runner.os }}-${{ steps.inputs.outputs.compiler }}-
 
       - uses: ./.github/actions/jac-kit
+        if: matrix.shard == 1 || needs.changes.outputs.scope != 'tests'
         with:
           dev: "true"
 
       - name: Install plugin deps so jac check resolves scale/byllm imports
+        if: needs.changes.outputs.scope != 'tests'
         # Pins mirror jac/jaclang/project/capabilities.jac.
         run: |
           jac install \
@@ -739,7 +563,7 @@ jobs:
       # regressions live in the suite now
       # (tests/compiler/test_seed_manifest_bootstrap.jac,
       # tests/cli/test_*_isolation.jac),
-      # which test-compiler / test-runtime run on the same filter as this job.
+      # which the test lanes run on the same filter as this job.
 
       # The targets ARE jaclang's source, and jaclang.* belongs to the running
       # compiler: checked sealed, a checkout module's `import from
@@ -747,11 +571,14 @@ jobs:
       # identities ("Cannot assign ServingApp to parameter of type
       # ServingApp"). Check the tree with its own compiler instead: this is a
       # reroute lane, as the equivalence chunk is.
+      # jac.toml excludes every `tests` path from the check, so a pull request
+      # that only touches tests has nothing for it to check.
       - name: Run jac check (exclusions from jac.toml [check] exclude)
+        if: needs.changes.outputs.scope != 'tests'
         run: jac check . --nowarn
 
       - name: Save JIR analysis cache
-        if: success()
+        if: success() && needs.changes.outputs.scope != 'tests'
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/.cache/jac
@@ -838,460 +665,71 @@ jobs:
           PRE_COMMIT_TO_REF: HEAD
         run: bash scripts/check-release-notes.sh
 
-  test-compiler:
+  # Every test lane is one entry in .github/ci/lanes.json; `changes` turns the
+  # catalog into this matrix (scripts/ci_plan.sh), listing each lane's files.
+  # A pull request that only touches tests gets just the lanes and files it
+  # can reach; every other run gets every lane.
+  test:
+    name: test (${{ matrix.name }})
     needs: [changes, dev-kit, dev-precompile]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    if: needs.changes.outputs.lanes != '[]'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - chunk: passes-main
-            paths: tests/compiler/passes tests/compiler/backends/es
-            sealed: "1"
-            # Keep headroom for compiler workers and ES subprocesses on the
-            # 16 GB runner; auto-sized concurrency repeatedly lost the runner.
-            jobs: "2"
-          # toplevel is split in three by measured runtime (main run
-          # 42587577723: a-c 23 min, d-n 28 min, o-z 20 min of worker time);
-          # test_compile_timing and test_no_llvm_degradation, ~12 min each,
-          # land in different legs.
-          - chunk: toplevel-1
-            paths: "tests/compiler/test_[a-c]*.jac"
-            sealed: "1"
-            jobs: "2"
-          - chunk: toplevel-2
-            paths: "tests/compiler/test_[d-n]*.jac"
-            sealed: "1"
-            jobs: "2"
-          - chunk: toplevel-3
-            paths: "tests/compiler/test_[o-z0-9_]*.jac"
-            sealed: "1"
-            jobs: "2"
-          # Split in three by measured worker time (run 42747995411: 53, 59
-          # and 57 worker-min); together the globs cover every top-level
-          # test_*.jac in backends/native exactly once.
-          - chunk: passes-native-1
-            paths: "tests/compiler/backends/native/test_[!n]*.jac tests/compiler/backends/native/test_n[!a]*.jac tests/compiler/backends/native/test_na_*.jac tests/compiler/tools"
-            sealed: "1"
-            # On the dev kit a native worker peaks under 2 GB (run
-            # 42685685266), so four fit the 16 GB runner.
-            jobs: "4"
-          - chunk: passes-native-2
-            paths: "tests/compiler/backends/native/test_native_[abcghs]*.jac"
-            sealed: "1"
-            jobs: "4"
-          - chunk: passes-native-3
-            paths: "tests/compiler/backends/native/test_native_[defi-rt-z]*.jac"
-            sealed: "1"
-            jobs: "4"
-          # The equivalence suite builds fixture paths from jaclang.__file__,
-          # which only resolve in the checkout: it runs through the reroute,
-          # over the kit's shim and floors (an unsealed leg).
-          # JAC_IFACE_VERIFY makes every hydration/replay the analysis cache
-          # serves during the suite recompute-and-diff, so warmth can never
-          # change an equivalence verdict silently.
-          - chunk: equivalence
-            paths: jaclang/compiler/tests
-            sealed: ""
-            iface_verify: "1"
-            # Peaks near 3.5 GB a worker with native analysis and ES child
-            # processes; three leave headroom on the 16 GB runner.
-            jobs: "3"
+        include: ${{ fromJSON(needs.changes.outputs.lanes) }}
     steps:
       - uses: actions/checkout@v5
-      - uses: ./.github/actions/jac-kit
         with:
-          dev: "true"
-      - name: Set up Node.js (ES backend)
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Set up Zig for compiler runtime and ELF fixtures
-        if: startsWith(matrix.chunk, 'passes-native')
-        uses: mlugg/setup-zig@v2
-        with:
-          version: "0.16.0"
-          use-cache: false
-      - name: Run ${{ matrix.chunk }} chunk
-        working-directory: jac
-        env:
-          JAC_IFACE_VERIFY: ${{ matrix.iface_verify || '' }}
-          JAC_TEST_ARTIFACTS: ${{ runner.temp }}/native-test-artifacts
-        run: |
-          set -uxo pipefail
-          WORK="$(mktemp -d)"
-          HOME="$WORK" JAC_TEST_RSS_LOG=1 JAC_TEST_JOBS=${{ matrix.jobs || 'auto' }} JAC_TEST_STRICT=1 jac test ${{ matrix.paths }}
-      - name: Preserve failed native executables
-        if: failure() && startsWith(matrix.chunk, 'passes-native')
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-test-failures-${{ matrix.chunk }}
-          path: ${{ runner.temp }}/native-test-artifacts
-          if-no-files-found: ignore
-
-  # Everything except the compiler tests.
-  test-runtime:
-    needs: [changes, dev-kit, dev-precompile]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
-    runs-on: ubuntu-24.04
-    # Two legs split by measured runtime (main run 42587577723: runtimelib +
-    # language + dist ~41 min of worker time, the rest ~45, each slowest
-    # file ~12 min: cli/test_plugin_integration and a test_publish). The
-    # second leg is "everything else", so a new test directory runs there.
-    name: test-runtime (${{ matrix.leg }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - leg: runtimelib
-            paths: tests/runtimelib tests/language tests/dist
-            ignore: ""
-          - leg: rest
-            paths: tests/
-            ignore: tests/compiler tests/client tests/runtimelib tests/language tests/dist
-    steps:
-      - uses: actions/checkout@v5
-      # The deps installed below with --global land in the binary's runtime
-      # site under the cache dir; the test step re-homes itself, so the cache
-      # must sit outside $HOME for them to stay visible (reroute lanes get
-      # the same pin from the jac-kit action). Before jac-kit, so its warm-up
-      # lands in the same place.
+          submodules: ${{ matrix.submodules }}
+      # Lanes that install deps with --global and re-home the test step pin
+      # the runtime cache outside $HOME, before jac-kit warms it.
       - name: Pin the runtime cache outside $HOME
+        if: matrix.xdg
         run: echo "XDG_CACHE_HOME=$RUNNER_TEMP/.cache" >> "$GITHUB_ENV"
       - uses: ./.github/actions/jac-kit
         with:
           dev: "true"
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
+        if: matrix.node
         with:
           node-version: "20"
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-      - name: Install the serve deps the plugin-integration test needs
-        run: jac install "python-dotenv>=1.2.1,<2.0.0" "requests>=2.32.0,<3.0.0" --global
-      # tests/client is test-client's lane (it needs the serial runner). The
-      # jsdom suites in tests/runtimelib gate on bun being present, which the
-      # Bun setup above provides -- with JAC_TEST_STRICT=1 they must run here,
-      # so a new jsdom suite is covered the moment it exists instead of when
-      # someone remembers to name it in this file.
-      - name: Runtime suite via the binary
+      - uses: oven-sh/setup-bun@v2
+        if: matrix.bun
+      - uses: mlugg/setup-zig@v2
+        if: matrix.zig
+        with:
+          version: "0.16.0"
+          use-cache: false
+      - name: Install the lane's packages
+        if: matrix.deps != ''
+        env:
+          DEPS: ${{ matrix.deps }}
+        run: |
+          mapfile -t specs <<<"$DEPS"
+          jac install "${specs[@]}" --global
+      - name: Run ${{ matrix.count }} test files
         working-directory: jac
-        run: |
-          set -uxo pipefail
-          WORK="$(mktemp -d)"
-          HOME="$WORK" JAC_TEST_RSS_LOG=1 JAC_TEST_JOBS=auto JAC_TEST_STRICT=1 jac test ${{ matrix.paths }} \
-            ${{ matrix.ignore != '' && format('--ignore {0}', matrix.ignore) || '' }}
-
-  # In-package tests that do not pass through the reroute, run here against
-  # the built kit. Each entry names a real divergence between the reroute and
-  # the sealed payload, not a CI quirk; the job should shrink to nothing as
-  # they are fixed.
-  #
-  # - byllm/tests/test_mtir_integration.jac: "submodule MTIR keyed by import
-  #   fullname" finds an empty mtir_map under the reroute; with the native
-  #   pipeline off, two more MTIR tests fail. Registration is tied to the
-  #   codegen path.
-  # - scale/tests/server/test_serve.jac, the HMR test: a walker:pub added
-  #   after start is listed in /openapi.json but POSTs 401. The access table
-  #   is rebuilt from Jac.program.find_module(), which returns the pre-reload
-  #   tree when the module was compiled in-process; the sealed lane never
-  #   has one and recompiles. Fails the same way with the native pipeline
-  #   off.
-  test-in-package-sealed:
-    needs: [changes, build-kit]
-    # Sealed-binary lane: the 6-hourly schedule and manual runs only (pull
-    # requests and pushes test on the dev kit). Was:
-    # if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' }}
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ci:sealed') }}
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          submodules: true
-      - uses: ./.github/actions/jac-kit
-        with:
-          sealed: "true"
-      - name: Install the scale and byllm deps these files import
-        run: |
-          jac install \
-            "python-dotenv>=1.2.1,<2.0.0" \
-            "prometheus-client>=0.21.0,<1.0.0" \
-            "opentelemetry-sdk>=1.27.0,<2.0.0" \
-            "opentelemetry-exporter-otlp-proto-http>=1.27.0,<2.0.0" \
-            "apscheduler>=3.11.2,<4.0.0" "kubernetes>=34.1.0,<35.0.0" \
-            "docker>=7.1.0,<8.0.0" "boto3>=1.40.0,<2.0.0" \
-            requests "moto[s3]>=5.0.0" \
-            --global
-          jac install \
-            "litellm>=1.102.1,<1.103.0" "pillow>=12.0.0,<14.0.0" \
-            "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
-            --global
-      # Run from a copy OUTSIDE the checkout. The resolver's self-tree rule
-      # binds a `jaclang.*` import from any file inside a jaclang checkout to
-      # that checkout, so run in place, a fixture's `jaclang.byllm.lib`
-      # resolved to the checkout's copy and the sealed kit analyzed the
-      # checkout's own compiler as project code: some 190 modules cold, two
-      # identities for every compiler class, and errors the reroute lanes
-      # never see. Copied out, the same import binds to the kit's bundle,
-      # which is what "sealed" is meant to test. Cut off at five minutes: the
-      # file takes 30 seconds, and the one time it did not (#8876) it took
-      # the 4-vcpu runner down with it and uploaded no log, so a regression
-      # fails the step, with its log, instead of the runner.
-      - name: MTIR integration (byllm)
         env:
+          FILES: ${{ matrix.files }}
+          FILTER: ${{ matrix.filter }}
+          JAC_IFACE_VERIFY: ${{ matrix.iface_verify }}
+          JAC_TEST_ARTIFACTS: ${{ runner.temp }}/native-test-artifacts
+          JAC_TEST_JOBS: ${{ matrix.jobs }}
           JAC_TEST_RSS_LOG: "1"
           JAC_TEST_STRICT: "1"
         run: |
-          set -o pipefail
-          cp -r jac/jaclang/byllm/tests "$RUNNER_TEMP/byllm-tests"
-          # The suite's archwire.jac fences it off from jaclang's graph inside
-          # the checkout; copied out, it is ordinary code beside the package.
-          rm "$RUNNER_TEMP/byllm-tests/archwire.jac"
-          timeout --kill-after=30 300 jac test "$RUNNER_TEMP/byllm-tests/test_mtir_integration.jac"
-      - name: HMR refresh (scale server)
-        env:
-          JAC_TEST_JOBS: "0"
-        run: jac test jac/jaclang/scale/tests/server/test_serve.jac -f hmr
-
-  # The no-LLVM degradation path lives in the suite now
-  # (tests/compiler/test_no_llvm_degradation.jac, via JAC_LLVM_SHIM=none).
-
-  test-client:
-    needs: [changes, dev-kit, dev-precompile]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
+          set -uo pipefail
+          if [ "${{ matrix.home }}" = "true" ]; then export HOME="$(mktemp -d)"; fi
+          # shellcheck disable=SC2086
+          jac test $FILES ${FILTER:+-f "$FILTER"}
+      - name: Preserve failed native executables
+        if: failure() && matrix.artifacts
+        uses: actions/upload-artifact@v4
         with:
-          submodules: true
-      - uses: ./.github/actions/jac-kit
-        with:
-          dev: "true"
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-      - name: Install the scale dep the in-process dispatch tests import
-        run: jac install "python-dotenv>=1.2.1,<2.0.0" --global
-      - name: Run all client tests
-        # Was serial for a collection race in the old pytest-xdist runner,
-        # which jac test's own worker pool does not have.
-        # test_cef_dispatch_build.jac (the old test-cef-build job) runs here.
-        env:
-          JAC_TEST_JOBS: "2"
-          JAC_TEST_RSS_LOG: "1"
-          JAC_TEST_STRICT: "1"
-        run: jac test jac/tests/client
-
-  # The jsdom suites gate on bun being on PATH and run in test-runtime under
-  # JAC_TEST_STRICT=1; the desktop tests live in tests/client (test-client).
-
-  # In-package suites (jaclang/byllm/tests, jaclang/scale/tests) run through
-  # the reroute: a test file inside the jaclang package is part of the
-  # compiler's own tree, which the reroute treats as self-hosted (parse and
-  # codegen, no analysis over the package's own modules). Through the sealed
-  # kit the same file is an ordinary module and is analyzed against the
-  # bundled copy of jaclang.*, and the checker reports what the reroute never
-  # has (test_byllm.jac, test_auth_cutover.jac, test_firebase_auth_sso.jac).
-  # Those findings are a follow-up on the test files, not on this lane.
-  test-packages-and-docs:
-    needs: [changes, dev-kit, dev-precompile]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.docs == 'true' }}
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          submodules: true
-      - uses: ./.github/actions/jac-kit
-        with:
-          dev: "true"
-      - name: Install byllm deps + test deps
-        run: |
-          jac install \
-            "litellm>=1.102.1,<1.103.0" "pillow>=12.0.0,<14.0.0" \
-            "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
-            --global
-      # test_mtir_integration.jac runs in test-in-package-sealed (see there).
-      - name: Run package tests
-        env:
-          JAC_TEST_STRICT: "1"
-        run: jac test jac/jaclang/byllm/tests --ignore jac/jaclang/byllm/tests/test_mtir_integration.jac
-      # Named docs tests so docs-only PRs (which skip the core lanes) still
-      # exercise the corpus; the same files run in test-runtime's full sweep.
-      - name: Run docs corpus tests
-        env:
-          JAC_TEST_STRICT: "1"
-        run: |
-          jac test jac/tests/cli/test_docs_content.jac \
-            jac/tests/cli/test_guide_docs.jac \
-            jac/tests/cli/test_docs_code_blocks.jac
-
-  test-scale:
-    needs: [changes, dev-kit, dev-precompile]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' }}
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        group: [server, data, microservices, deploy, misc]
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          submodules: true
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-      # The bundle tests read the pod binary from jac/zig-out/bin via a
-      # __file__-relative lookup and silently self-skip when it is missing.
-      # Reroute lane for the same reason as test-packages-and-docs above.
-      - uses: ./.github/actions/jac-kit
-        with:
-          dev: "true"
-      - name: Install scale deps + test deps
-        # Pins mirror jac/jaclang/project/capabilities.jac.
-        run: |
-          jac install \
-            "python-dotenv>=1.2.1,<2.0.0" \
-            "prometheus-client>=0.21.0,<1.0.0" \
-            "opentelemetry-sdk>=1.27.0,<2.0.0" \
-            "opentelemetry-exporter-otlp-proto-http>=1.27.0,<2.0.0" \
-            "apscheduler>=3.11.2,<4.0.0" "kubernetes>=34.1.0,<35.0.0" \
-            "docker>=7.1.0,<8.0.0" "boto3>=1.40.0,<2.0.0" \
-            requests "moto[s3]>=5.0.0" \
-            --global
-      - name: Install scale firebase deps
-        if: matrix.group == 'data' || matrix.group == 'server'
-        run: jac install "google-cloud-firestore>=2.21.0,<3.0.0" "google-cloud-storage>=2.19.0,<3.0.0" "firebase-admin>=6.0.0,<8.0.0" --global
-      # One process per file comes from the [test] isolate marks in the root
-      # jac.toml (the shelf-db sharers are marked serial there); JOBS=1 keeps
-      # files sequential the way the old shell loop ran them. The HMR test in
-      # server/test_serve.jac runs in test-in-package-sealed. Every test file
-      # lives in one of the five group directories; deploy/test_deploy_k8s.jac
-      # asks for JAC_TEST_K8S and skips itself here, the cluster leg runs it.
-      - name: Run ${{ matrix.group }} tests
-        env:
-          JAC_TEST_JOBS: "1"
-          JAC_TEST_STRICT: "1"
-        run: |
-          set -euo pipefail
-          if [ "${{ matrix.group }}" = "server" ]; then
-            jac test jac/jaclang/scale/tests/server -f "not hmr"
-          else
-            jac test jac/jaclang/scale/tests/${{ matrix.group }}
-          fi
-
-  # One job: both phases share one MicroK8s cluster (hostpath-storage binds
-  # the RWX bundle PVC, which kind cannot). Stays on the sealed kit: the
-  # failure-path leg ships the binary into the pods, and that must be the one
-  # built from this checkout.
-  test-scale-k8s:
-    needs: [changes, build-kit]
-    # Sealed-binary lane: the 6-hourly schedule and manual runs only (pull
-    # requests and pushes test on the dev kit). Was:
-    # if: >-
-    #   (github.event_name != 'pull_request' ||
-    #    needs.changes.outputs.core == 'true' ||
-    #    needs.changes.outputs.scale == 'true') &&
-    #   !contains(github.event.pull_request.labels.*.name, 'skip-k8s')
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ci:sealed') }}
-    runs-on: ubuntu-24.04
-    env:
-      # The opt-in flag test_deploy_k8s gates on: this is the lane with a
-      # cluster.
-      JAC_TEST_K8S: "1"
-      # Deploys look release assets up through the GitHub API, and a hosted
-      # runner's shared IP exhausts the anonymous quota.
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          submodules: true
-      - uses: ./.github/actions/jac-kit
-        with:
-          sealed: "true"
-      - name: Install scale deploy deps
-        run: |
-          jac install \
-            "python-dotenv>=1.2.1,<2.0.0" \
-            "kubernetes>=34.1.0,<35.0.0" "docker>=7.1.0,<8.0.0" \
-            --global
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v4
-      - name: Set up Helm
-        uses: azure/setup-helm@v4
-      - name: Set up MicroK8s (RWX-capable hostpath storage)
-        run: |
-          set -euxo pipefail
-          sudo snap install microk8s --classic --channel=1.31/stable
-          sudo microk8s status --wait-ready
-          sudo microk8s enable hostpath-storage dns
-          sudo microk8s kubectl -n kube-system rollout status deploy/coredns --timeout=180s
-          sudo microk8s kubectl -n kube-system rollout status deploy/hostpath-provisioner --timeout=180s || true
-          mkdir -p "$HOME/.kube"
-          sudo microk8s config > "$HOME/.kube/config"
-          sudo chown "$(id -u):$(id -g)" "$HOME/.kube/config"
-          chmod 600 "$HOME/.kube/config"
-          kubectl get storageclass
-          kubectl get nodes -o wide
-      - name: Install KEDA core + HTTP Add-on
-        run: |
-          set -euxo pipefail
-          helm repo add kedacore https://kedacore.github.io/charts
-          helm repo update
-          helm install keda kedacore/keda --namespace keda --create-namespace --wait
-          helm install http-add-on kedacore/keda-add-ons-http --namespace keda --wait
-          kubectl get pods -n keda
-      # The install step above hides a first deploy on a machine without the
-      # client, so this runs each command on a fresh HOME.
-      - name: Run first deploy without the client
-        run: |
-          set -euo pipefail
-          export KUBECONFIG="$HOME/.kube/config"
-          first_run() {
-            HOME="$(mktemp -d)" bash -c "jac install --global 'python-dotenv>=1.2.1,<2.0.0' && $1" 2>&1 | tee run.log
-            grep -q "Deploy tooling missing" run.log
-          }
-          cd "$(mktemp -d)"
-          printf '[project]\nname = "first"\nversion = "0.1.0"\nentry-point = "main"\n\n[scale.kubernetes]\napp_name = "first"\nnamespace = "first-deploy"\nbundle_storage_class = "microk8s-hostpath"\n' > jac.toml
-          echo 'walker:pub hello { can go with Root entry { report "hi"; } }' > main.jac
-          source "$GITHUB_WORKSPACE/jac/jaclang/scale/scripts/e2e_lib.sh"
-          ship_checkout_binary "$PWD"
-          first_run "jac scale deploy main.jac"
-          first_run "echo y | jac scale destroy main.jac"
-          test -z "$(kubectl get deploy -n first-deploy --no-headers 2>/dev/null)"
-      - name: Run K8 tests (deploy-core)
-        env:
-          JAC_TEST_JOBS: "0"
-        run: |
-          jac test jac/jaclang/scale/tests/deploy/test_deploy_k8s.jac -x -f "not (early and exit)"
-      # Runs the HTTP-activation e2e under an observer, so the 0 -> 1 -> ready
-      # -> 0 cycle it already drives is also the cycle watch_scale_targets is
-      # proven against. A second deploy would cost minutes for a cycle already
-      # paid for.
-      - name: Run KEDA HTTP-activation + observer e2e
-        env:
-          # The harness names this checkout's jac as the fixture's
-          # [dev] pod_binary, so the pods run the code under test.
-          # This lane's hostpath-storage addon is RWX-capable, but the bundle
-          # PVC no longer trusts a cluster default silently; name it.
-          BUNDLE_STORAGE_CLASS: microk8s-hostpath
-        run: |
-          bash jac/jaclang/scale/tests/deploy/keda_observer_real_e2e.sh \
-            jac/jaclang/scale/tests/fixtures/keda_http_activation_e2e
-      - name: Run K8 tests (failure-path)
-        env:
-          JAC_TEST_JOBS: "0"
-        run: |
-          jac test jac/jaclang/scale/tests/deploy/test_deploy_k8s.jac -x --test_name "early exit"
-
-      # Destroy deletes namespaces and volumes, so what it reclaims and what it
-      # spares is only decidable by an API server. Runs on every scale PR.
-      - name: Run destroy reclamation e2e
-        env:
-          CLUSTER_TYPE: microk8s
-        run: bash jac/jaclang/scale/tests/deploy/destroy_reclaim_real_e2e.sh
+          name: native-test-failures-${{ matrix.name }}
+          path: ${{ runner.temp }}/native-test-artifacts
+          if-no-files-found: ignore
 
   # aarch64 cross lane: in-house ELF linker + arch-parameterized musl from the
   # kit, binaries run under qemu-user.
@@ -1374,691 +812,11 @@ jobs:
         run: zig build test --summary all
       - name: Cache key mutation tests
         run: bash scripts/test_ci_cache_keys.sh
+
+      - name: Test plan mutation tests
+        run: bash scripts/test_ci_plan.sh
       - name: Carry-over verdict tests
         run: bash scripts/test_ci_carry_verdict.sh
-
-  # The CEF dispatch build + export/runpath/deps audit lives in the suite
-  # (tests/client/test_cef_dispatch_build.jac, in test-client's lane).
-
-  test-jac-pack-smoke:
-    needs: [changes, build-kit]
-    # Runs on the schedule, manual runs, and pull requests that touch its
-    # own paths. Was:
-    # if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true' }}
-    # Sealed-binary lane: the 6-hourly schedule and manual runs only (pull
-    # requests and pushes test on the dev kit). Was:
-    # if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && (needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true')) }}
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ci:sealed') }}
-    runs-on: ubuntu-24.04
-    # actions: read lets the performance report list main's runs and download
-    # their pack-smoke-performance artifacts for the wall-time comparison.
-    permissions:
-      contents: read
-      actions: read
-    env:
-      JAC_CI_PERF: ${{ github.workspace }}/scripts/ci_perf.jac
-      JAC_CI_PERF_POLICY: ${{ github.workspace }}/.github/pack-smoke-perf.json
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          submodules: true
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-      - uses: ./.github/actions/jac-kit
-        with:
-          sealed: "true"
-
-      - name: Validate performance accounting
-        timeout-minutes: 2
-        run: |
-          mkdir -p "$RUNNER_TEMP/pack-smoke-performance"
-          jac test scripts/ci_perf.jac
-
-      # The kit is already sealed: build-kit ran the precompiler over this
-      # tree (or restored the binary main sealed from this exact tree), so this
-      # job validates the sealed artifact end to end instead of sealing it a
-      # second time.
-      - name: Verify cold start of the sealed binary
-        run: |
-          jac cache purge
-          timeout 5 jac --version
-
-      # The guide surface, plugin integration (pth finder / CLI dispatch /
-      # admin server), and fixture checks live in the suite now
-      # (tests/cli/test_guide_docs.jac, tests/cli/test_plugin_integration.jac);
-      # this job keeps only what needs the sealed artifact and the outside
-      # world: cold start and the in-tree site fullstack smoke. Source export
-      # is exercised by test-jac-pack-eject through the same browser journey.
-      - name: Install scale serve deps (for the site server)
-        run: |
-          jac install \
-            "python-dotenv>=1.2.1,<2.0.0" \
-            "requests>=2.32.0,<3.0.0" \
-            --global
-
-      - name: Validate the bundled Tiny JacYac workspace
-        timeout-minutes: 5
-        run: |
-          jac create tiny --awetiny
-          cd tiny
-          jac check --nowarn
-
-      # Fullstack smoke on the jaclang.org site, scaffolded the way the README
-      # quickstart tells a user to. `jac create <name> --awesome` dumps the copy
-      # of jac/examples/jaclang_org that the payload bundles beside the jaclang
-      # package (awesome_template) and pulls its npm deps. Running the
-      # scaffolded copy instead of the checkout is what exercises the bundling
-      # step and the template resolver (the [dev] stanza is dropped, the
-      # project is renamed); nothing else in CI runs that path. Because the
-      # template ships inside the binary, the binary and the site it serves are
-      # version-matched by construction, which is why the old happy-path lane
-      # (released binary against main's clone) no longer had a quickstart to
-      # validate. The lane is sealed, so the kit binary is what gets
-      # validated, not a live-source reroute.
-      - name: Scaffold the site (jac create --awesome; pulls npm deps)
-        run: jac create site --awesome
-
-      # `jac create` reports a failed dependency install as a next step, not a
-      # non-zero exit, so check the scaffold before serving it: the failure
-      # should name the quickstart step, not a missing module at bundle time.
-      - name: Verify the scaffold came from the bundled template
-        run: |
-          test -f site/web.jac && test -f site/core/site/game/arena.jac \
-            || { echo "::error::scaffold is missing the site's entry or the wasm game"; exit 1; }
-          test -f site/desktop.jac \
-            || { echo "::error::scaffold is missing the desktop app"; exit 1; }
-          # Client npm deps live under the project's build dir (.jac/client),
-          # not a top-level node_modules; that is where the vite bundler looks.
-          test -d site/.jac/client/node_modules/vite \
-            || { echo "::error::jac create did not pull the site's npm deps (no vite under site/.jac/client/node_modules)"; exit 1; }
-          if grep -q '^\[dev\]' site/jac.toml; then
-            echo "::error::the [dev] live-source stanza leaked into the scaffold"; exit 1
-          fi
-          grep -q '^name = "site"' site/jac.toml \
-            || { echo "::error::the scaffold was not renamed to the project name"; exit 1; }
-          cmp jac/examples/jaclang_org/core/site/assets/og-card.png site/core/site/assets/og-card.png \
-            || { echo "::error::a binary asset did not survive the template round trip"; exit 1; }
-          echo "scaffold matches the README quickstart"
-
-      - name: Type check the site
-        working-directory: site
-        run: |
-          hang=$(jq -er '.phases."site-check".hang_seconds' "$JAC_CI_PERF_POLICY")
-          LC_ALL=C /usr/bin/time --quiet -o "$RUNNER_TEMP/pack-smoke-performance/site-check.time.json" \
-            -f '{"wall_seconds":%e,"user_seconds":%U,"system_seconds":%S,"rss_kib":%M,"exit_code":%x}' \
-            timeout --kill-after=5s "${hang}s" jac check
-
-      # The site ships as a desktop app too (apps.desktop, backend jaclang.org):
-      # the native engine needs WebKitGTK + a C toolchain to build libwebview,
-      # patchelf for the $ORIGIN runpath, and a display to launch under.
-      - name: Install desktop build deps
-        timeout-minutes: 20
-        run: |
-          # Only Ubuntu's own repositories are needed. The runner's third-party
-          # sources (Microsoft and others) can rate-limit an update into failure.
-          sudo find /etc/apt/sources.list.d -type f ! -name 'ubuntu*' -delete
-          # The runner's mirror list uses HTTP, which can be unreachable while
-          # HTTPS works. Keep Ubuntu's signed repositories and refresh over IPv4.
-          for apt_source in /etc/apt/sources.list /etc/apt/sources.list.d/*.list \
-                            /etc/apt/sources.list.d/*.sources; do
-            if [ -f "$apt_source" ]; then
-              sudo sed -i 's|http://|https://|g' "$apt_source"
-            fi
-          done
-          printf '%s\n' 'Acquire::ForceIPv4 "true";' 'APT::Update::Error-Mode "any";' \
-            'Acquire::Retries "5";' 'Acquire::http::Timeout "60";' 'Acquire::https::Timeout "60";' \
-            | sudo tee /etc/apt/apt.conf.d/99-jac-ci >/dev/null
-          for attempt in 1 2 3; do
-            sudo apt-get update && sudo apt-get install -y --no-install-recommends \
-              build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev \
-              patchelf xvfb && exit 0
-            echo "apt attempt $attempt failed; retrying in 20s"
-            sleep 20
-          done
-          exit 1
-
-      - name: Build the desktop app
-        working-directory: site
-        run: |
-          hang=$(jq -er '.phases."desktop-build".hang_seconds' "$JAC_CI_PERF_POLICY")
-          LC_ALL=C /usr/bin/time --quiet -o "$RUNNER_TEMP/pack-smoke-performance/desktop-build.time.json" \
-            -f '{"wall_seconds":%e,"user_seconds":%U,"system_seconds":%S,"rss_kib":%M,"exit_code":%x}' \
-            timeout --kill-after=5s "${hang}s" jac build desktop
-
-      - name: Desktop artifact audit
-        working-directory: site
-        run: |
-          OUT=.jac/client/desktop/desktop
-          test -x $OUT/jaclang || { echo "::error::no desktop binary"; exit 1; }
-          test ! -f $OUT/app.jab || { echo "::error::remote desktop ships an unnecessary local app image"; exit 1; }
-          test -f $OUT/dist/index.html || { echo "::error::no client bundle beside the binary"; exit 1; }
-          test ! -d $OUT/sv || { echo "::error::loose sources shipped; the image is the program"; exit 1; }
-          grep -q "https://jaclang.org" $OUT/dist/client.*.js \
-            || { echo "::error::the bundle does not carry its remote backend"; exit 1; }
-
-      # Launch under Xvfb: the host announces its loopback origin on stdout,
-      # serves the bundle and the broker there, and answers no walker locally
-      # because its backend is remote.
-      - name: Desktop smoke (Xvfb)
-        working-directory: site/.jac/client/desktop/desktop
-        run: |
-          Xvfb :99 -screen 0 1280x800x24 &
-          XVFB_PID=$!
-          DISPLAY=:99 GDK_BACKEND=x11 timeout 600s ./jaclang-launch.sh > /tmp/site-desktop.log 2>&1 &
-          APP_PID=$!
-          for i in $(seq 1 110); do
-            grep -q "JAC_DESKTOP_SERVING" /tmp/site-desktop.log && break
-            if ! kill -0 $APP_PID 2>/dev/null; then echo "::error::desktop app exited early"; cat /tmp/site-desktop.log; exit 1; fi
-            sleep 5
-          done
-          ORIGIN=$(grep -o "JAC_DESKTOP_SERVING http://[^ ]*" /tmp/site-desktop.log | head -1 | cut -d' ' -f2)
-          test -n "$ORIGIN" || { echo "::error::the desktop host never announced its origin"; cat /tmp/site-desktop.log; exit 1; }
-          curl -fsS "${ORIGIN}__jac/health" | grep -q '"ok": true' || { echo "::error::broker health failed"; exit 1; }
-          curl -fsS "$ORIGIN" | grep -q "The Jac Programming Language" || { echo "::error::the site index did not load"; exit 1; }
-          curl -fsS "${ORIGIN}docs/getting-started" | grep -q "The Jac Programming Language" || { echo "::error::SPA fallback failed"; exit 1; }
-          curl -fsS "${ORIGIN}static/assets/jac-logo.svg" | grep -q "<svg" || { echo "::error::the shared site assets are not served by the desktop host"; exit 1; }
-          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${ORIGIN}walker/doc_page" -H 'Content-Type: application/json' -d '{}')
-          [ "$code" = "404" ] || [ "$code" = "405" ] || { echo "::error::a remote-backend desktop app served a walker locally ($code)"; exit 1; }
-          kill $APP_PID $XVFB_PID 2>/dev/null || true
-          echo "desktop app serves the site on $ORIGIN"
-
-      - name: Upload desktop logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: site-desktop-logs
-          path: /tmp/site-desktop.log
-          if-no-files-found: ignore
-
-      # The docs section reads the corpus bundled with the jac binary under
-      # test in-process (jaclang.cli.guide_store), so the docs journey stop is
-      # hermetic with no extra setup.
-      # The site is a workspace whose service apps colocate in the served
-      # app's process by default. Exercise the exact quickstart, `jac run`, in the single
-      # process serving stack. The fleet topology (`--fleet`: one local
-      # process per service app behind the gateway) gets its own pass over
-      # the same journey below.
-      - name: Start the quickstart with bare jac run
-        working-directory: site
-        run: |
-          cat /proc/uptime > "$RUNNER_TEMP/pack-smoke-performance/quickstart-ready.start"
-          timeout 1200 jac run > /tmp/site-server.log 2>&1 &
-          SERVER_PID=$!
-          echo "SITE_PID=$SERVER_PID" >> $GITHUB_ENV
-          echo "site server starting with PID $SERVER_PID..."
-          sleep 10
-          if ! kill -0 $SERVER_PID 2>/dev/null; then
-            echo "Server process died during startup"
-            cat /tmp/site-server.log
-            exit 1
-          fi
-
-      # Cold runner: embedded-postgres bootstrap plus the site's own compile
-      # and client bundle all happen before the port answers. This step's
-      # timeout is the hang ceiling; the elapsed time is compared with main.
-      - name: Wait for site server to be ready
-        timeout-minutes: 3
-        run: |
-          for i in $(seq 1 60); do
-            if ! kill -0 ${{ env.SITE_PID }} 2>/dev/null; then
-              echo "Server process exited unexpectedly"
-              cat /tmp/site-server.log
-              exit 1
-            fi
-            if curl -sf --max-time 10 http://localhost:8000 -o /dev/null 2>&1; then
-              echo "site server is ready (attempt $i)"
-              cat /proc/uptime > "$RUNNER_TEMP/pack-smoke-performance/quickstart-ready.ready"
-              exit 0
-            fi
-            echo "Attempt $i/60: not ready, waiting 15s..."
-            sleep 15
-          done
-          echo "Server failed to respond after 60 attempts"
-          tail -100 /tmp/site-server.log
-          exit 1
-
-      - name: Verify site HTTP response
-        run: |
-          HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8000)
-          echo "site root endpoint: HTTP $HTTP_CODE"
-          if [ "$HTTP_CODE" -eq 200 ]; then
-            echo "site server responding correctly"
-          else
-            echo "Unexpected HTTP $HTTP_CODE"
-            exit 1
-          fi
-
-      # @restspec routes only serve their payloads on the scale serving
-      # stack; this is the lane that proves them.
-      - name: Verify @restspec routes serve real payloads
-        run: |
-          curl -sf --max-time 30 http://localhost:8000/install.sh | head -1 | grep -q '^#!' \
-            || { echo "::error::/install.sh did not serve a shell script"; exit 1; }
-          curl -sf --max-time 30 http://localhost:8000/llms.txt | head -1 | grep -qi 'jac' \
-            || { echo "::error::/llms.txt did not serve the llms corpus"; exit 1; }
-          echo "install.sh and llms.txt serve their payloads"
-
-      - name: Ensure a Chromium binary for jac browse
-        run: |
-          for c in google-chrome google-chrome-stable chromium chromium-browser; do
-            if command -v "$c" >/dev/null 2>&1; then
-              echo "found browser: $c"
-              exit 0
-            fi
-          done
-          sudo apt-get update && sudo apt-get install -y chromium-browser
-
-      # Drive every page and fullstack flow with jac browse: landing content,
-      # live-source windows, the leaderboard shell, the whole socialize
-      # journey (signup, post, trending, like, comment, channels, reload
-      # persistence), docs served from this checkout, the 404 page, and a
-      # final console-error sweep. The journey lives in
-      # scripts/site-browse-journey.sh so it can run locally too.
-      - name: Browse the site (full journey)
-        timeout-minutes: 15
-        env:
-          SITE_JOURNEY_ARTIFACTS: /tmp
-        run: bash scripts/site-browse-journey.sh http://localhost:8000
-
-      - name: Verify development mode and no dependency scan errors
-        run: |
-          grep -q 'Development (with HMR)' /tmp/site-server.log
-          if grep -E 'Failed to scan for dependencies|No matching export|Could not start Vite dev server' /tmp/site-server.log; then
-            echo "::error::the quickstart client failed despite a live server process"
-            exit 1
-          fi
-
-      - name: Dump server thread stacks on failure
-        if: failure()
-        run: |
-          pip install py-spy >/dev/null 2>&1 || true
-          for p in $(pgrep -f "jac run"); do
-            echo "=== py-spy dump pid $p ==="
-            sudo env "PATH=$PATH" py-spy dump --pid "$p" --nonblocking || true
-          done
-
-      - name: Capture browser and module requests on failure
-        if: failure()
-        run: |
-          jac browse screenshot /tmp/site-browse-failure.png || true
-          jac browse eval 'JSON.stringify(performance.getEntriesByType("resource").filter(r => r.responseStatus !== 200 || r.name.includes("/web/compiled/")).map(r => ({url: r.name, status: r.responseStatus, duration: r.duration})))' || true
-          curl --max-time 10 -sS -D - -o /tmp/site-entry.js http://localhost:8000/web/compiled/_entry.js || true
-
-      - name: Upload browse failure screenshots
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: site-browse-failure
-          path: |
-            /tmp/site-browse-failure.png
-            /tmp/site-journey-failure.png
-          retention-days: 7
-          if-no-files-found: ignore
-
-      - name: Stop site server
-        if: always()
-        run: |
-          jac browse close 2>/dev/null || true
-          if [ -n "${{ env.SITE_PID }}" ]; then
-            kill ${{ env.SITE_PID }} 2>/dev/null || true
-            for i in $(seq 1 30); do
-              kill -0 ${{ env.SITE_PID }} 2>/dev/null || break
-              sleep 1
-            done
-            kill -9 ${{ env.SITE_PID }} 2>/dev/null || true
-          fi
-
-      - name: Build the production artifact
-        working-directory: site
-        run: |
-          hang=$(jq -er '.phases."production-build".hang_seconds' "$JAC_CI_PERF_POLICY")
-          LC_ALL=C /usr/bin/time --quiet -o "$RUNNER_TEMP/pack-smoke-performance/production-build.time.json" \
-            -f '{"wall_seconds":%e,"user_seconds":%U,"system_seconds":%S,"rss_kib":%M,"exit_code":%x}' \
-            timeout --kill-after=5s "${hang}s" jac build --output dist
-
-      - name: Serve the production artifact outside the source project
-        working-directory: ${{ runner.temp }}
-        run: |
-          cat /proc/uptime > "$RUNNER_TEMP/pack-smoke-performance/production-ready.start"
-          timeout 1200 jac run --port 8000 "${{ github.workspace }}/site/dist/site.jab" > /tmp/site-artifact.log 2>&1 &
-          echo "ARTIFACT_PID=$!" >> $GITHUB_ENV
-
-      - name: Wait for the production artifact
-        timeout-minutes: 1
-        run: |
-          for i in $(seq 1 60); do
-            if ! kill -0 "${{ env.ARTIFACT_PID }}" 2>/dev/null; then
-              cat /tmp/site-artifact.log
-              exit 1
-            fi
-            if curl -sf --max-time 10 http://localhost:8000/ -o /dev/null; then
-              cat /proc/uptime > "$RUNNER_TEMP/pack-smoke-performance/production-ready.ready"
-              exit 0
-            fi
-            sleep 5
-          done
-          cat /tmp/site-artifact.log
-          exit 1
-
-      - name: Browse the production artifact (same journey)
-        timeout-minutes: 15
-        run: bash scripts/site-browse-journey.sh http://localhost:8000
-
-      - name: Stop the production artifact
-        if: always()
-        run: |
-          jac browse close 2>/dev/null || true
-          if [ -n "${{ env.ARTIFACT_PID }}" ]; then
-            kill "${{ env.ARTIFACT_PID }}" 2>/dev/null || true
-            sleep 3
-            kill -9 "${{ env.ARTIFACT_PID }}" 2>/dev/null || true
-          fi
-          cat /tmp/site-artifact.log 2>/dev/null || true
-
-      # The other topology for the same site: `jac run --fleet` puts the
-      # gateway in front of one local process per service app, with the
-      # served app (`web`) as the fleet's root member owning the project
-      # root. The journey below is the same one the single-process lane just
-      # ran, so the two lanes assert the same site, including the closing
-      # console-error sweep.
-      - name: Start the site behind the fleet gateway
-        working-directory: jac/examples/jaclang_org
-        env:
-          JAC_DOCS_LOCAL: ${{ github.workspace }}
-        run: |
-          cat /proc/uptime > "$RUNNER_TEMP/pack-smoke-performance/fleet-ready.start"
-          timeout 1800 jac run --serve --fleet --port 8000 web \
-            > /tmp/site-ms.log 2>&1 &
-          MS_PID=$!
-          echo "MS_PID=$MS_PID" >> $GITHUB_ENV
-          echo "gateway starting with PID $MS_PID..."
-          sleep 10
-          if ! kill -0 $MS_PID 2>/dev/null; then
-            echo "Gateway process died during startup"
-            cat /tmp/site-ms.log
-            exit 1
-          fi
-
-      - name: Wait for the gateway to be ready
-        timeout-minutes: 4
-        run: |
-          for i in $(seq 1 90); do
-            if ! kill -0 ${{ env.MS_PID }} 2>/dev/null; then
-              echo "Gateway exited unexpectedly"
-              tail -100 /tmp/site-ms.log
-              exit 1
-            fi
-            if curl -sf --max-time 10 http://localhost:8000/health -o /dev/null; then
-              echo "gateway is ready (attempt $i)"
-              cat /proc/uptime > "$RUNNER_TEMP/pack-smoke-performance/fleet-ready.ready"
-              exit 0
-            fi
-            echo "Attempt $i/90: gateway not ready, waiting 15s..."
-            sleep 15
-          done
-          echo "Gateway failed to answer after 90 attempts"
-          tail -200 /tmp/site-ms.log
-          exit 1
-
-      - name: Browse the site through the gateway (full journey)
-        timeout-minutes: 20
-        env:
-          SITE_JOURNEY_ARTIFACTS: /tmp
-        run: bash scripts/site-browse-journey.sh http://localhost:8000
-
-      - name: Dump gateway and service thread stacks on failure
-        if: failure()
-        run: |
-          pip install py-spy >/dev/null 2>&1 || true
-          for p in $(pgrep -f "jac run"); do
-            echo "=== py-spy dump pid $p ==="
-            sudo env "PATH=$PATH" py-spy dump --pid "$p" --nonblocking || true
-          done
-
-      - name: Gateway and service logs
-        if: always()
-        run: |
-          echo "=== gateway ==="
-          tail -200 /tmp/site-ms.log || true
-          for f in jac/examples/jaclang_org/.jac/logs/*.log; do
-            echo "=== $f ==="
-            tail -80 "$f" || true
-          done
-
-      - name: Stop the fleet gateway
-        if: always()
-        run: |
-          jac browse close 2>/dev/null || true
-          if [ -n "${{ env.MS_PID }}" ]; then
-            kill ${{ env.MS_PID }} 2>/dev/null || true
-            sleep 5
-            kill -9 ${{ env.MS_PID }} 2>/dev/null || true
-          fi
-          pkill -f "jac run --serve --port 1" 2>/dev/null || true
-
-      - name: Upload site server logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: site-test-logs
-          path: /tmp/site-server.log
-          retention-days: 7
-
-      # Registration cost per served walker is invisible on a small app and
-      # dominates a large one, so the journeys above cannot see it. This app is
-      # generated, needs no dependencies, and is sized where a per-lookup
-      # resolution shows up as minutes rather than seconds.
-      - name: Generate a many-walker app
-        if: always()
-        env:
-          WALKERS: 400
-          MODULES: 10
-        run: |
-          APP="$RUNNER_TEMP/walker-scale"
-          rm -rf "$APP"
-          mkdir -p "$APP/mods"
-          printf '[project]\nname = "walkerscale"\nversion = "0.1.0"\n' > "$APP/jac.toml"
-          : > "$APP/main.jac"
-          per=$((WALKERS / MODULES))
-          for k in $(seq 0 $((MODULES - 1))); do
-            f="$APP/mods/m$k.jac"
-            : > "$f"
-            names=""
-            for i in $(seq 0 $((per - 1))); do
-              n="w_${k}_$i"
-              printf 'walker:pub %s {\n    can go with Root entry {\n        report 1;\n    }\n}\n\n' "$n" >> "$f"
-              names="$names$n, "
-            done
-            printf 'import mods.m%s;\nimport from mods.m%s { %s }\n' "$k" "$k" "${names%, }" >> "$APP/main.jac"
-          done
-          echo "generated $WALKERS walkers over $MODULES modules"
-
-      # First boot prepares the application; the phase below measures the
-      # restart that reuses it, which is what a redeploy and a worker respawn
-      # pay. Sequential on purpose: the prepare must finish before the timer.
-      - name: Prime the many-walker app
-        if: always()
-        timeout-minutes: 10
-        working-directory: ${{ runner.temp }}/walker-scale
-        run: |
-          timeout 540 jac run --serve --port 8211 main.jac > /tmp/walker-scale-cold.log 2>&1 &
-          PID=$!
-          for i in $(seq 1 108); do
-            kill -0 $PID 2>/dev/null || { echo "server exited during prepare"; tail -50 /tmp/walker-scale-cold.log; exit 1; }
-            curl -sf --max-time 10 -o /dev/null http://localhost:8211/healthz && break
-            sleep 5
-          done
-          curl -sf --max-time 10 -o /dev/null http://localhost:8211/healthz || { echo "not ready after prepare"; tail -50 /tmp/walker-scale-cold.log; exit 1; }
-          kill $PID 2>/dev/null || true
-          sleep 5
-          kill -9 $PID 2>/dev/null || true
-
-      # This wait is the phase's ceiling. Registration linear in the walker
-      # count answers in seconds here; the ceiling exists so that making it
-      # quadratic again fails the job instead of only annotating it.
-      - name: Restart the many-walker app
-        if: always()
-        timeout-minutes: 7
-        working-directory: ${{ runner.temp }}/walker-scale
-        run: |
-          cat /proc/uptime > "$RUNNER_TEMP/pack-smoke-performance/walker-scale-ready.start"
-          timeout 330 jac run --serve --port 8212 main.jac > /tmp/walker-scale-warm.log 2>&1 &
-          PID=$!
-          for i in $(seq 1 60); do
-            kill -0 $PID 2>/dev/null || { echo "server exited during restart"; tail -50 /tmp/walker-scale-warm.log; exit 1; }
-            if curl -sf --max-time 10 -o /dev/null http://localhost:8212/healthz; then
-              cat /proc/uptime > "$RUNNER_TEMP/pack-smoke-performance/walker-scale-ready.ready"
-              echo "restart answered /healthz on attempt $i"
-              grep -c "Restoring prepared application" /tmp/walker-scale-warm.log || true
-              kill $PID 2>/dev/null || true
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "::error::the many-walker app did not answer /healthz within the restart ceiling"
-          tail -80 /tmp/walker-scale-warm.log
-          kill -9 $PID 2>/dev/null || true
-          exit 1
-
-      # Wall time is compared with the median of main's last runs and only
-      # annotated; exit status, the hang ceilings and peak RSS are the gates.
-      # See .github/pack-smoke-performance.md.
-      - name: Report performance against main
-        timeout-minutes: 3
-        if: always()
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: jac run "$JAC_CI_PERF"
-
-      - name: Upload performance measurements
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pack-smoke-performance
-          path: ${{ runner.temp }}/pack-smoke-performance
-          retention-days: 30
-          if-no-files-found: error
-
-  test-jac-pack-eject:
-    needs: [changes, build-kit]
-    # Runs on the schedule, manual runs, and pull requests that touch its
-    # own paths. Was:
-    # if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.site_journey == 'true' }}
-    # Sealed-binary lane: the 6-hourly schedule and manual runs only (pull
-    # requests and pushes test on the dev kit). Was:
-    # if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && (needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true')) }}
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ci:sealed') }}
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          submodules: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - uses: oven-sh/setup-bun@v2
-      - uses: ./.github/actions/jac-kit
-        with:
-          sealed: "true"
-      - name: Install the C export toolchain
-        run: |
-          curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /usr/share/keyrings/llvm.asc >/dev/null
-          echo 'deb [signed-by=/usr/share/keyrings/llvm.asc] https://apt.llvm.org/noble/ llvm-toolchain-noble-22 main' | sudo tee /etc/apt/sources.list.d/llvm.list
-          sudo apt-get update
-          sudo apt-get install -y llvm-22-dev cmake
-      # This step carries test_c_backend.jac's coverage: test-runtime also
-      # discovers it but skips it there, having no LLVM 22 toolchain.
-      - name: Build the LLVM C backend
-        run: jac native build llvm-cbe
-      - name: Verify C backend comparisons and executable startup
-        run: jac test jac/tests/toolchains/test_c_backend.jac
-      - name: Scaffold and export the jaclang.org site
-        run: |
-          jac create site --awesome
-          cd site
-          jac build web --as source
-          test -f dist/source/project.json
-          test -s dist/source/applications/web/client/native/arena.c
-          test ! -e dist/source/applications/web/client/dist/arena.wasm
-      - name: Export the existing native arena replay fixture
-        run: |
-          cp jac/tests/compiler/backends/native/fixtures/arena_replay.jac site/core/site/game/arena_replay.jac
-          sed -i '/^import from sim /d' site/core/site/game/arena_replay.jac
-          cat >> site/archwire.jac <<'JAC'
-
-          graph import core.site.game {
-              sim ++> arena_replay { sim_tick, world_new }
-          }
-          JAC
-          cat >> site/jac.toml <<'TOML'
-          [apps.replay]
-          kind = "native-binary"
-          entry-point = "core.site.game.arena_replay"
-
-          [apps.replay.check.lint]
-          ignore = ["no-print"]
-          TOML
-          cd site
-          jac build replay --as source -o dist/replay
-      - name: Build the standalone tool image
-        run: docker build -t jac-source-tools .github/actions/polyglot-source
-      - name: Build and execute native C without Jac
-        run: |
-          docker run --rm -v "$PWD/site/dist/replay:/app" jac-source-tools \
-            sh -ec 'test -z "$(command -v jac)"; python build.py; applications/replay/main' > /tmp/source-replay.log 2>&1
-          cat > /tmp/source-replay.expected <<'EXPECTED'
-          0 0 100000 621189187
-          0 0 82000 1158027131
-          2 0 61883 332907100
-          2 0 16883 1958242580
-          2 0 12433 1715220132
-          2 0 27483 1923114171
-          EXPECTED
-          tail -6 /tmp/source-replay.log > /tmp/source-replay.actual
-          diff -u /tmp/source-replay.expected /tmp/source-replay.actual
-      - name: Build and serve the exported site without Jac
-        run: |
-          docker run -d --name jac-source-site -p 8000:8000 \
-            -v "$PWD/site/dist/source:/app" jac-source-tools sh -ec \
-            'test -z "$(command -v jac)"; python -m pip install -r requirements.txt; python build.py; exec python main.py --host 0.0.0.0 --port 8000'
-          for attempt in $(seq 1 450); do
-            if curl -fsS http://localhost:8000/healthz >/dev/null; then
-              exit 0
-            fi
-            test "$(docker inspect -f '{{.State.Running}}' jac-source-site)" = true || break
-            sleep 2
-          done
-          docker logs jac-source-site
-          exit 1
-      - name: Ensure Chromium is available
-        run: |
-          for browser in google-chrome google-chrome-stable chromium chromium-browser; do
-            if command -v "$browser" >/dev/null 2>&1; then exit 0; fi
-          done
-          sudo apt-get update
-          sudo apt-get install -y chromium-browser
-      - name: Browse the exported site through the shared journey
-        timeout-minutes: 15
-        env:
-          SITE_JOURNEY_ARTIFACTS: /tmp
-        run: bash scripts/site-browse-journey.sh http://localhost:8000
-      - name: Collect export logs
-        if: always()
-        run: |
-          docker logs jac-source-site > /tmp/source-site.log 2>&1 || true
-          docker rm -f jac-source-site || true
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: jac-pack-eject-logs
-          path: |
-            /tmp/source-*.log
-            /tmp/site-journey-failure.png
-          retention-days: 7
 
   # Body lives in _installer.yml so the nightly lane runs the same test
   # instead of a second copy of it. The PR lane lints install.sh; the nightly
@@ -2069,61 +827,6 @@ jobs:
     uses: ./.github/workflows/_installer.yml
     with:
       shellcheck: true
-
-  # The darwin native lane (sealed macOS kit + Mach-O / wasm-floor /
-  # libSystem-equivalence tests) lives in nightly.yml; see _macos-native.yml
-  # for why. It stays one label away here: add `macos` to a PR that touches
-  # Mach-O linking or the musl-vs-libSystem binding and it gates that PR like
-  # any other job. Not gated on the `native` path filter -- that filter fires
-  # on ordinary compiler churn, which is what put a 44-68 min leg on the
-  # critical path of every native PR to begin with.
-  macos-native:
-    needs: changes
-    # Turned off; macOS is built at release time.
-    # Restore:
-    # if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'macos')) }}
-    if: false
-    uses: ./.github/workflows/_macos-native.yml
-
-  test-managed-android:
-    needs: [changes, build-kit]
-    # Runs on the 6-hourly schedule and manual runs only. Was:
-    # if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
-    # Sealed-binary lane: the 6-hourly schedule and manual runs only (pull
-    # requests and pushes test on the dev kit). Was:
-    # if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ci:sealed') }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    env:
-      JAC_ACCEPT_ANDROID_LICENSES: "1"
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/jac-kit
-        with:
-          sealed: "true"
-      # Keep the small multiscreen fixture for focused dual-target tests; this
-      # lane packages the real JacYac mobile workspace with a fresh Android SDK.
-      - name: Build the JacYac release APK with a fresh managed Android SDK
-        run: |
-          set -euo pipefail
-          # The runner image ships its own SDK at ANDROID_HOME; point it at an
-          # empty directory so the managed one is provisioned from scratch.
-          export ANDROID_HOME="$RUNNER_TEMP/android-sdk"
-          export ANDROID_SDK_ROOT="$ANDROID_HOME"
-          cp -r jac/examples/jaclang_org "$RUNNER_TEMP/mobile-app"
-          printf '\n[client.react_native]\nrelease = true\nproject_dir = ".jac/mobile-rn"\n\n[toolchains]\nsystem = false\n' >> "$RUNNER_TEMP/mobile-app/jac.toml"
-          cd "$RUNNER_TEMP/mobile-app"
-          jac setup --toolchain android
-          jac build --platform android mobile
-          test -n "$(find .jac/mobile-rn/android/app/build/outputs/apk -name '*.apk' -print -quit)"
-      - name: Upload the generated APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: jacyac-android-apk
-          path: ${{ runner.temp }}/mobile-app/.jac/mobile-rn/android/app/build/outputs/apk/**/*.apk
-          if-no-files-found: error
-          retention-days: 7
 
   # Red on main while the latest finished release rehearsal
   # (release-rehearsal.yml, daily 03:00 Asia/Colombo) is failing, and on every
@@ -2167,25 +870,14 @@ jobs:
     needs:
       - changes
       - release-rehearsal
-      - build-kit
       - dev-kit
       - dev-precompile
-      - macos-native
       - jac-check
       - contribution-checks
-      - test-compiler
-      - test-runtime
-      - test-in-package-sealed
-      - test-client
-      - test-managed-android
-      - test-packages-and-docs
-      - test-scale
-      - test-scale-k8s
+      - test
       - test-native-aarch64
       - test-bootstrap
       - test-launcher-jac
-      - test-jac-pack-smoke
-      - test-jac-pack-eject
       - installer-test
     runs-on: ubuntu-latest
     permissions:
