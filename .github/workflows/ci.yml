@@ -57,6 +57,9 @@ permissions:
   contents: read
   actions: read
 
+env:
+  JAC_TEST_DURATIONS: "25"
+
 # A lane is sealed or rerouted once, by its jac-kit step's `sealed` input:
 # sealing edits the checkout, so a per-step choice could not undo it.
 

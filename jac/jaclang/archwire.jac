@@ -319,6 +319,7 @@ graph import {
         server.server.JacAPIServer.serve_background { cpu_quota },
         server.settings { cpu_quota, memory_headroom_bytes },
         testing.test_runner { WorkPool, should_retire as _should_retire },
+        testing.test_runner.Reporter.summarize { env_int },
         testing.test_runner._test_retire { env_int },
         testing.test_runner._test_rss_cap_mb { env_int },
         testing.test_runner.resolve_jobs { resolve_jobs as _resolve_pool_jobs },

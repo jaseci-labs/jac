@@ -805,6 +805,7 @@ impl Reporter.postinit -> None {
     }
     self.counts = {PASSED: 0, FAILED: 0, ERROR: 0, SKIPPED: 0, CRASHED: 0};
     self.failures = [];
+    self.file_times = {};
 }
 
 impl Reporter.record(outcome: TestOutcome) -> None {
@@ -836,6 +837,10 @@ impl Reporter.record(outcome: TestOutcome) -> None {
 
 impl Reporter.file_done -> None {
     self.files_done += 1;
+}
+
+impl Reporter.file_time(filepath: str, seconds: float) -> None {
+    self.file_times[filepath] = seconds;
 }
 
 impl Reporter._pct_text -> str {
@@ -896,6 +901,16 @@ impl Reporter.summarize(elapsed: float) -> int {
         parts.append("no tests ran");
     }
     self.stream.write(f"\n{', '.join(parts)} in {elapsed:.2f}s\n");
+    slowest = env_int("JAC_TEST_DURATIONS", 0);
+    if slowest > 0 and self.file_times {
+        ranked = sorted(
+            [(secs, path) for (path, secs) in self.file_times.items()], reverse=True
+        );
+        self.stream.write(f"\nslowest {min(slowest, len(ranked))} files:\n");
+        for (secs, path) in ranked[:slowest] {
+            self.stream.write(f"  {secs:8.1f}s  {os.path.relpath(path)}\n");
+        }
+    }
     self.stream.flush();
     return self.failure_count();
 }
@@ -1131,8 +1146,10 @@ impl _run_plan(
     isolate: (set[str] | None),
     inline: bool
 ) -> None {
-    def job(request: dict[(str, any)]) -> list[dict[(str, any)]] {
+    import time;
+    def job(request: dict[(str, any)]) -> dict[(str, any)] {
         _CRASH_LOG[0] = str(request.get("crashlog", ""));
+        started = time.perf_counter();
         outcomes = run_file(
             request["path"],
             selector,
@@ -1141,7 +1158,8 @@ impl _run_plan(
             maxfail=maxfail,
             seen_failures=int(request.get("seen", 0))
         );
-        return [o.to_wire() for o in outcomes];
+        wall = time.perf_counter() - started;
+        return {"outcomes": [o.to_wire() for o in outcomes], "wall": wall};
     }
     def request_extra(idx: int, path: str) -> dict[(str, any)] {
         return {"explicit": path in plan.explicit, "seen": reporter.failure_count()};
@@ -1173,7 +1191,9 @@ impl _run_plan(
             );
             return;
         }
-        for item in (record.get("result") or []) {
+        result = record.get("result") or {};
+        reporter.file_time(path, float(result.get("wall", 0.0)));
+        for item in (result.get("outcomes") or []) {
             reporter.record(TestOutcome.from_wire(item));
         }
     }
