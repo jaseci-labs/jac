@@ -27,7 +27,7 @@ import from jaclang.compiler.frontend.diagnostic_utils { resolve_diagnostic_toke
 import from jaclang.compiler.tools.jac_formatter_pass { unparse_module }
 import from jaclang.project.config { set_config }
 import from jaclang.runtime.builtin { printgraph }
-import from jaclang.testing.test_runner { _build_selector }
+import from jaclang.testing.test_runner { Reporter, _build_selector }
 
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      _template_state = {"initialized": False},
@@ -726,6 +726,35 @@ test "test_name matches every word literally, including and/or/not" {
     assert by_filter is not None;
     assert by_filter.matches("native command loads status");
     assert not by_filter.matches("native command loads and reports status");
+}
+
+test "JAC_TEST_DURATIONS lists the N slowest files, slowest first" {
+    def summary(limit: (str | None)) -> str {
+        out = io.StringIO();
+        reporter = Reporter(stream=out);
+        reporter.file_time("fast.jac", 1.0);
+        reporter.file_time("slow.jac", 9.0);
+        reporter.file_time("mid.jac", 4.0);
+        prior = os.environ.pop("JAC_TEST_DURATIONS", None);
+        if limit is not None {
+            os.environ["JAC_TEST_DURATIONS"] = limit;
+        }
+        try {
+            reporter.summarize(0.0);
+        } finally {
+            os.environ.pop("JAC_TEST_DURATIONS", None);
+            if prior is not None {
+                os.environ["JAC_TEST_DURATIONS"] = prior;
+            }
+        }
+        return out.getvalue();
+    }
+    assert "slowest" not in summary(None);
+    assert "slowest" not in summary("0");
+    listing = summary("2");
+    assert "slowest 2 files" in listing;
+    assert listing.index("slow.jac") < listing.index("mid.jac");
+    assert "fast.jac" not in listing;
 }
 
 
