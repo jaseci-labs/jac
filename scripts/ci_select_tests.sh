@@ -41,18 +41,40 @@ tests_under() {
   done
 }
 
-# An archwire edit stays test-scoped when every changed line is blank,
-# punctuation only, or names a test module.
-archwire_test_only() {
+# Module names on the changed lines of an archwire.jac edit, with imported
+# symbol lists ({ ... }) dropped. Blank and punctuation-only lines name none.
+archwire_modules() {
   git -C "$root" diff --unified=0 "$1" "$2" -- jac/jaclang/archwire.jac |
     awk '/^(\+\+\+|---)/ { next }
          /^[+-]/ {
            line = substr($0, 2)
-           if (line ~ /^[[:space:][:punct:]]*$/) next
-           if (line ~ /test/) next
-           bad = 1
-         }
-         END { exit bad }'
+           gsub(/\{[^}]*\}/, " ", line)
+           sub(/\{.*/, " ", line)
+           n = split(line, tok, /[^A-Za-z0-9_.]+/)
+           for (i = 1; i <= n; i++) if (tok[i] != "") print tok[i]
+         }'
+}
+
+# The tests an archwire edit can reach. Every module named on a changed line
+# must resolve only to files inside a tests tree: a test module selects
+# itself, a test helper selects the tests of its tree. Anything else -- a
+# symbol line, a source module, a keyword, a name with no file -- fails, and
+# the caller picks the full suite.
+archwire_tests() {
+  local mod leaf files f
+  while IFS= read -r mod; do
+    leaf=${mod##*.}
+    files=$(git -C "$root" ls-files -- "*/$leaf.jac")
+    [ -n "$files" ] || return 1
+    while IFS= read -r f; do
+      in_test_tree "$f" || return 1
+      if is_test_name "$f"; then
+        printf '%s\n' "$f"
+      else
+        tests_under "$(dirname "$f")"
+      fi
+    done <<<"$files"
+  done < <(archwire_modules "$1" "$2")
 }
 
 # Tests that a fixture change can reach: test files naming the fixture's stem,
@@ -74,23 +96,29 @@ fixture_tests() {
 }
 
 scope() {
-  local base=$1 head=$2 status path rest selected=""
-  while IFS=$'\t' read -r status path rest; do
-    [ -n "$path" ] || continue
-    case "$status" in R*) path=$rest ;; esac
-    case "$path" in
-      release_notes/*) continue ;;
-      jac/jaclang/archwire.jac)
-        if archwire_test_only "$base" "$head"; then continue; fi
-        echo "scope=full"; return ;;
-    esac
-    if under_fixtures "$path"; then
-      selected+=$(fixture_tests "$path")$'\n'
-    elif is_test_name "$path"; then
-      if [ -e "$root/$path" ]; then selected+="$path"$'\n'; fi
-    else
-      echo "scope=full"; return
-    fi
+  local base=$1 head=$2 status old new path wired selected=""
+  while IFS=$'\t' read -r status old new; do
+    [ -n "$old" ] || continue
+    # A rename is judged on both sides: moving source into a tests tree
+    # still removes it from where it was.
+    for path in "$old" ${new:+"$new"}; do
+      case "$path" in
+        release_notes/*) continue ;;
+        jac/jaclang/archwire.jac)
+          if wired=$(archwire_tests "$base" "$head"); then
+            selected+="$wired"$'\n'
+            continue
+          fi
+          echo "scope=full"; return ;;
+      esac
+      if under_fixtures "$path"; then
+        selected+=$(fixture_tests "$path")$'\n'
+      elif is_test_name "$path"; then
+        if [ -e "$root/$path" ]; then selected+="$path"$'\n'; fi
+      else
+        echo "scope=full"; return
+      fi
+    done
   done < <(git -C "$root" diff --name-status -M "$base" "$head")
   echo "scope=tests"
   printf '%s' "$selected" | awk 'NF && !seen[$0]++' | while IFS= read -r f; do
@@ -116,8 +144,9 @@ filter() {
     for p in "${skipped[@]+"${skipped[@]}"}"; do
       if [ "$abs" = "$p" ] || [[ "$abs" == "$p"/* ]]; then hit=""; break; fi
     done
-    [ -n "$hit" ] && realpath -m --relative-to="$PWD" "$abs"
+    if [ -n "$hit" ]; then realpath -m --relative-to="$PWD" "$abs"; fi
   done
+  return 0
 }
 
 case "${1:-}" in
