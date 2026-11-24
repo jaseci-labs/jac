@@ -17,6 +17,7 @@ printf 'fetch\n' > jac/bootstrap/fetch_pbs.zig
 printf '{}\n' > jac/bootstrap/pins.json
 printf 'shim\n' > jac/native/shim.cpp
 printf 'dependencies\n' > jac/build.zig.zon
+printf '[project]\nversion = "1.0.0"\n\n[check]\nexclude = ["a"]\n' > jac.toml
 git add .
 git commit -qm seed
 keys() { bash scripts/ci_cache_keys.sh; }
@@ -115,5 +116,17 @@ for input in client/js_runtime.jac compiler/backends/native/floors.jac \
   after=$(keys)
   changed devassets; same python
 done
+
+before=$after
+printf '[project]\nversion = "1.0.0"\n\n[check]\nexclude = ["a", "b"]\n' > jac.toml
+commit toml-settings
+after=$(keys)
+same devbinary; changed binary
+
+before=$after
+printf '[project]\nversion = "1.0.1"\n\n[check]\nexclude = ["a", "b"]\n' > jac.toml
+commit toml-version
+after=$(keys)
+changed devbinary
 
 echo 'CI cache mutation tests passed'
