@@ -993,9 +993,6 @@ impl cached_client_artifact(full_target: str) -> (ClientArtifact | None) {
 }
 
 impl client_artifact_current(artifact: ClientArtifact) -> bool {
-    import from jaclang.compiler.backends.es.backends.registry {
-        resolve_active_backend
-    }
     return artifact.framework == resolve_active_backend().name()
         and JacCompiler._client_deps_fresh(artifact);
 }

@@ -4660,12 +4660,16 @@ graph import client.targets.react_native {
 graph import compiler {
     backends.es ++> tools.lang_tools { es_node_to_dict }
     backends.es --> tests.xbackend_equiv { EsastGenPass }
-    backends.es.backends.registry ++> driver.build_services.CompilerBuildServices.client_runtime_basename {
-        resolve_active_backend,
-        resolve_framework_backend
+    backends.es.backends.registry ++> [
+        driver.build_services.CompilerBuildServices.client_runtime_basename {
+            resolve_active_backend,
+            resolve_framework_backend
+        },
+        driver.compiler.client_artifact_current { resolve_active_backend },
+    ]
+    backends.es.backends.registry --> driver.unit_products.client_artifact_of {
+        resolve_active_backend
     }
-    backends.es.backends.registry --> driver.compiler.client_artifact_current
-        | driver.unit_products.client_artifact_of { resolve_active_backend }
     backends.es.es_unparse ++> tools.lang_tools { es_to_js }
     backends.es.es_unparse --> [
         driver.unit_products.client_artifact_of { es_to_js_with_map },
