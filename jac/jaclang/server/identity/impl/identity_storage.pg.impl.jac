@@ -32,9 +32,8 @@ glob _PG_IDENTITY_SCHEMA: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_identity_lookups_user
         ON identity_lookups (user_id)
     """
-     ];
-
-glob _PG_PROVISIONED_WHERE: str = """
+     ],
+     _PG_PROVISIONED_WHERE: str = """
           AND COALESCE(u.doc->'identities', '[]'::jsonb) = '[]'::jsonb
           AND COALESCE(u.doc->'credentials', '[]'::jsonb) = '[]'::jsonb
           AND NOT EXISTS (SELECT 1 FROM sso_lookups s WHERE s.user_id = u.user_id)
