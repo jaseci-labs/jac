@@ -103,7 +103,7 @@ scope() {
     # still removes it from where it was.
     for path in "$old" ${new:+"$new"}; do
       case "$path" in
-        release_notes/*) continue ;;
+        release_notes/* | .github/* | scripts/ci_select_tests.sh | scripts/test_ci_select_tests.sh) continue ;;
         jac/jaclang/archwire.jac)
           if wired=$(archwire_tests "$base" "$head"); then
             selected+="$wired"$'\n'
