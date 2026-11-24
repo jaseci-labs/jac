@@ -329,8 +329,8 @@ def wired_lines(
             targets.setdefault(m.group(1), (f_rel, m.group(2)));
         }
     }
-    for wire in spec.consumer_wires(module) {
-        scope = ".".join(spec.consumer_scope(module, wire));
+    for (wire, scopes) in spec.consumer_wires(module) {
+        scope = ".".join(scopes[0]);
         dest = head_rel;
         body = module_text;
         best = -1;
