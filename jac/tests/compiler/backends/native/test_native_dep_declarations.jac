@@ -160,10 +160,11 @@ def _plan_recording(
     return (prog, plan, seen);
 }
 
-test "a one-file rebuild types its imports' declarations and leaves their bodies alone" {
+test "a one-file rebuild types its imports' declarations, and analyses whole a dependency whose generic body it instantiates" {
     root_dir = _project();
     user = os.path.realpath(os.path.join(root_dir, "user.jac"));
     shapes = os.path.realpath(os.path.join(root_dir, "shapes.jac"));
+    pick = os.path.realpath(os.path.join(root_dir, "pick.jac"));
     (prog, plan) = _plan_for(root_dir);
     cold_bitcode = prog.native_units().bitcode_for(user, _opts());
     assert cold_bitcode is not None;
@@ -172,30 +173,22 @@ test "a one-file rebuild types its imports' declarations and leaves their bodies
     }
 
     _touch(user);
-    (warm, warm_plan, seen) = _plan_recording(root_dir, ["y", "half_of", "total"]);
+    (warm, warm_plan, seen) = _plan_recording(
+        root_dir, ["y", "half_of", "total", "chosen"]
+    );
     assert warm.native_units().compiled_paths == [user] , warm.native_units().compiled_paths;
     facts = seen.get(shapes);
     assert facts is not None , sorted(seen);
     assert facts.decl_types and not facts.whole , "shapes was analysed whole";
     assert facts.typed == {"y": True, "half_of": False, "total": False} , facts.typed;
+    picked = seen.get(pick);
+    assert picked is not None , sorted(seen);
+    assert picked.whole;
+    assert picked.typed == {"chosen": True} , picked.typed;
     assert warm.native_units().bitcode_for(user, _opts()) == cold_bitcode , "the rebuilt unit lowered differently";
     if _can_link_host() {
         assert _run(warm_plan, root_dir) == "4.75";
     }
-}
-
-test "a dependency whose generic body the importer instantiates is analysed whole" {
-    root_dir = _project();
-    user = os.path.realpath(os.path.join(root_dir, "user.jac"));
-    pick = os.path.realpath(os.path.join(root_dir, "pick.jac"));
-    _plan_for(root_dir);
-    _touch(user);
-    (warm, _, seen) = _plan_recording(root_dir, ["chosen"]);
-    assert warm.native_units().compiled_paths == [user] , warm.native_units().compiled_paths;
-    facts = seen.get(pick);
-    assert facts is not None , sorted(seen);
-    assert facts.whole;
-    assert facts.typed == {"chosen": True} , facts.typed;
 }
 
 test "a field added to an imported archetype rebuilds the unit that lays it out" {
