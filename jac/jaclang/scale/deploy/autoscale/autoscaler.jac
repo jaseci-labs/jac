@@ -92,7 +92,7 @@ class Autoscaler {
     def apply(self: Autoscaler, spec: AutoscalerSpec) -> bool;
     def destroy(self: Autoscaler, app_name: str, namespace: str);
     def destroy_collection(self: Autoscaler, namespace: str, label_selector: str);
-    def preflight(self: Autoscaler) -> list[str];
+    def preflight(self: Autoscaler, namespace: str) -> list[str];
     def read_workload(
         self: Autoscaler,
         scale_target_name: str,
