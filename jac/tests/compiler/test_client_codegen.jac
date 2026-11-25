@@ -122,9 +122,11 @@ test "client import local jac module gets relative path" {
     with TemporaryDirectory() as tmpdir {
         (Path(tmpdir) / "jac.toml").write_text('[project]\nkind = "js-package"\n');
         local_module = Path(tmpdir) / "mymodule.jac";
-        local_module.write_text("def Helper() -> int { return 42; }");
+        local_module.write_text(
+            "def Helper() -> int { return 42; }\n\nclass Oops(Exception) {}"
+        );
         (Path(tmpdir) / "other.jac").write_text(
-            "def Helper() -> JsxElement { return <p />; }"
+            "def Helper() -> JsxElement { return <p />; }\n\nclass Oops(Exception) {}"
         );
         # main.impl/ has its own mymodule, so its import is a different file.
         (Path(tmpdir) / "main.impl").mkdir();
@@ -137,7 +139,7 @@ test "client import local jac module gets relative path" {
         main_file = Path(tmpdir) / "main.jac";
         # third's import comes first, but the module-level Helper keeps its name.
         main_file.write_text(
-            "def:pub third() -> JsxElement {\n    import from other { Helper }\n    return <div>{Helper()}<Helper /></div>;\n}\n\nimport from mymodule { Helper }\n\ndef:pub app() -> int {\n    return Helper();\n}\n\ndef:pub twice() -> int;\n\ndef:pub fourth() -> int;\n"
+            "def:pub third() -> JsxElement {\n    import from other { Helper }\n    import from other { Oops }\n    try {\n        raise Oops();\n    } except Oops {\n        x = 1;\n    }\n    match Oops() {\n        case Oops():\n            x = 2;\n    }\n    return <div>{Helper()}<Helper /></div>;\n}\n\nimport from mymodule { Helper, Oops }\n\ndef:pub app() -> int {\n    return Helper();\n}\n\ndef:pub twice() -> int;\n\ndef:pub fourth() -> int;\n"
         );
         # The annex repeats the import; one module in JS, so it must bind once (#10756).
         (Path(tmpdir) / "main.impl.jac").write_text(
@@ -161,6 +163,8 @@ test "client import local jac module gets relative path" {
             if src == "other"
         ][0];
         assert f"{other}()" in js and f"__jacJsx({other}," in js , js;
+        # except and case patterns check the function's Oops, not the module's.
+        assert js.count("instanceof Oops$1") == 2 and "instanceof Oops)" not in js , js;
     }
 }
 
