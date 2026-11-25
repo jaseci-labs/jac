@@ -1,3 +1,14 @@
+impl _append_joined(
+    out: list[uni.UniNode], items: Sequence[uni.UniNode], owner: uni.UniNode, sep: Tok
+) -> None {
+    for (idx, item) in enumerate(items) {
+        if idx > 0 {
+            out.append(owner.gen_token(sep));
+        }
+        out.append(item);
+    }
+}
+
 impl NormalizePass.enter_sub_tag with uni.SubTag entry {
     here.set_kids(nodes=[here.gen_token(Tok.COLON), here.tag]);
 }
@@ -76,12 +87,7 @@ impl NormalizePass.enter_type_alias with uni.TypeAlias entry {
     new_kid.append(here.name);
     if here.type_params {
         new_kid.append(here.gen_token(Tok.LSQUARE));
-        for idx in range(len(here.type_params)) {
-            new_kid.append(here.type_params[idx]);
-            if idx < len(here.type_params) - 1 {
-                new_kid.append(here.gen_token(Tok.COMMA));
-            }
-        }
+        _append_joined(new_kid, here.type_params, here, Tok.COMMA);
         new_kid.append(here.gen_token(Tok.RSQUARE));
     }
     new_kid.append(
@@ -121,12 +127,7 @@ impl NormalizePass.enter_test with uni.Test entry {
     }
     if here.decorators {
         new_kid.append(here.gen_token(Tok.DECOR_OP));
-        for idx in range(len(here.decorators)) {
-            new_kid.append(here.decorators[idx]);
-            if idx < len(here.decorators) - 1 {
-                new_kid.append(here.gen_token(Tok.DECOR_OP));
-            }
-        }
+        _append_joined(new_kid, here.decorators, here, Tok.DECOR_OP);
         new_kid.append(here.gen_token(Tok.WS));
     }
     new_kid.append(here.gen_token(Tok.KW_TEST));
@@ -183,12 +184,7 @@ impl NormalizePass.enter_import with uni.Import entry {
         new_kid.append(here.from_loc);
         new_kid.append(here.gen_token(Tok.LBRACE));
     }
-    for idx in range(len(here.items)) {
-        new_kid.append(here.items[idx]);
-        if idx < len(here.items) - 1 {
-            new_kid.append(here.gen_token(Tok.COMMA));
-        }
-    }
+    _append_joined(new_kid, here.items, here, Tok.COMMA);
     if here.from_loc {
         new_kid.append(here.gen_token(Tok.RBRACE));
     } else {
@@ -203,12 +199,7 @@ impl NormalizePass.enter_module_path with uni.ModulePath entry {
         new_kid.append(here.gen_token(Tok.DOT));
     }
     if here.path {
-        for idx in range(len(here.path)) {
-            new_kid.append(here.path[idx]);
-            if idx < len(here.path) - 1 {
-                new_kid.append(here.gen_token(Tok.DOT));
-            }
-        }
+        _append_joined(new_kid, here.path, here, Tok.DOT);
     }
     if here.alias {
         new_kid.append(here.gen_token(Tok.KW_AS));
@@ -237,12 +228,7 @@ impl NormalizePass.enter_archetype with uni.Archetype entry {
     }
     if here.decorators {
         new_kid.append(here.gen_token(Tok.DECOR_OP));
-        for idx in range(len(here.decorators)) {
-            new_kid.append(here.decorators[idx]);
-            if idx < len(here.decorators) - 1 {
-                new_kid.append(here.gen_token(Tok.DECOR_OP));
-            }
-        }
+        _append_joined(new_kid, here.decorators, here, Tok.DECOR_OP);
     }
     if here.is_async {
         new_kid.append(here.gen_token(Tok.KW_ASYNC));
@@ -254,24 +240,14 @@ impl NormalizePass.enter_archetype with uni.Archetype entry {
     new_kid.append(here.name);
     if here.type_params {
         new_kid.append(here.gen_token(Tok.LSQUARE));
-        for idx in range(len(here.type_params)) {
-            new_kid.append(here.type_params[idx]);
-            if idx < len(here.type_params) - 1 {
-                new_kid.append(here.gen_token(Tok.COMMA));
-            }
-        }
+        _append_joined(new_kid, here.type_params, here, Tok.COMMA);
         new_kid.append(here.gen_token(Tok.RSQUARE));
     }
     inherit: list[uni.Expr | uni.KWPair] = list(here.base_classes)
         + list(here.keywords);
     if inherit {
         new_kid.append(here.gen_token(Tok.LPAREN));
-        for idx in range(len(inherit)) {
-            new_kid.append(inherit[idx]);
-            if idx < len(inherit) - 1 {
-                new_kid.append(here.gen_token(Tok.COMMA));
-            }
-        }
+        _append_joined(new_kid, inherit, here, Tok.COMMA);
         new_kid.append(here.gen_token(Tok.RPAREN));
     }
     if here.body {
@@ -306,21 +282,11 @@ impl NormalizePass.enter_impl_def with uni.ImplDef entry {
         }
     }
     new_kid.append(here.gen_token(Tok.KW_IMPL));
-    for idx in range(len(here.target)) {
-        new_kid.append(here.target[idx]);
-        if idx < len(here.target) - 1 {
-            new_kid.append(here.gen_token(Tok.DOT));
-        }
-    }
+    _append_joined(new_kid, here.target, here, Tok.DOT);
     if here.spec {
         if isinstance(here.spec, Sequence) {
             new_kid.append(here.gen_token(Tok.LPAREN));
-            for idx in range(len(here.spec)) {
-                new_kid.append(here.spec[idx]);
-                if idx < len(here.spec) - 1 {
-                    new_kid.append(here.gen_token(Tok.COMMA));
-                }
-            }
+            _append_joined(new_kid, here.spec, here, Tok.COMMA);
             new_kid.append(here.gen_token(Tok.RPAREN));
         } else {
             new_kid.append(here.spec);
@@ -345,12 +311,7 @@ impl NormalizePass.enter_impl_def with uni.ImplDef entry {
 
 impl NormalizePass.enter_sem_def with uni.SemDef entry {
     new_kid: list[uni.UniNode] = [here.gen_token(Tok.KW_SEM), ];
-    for idx in range(len(here.target)) {
-        new_kid.append(here.target[idx]);
-        if idx < len(here.target) - 1 {
-            new_kid.append(here.gen_token(Tok.DOT));
-        }
-    }
+    _append_joined(new_kid, here.target, here, Tok.DOT);
     new_kid.append(here.gen_token(Tok.EQ));
     new_kid.append(here.value);
     new_kid.append(here.gen_token(Tok.SEMI));
@@ -361,12 +322,7 @@ impl NormalizePass.enter_enum with uni.Enum entry {
     new_kid: list[uni.UniNode] = [];
     if here.decorators {
         new_kid.append(here.gen_token(Tok.DECOR_OP));
-        for idx in range(len(here.decorators)) {
-            new_kid.append(here.decorators[idx]);
-            if idx < len(here.decorators) - 1 {
-                new_kid.append(here.gen_token(Tok.DECOR_OP));
-            }
-        }
+        _append_joined(new_kid, here.decorators, here, Tok.DECOR_OP);
     }
     if here.doc {
         new_kid.append(here.doc);
@@ -381,12 +337,7 @@ impl NormalizePass.enter_enum with uni.Enum entry {
         new_kid.append(here.value_type);
     } elif here.base_classes {
         new_kid.append(here.gen_token(Tok.LPAREN));
-        for idx in range(len(here.base_classes)) {
-            new_kid.append(here.base_classes[idx]);
-            if idx < len(here.base_classes) - 1 {
-                new_kid.append(here.gen_token(Tok.COMMA));
-            }
-        }
+        _append_joined(new_kid, here.base_classes, here, Tok.COMMA);
         new_kid.append(here.gen_token(Tok.RPAREN));
     }
     if here.body {
@@ -422,12 +373,7 @@ impl NormalizePass.enter_ability with uni.Ability entry {
     }
     if here.decorators {
         new_kid.append(here.gen_token(Tok.DECOR_OP));
-        for idx in range(len(here.decorators)) {
-            new_kid.append(here.decorators[idx]);
-            if idx < len(here.decorators) - 1 {
-                new_kid.append(here.gen_token(Tok.DECOR_OP));
-            }
-        }
+        _append_joined(new_kid, here.decorators, here, Tok.DECOR_OP);
         new_kid.append(here.gen_token(Tok.WS));
     }
     if here.is_comptime {
@@ -622,20 +568,6 @@ impl NormalizePass._normalize_cond_block(
     nd.set_kids(nodes=new_kid);
 }
 
-impl NormalizePass._normalize_name_list_stmt(
-    nd: (uni.SemDef | uni.ImplDef), op: Tok
-) -> None {
-    new_kid: list[uni.UniNode] = [nd.gen_token(op)];
-    for idx in range(len(nd.target)) {
-        new_kid.append(nd.target[idx]);
-        if idx < len(nd.target) - 1 {
-            new_kid.append(nd.gen_token(Tok.COMMA));
-        }
-    }
-    new_kid.append(nd.gen_token(Tok.SEMI));
-    nd.set_kids(nodes=new_kid);
-}
-
 impl NormalizePass.enter_if_stmt with uni.IfStmt entry {
     if here.__class__ is not uni.IfStmt {
         return;
@@ -818,12 +750,7 @@ impl NormalizePass.enter_with_stmt with uni.WithStmt entry {
         new_kid.append(here.gen_token(Tok.KW_ASYNC));
     }
     new_kid.append(here.gen_token(Tok.KW_WITH));
-    for idx in range(len(here.exprs)) {
-        new_kid.append(here.exprs[idx]);
-        if idx < len(here.exprs) - 1 {
-            new_kid.append(here.gen_token(Tok.COMMA));
-        }
-    }
+    _append_joined(new_kid, here.exprs, here, Tok.COMMA);
     new_kid.append(here.gen_token(Tok.LBRACE));
     for stmt in here.body {
         new_kid.append(stmt);
@@ -956,12 +883,7 @@ impl NormalizePass.enter_assignment with uni.Assignment entry {
     if here.is_comptime and not isinstance(here.parent, uni.GlobalVars) {
         new_kid.append(here.gen_token(Tok.KW_COMPTIME));
     }
-    for idx in range(len(here.target)) {
-        new_kid.append(here.target[idx]);
-        if idx < len(here.target) - 1 {
-            new_kid.append(here.gen_token(Tok.EQ));
-        }
-    }
+    _append_joined(new_kid, here.target, here, Tok.EQ);
     if here.type_tag {
         new_kid.append(here.type_tag);
     }
@@ -1099,12 +1021,7 @@ impl NormalizePass.enter_formatted_value with uni.FormattedValue entry {
 
 impl NormalizePass.enter_list_val with uni.ListVal entry {
     new_kid: list[uni.UniNode] = [here.gen_token(Tok.LSQUARE)];
-    for idx in range(len(here.values)) {
-        new_kid.append(here.values[idx]);
-        if idx < len(here.values) - 1 {
-            new_kid.append(here.gen_token(Tok.COMMA));
-        }
-    }
+    _append_joined(new_kid, here.values, here, Tok.COMMA);
     new_kid.append(here.gen_token(Tok.RSQUARE));
     here.set_kids(nodes=new_kid);
 }
@@ -1112,12 +1029,7 @@ impl NormalizePass.enter_list_val with uni.ListVal entry {
 impl NormalizePass.enter_set_val with uni.SetVal entry {
     new_kid: list[uni.UniNode] = [here.gen_token(Tok.LBRACE)];
     values = here.values if here.values is not None else [];
-    for idx in range(len(values)) {
-        new_kid.append(values[idx]);
-        if idx < len(values) - 1 {
-            new_kid.append(here.gen_token(Tok.COMMA));
-        }
-    }
+    _append_joined(new_kid, values, here, Tok.COMMA);
     new_kid.append(here.gen_token(Tok.RBRACE));
     here.set_kids(nodes=new_kid);
 }
@@ -1140,12 +1052,7 @@ impl NormalizePass.enter_tuple_val with uni.TupleVal entry {
     if not in_ret_type {
         new_kid.append(here.gen_token(Tok.LPAREN));
     }
-    for idx in range(len(here.values)) {
-        new_kid.append(here.values[idx]);
-        if idx < len(here.values) - 1 {
-            new_kid.append(here.gen_token(Tok.COMMA));
-        }
-    }
+    _append_joined(new_kid, here.values, here, Tok.COMMA);
     if len(here.values) == 1 {
         new_kid.append(here.gen_token(Tok.COMMA));
     }
@@ -1722,23 +1629,13 @@ impl NormalizePass.enter_match_arch with uni.MatchArch entry {
     new_kid: list[uni.UniNode] = [here.name];
     new_kid.append(here.gen_token(Tok.LPAREN));
     if here.arg_patterns {
-        for idx in range(len(here.arg_patterns)) {
-            new_kid.append(here.arg_patterns[idx]);
-            if idx < len(here.arg_patterns) - 1 {
-                new_kid.append(here.gen_token(Tok.COMMA));
-            }
-        }
+        _append_joined(new_kid, here.arg_patterns, here, Tok.COMMA);
         if here.kw_patterns {
             new_kid.append(here.gen_token(Tok.COMMA));
         }
     }
     if here.kw_patterns {
-        for idx in range(len(here.kw_patterns)) {
-            new_kid.append(here.kw_patterns[idx]);
-            if idx < len(here.kw_patterns) - 1 {
-                new_kid.append(here.gen_token(Tok.COMMA));
-            }
-        }
+        _append_joined(new_kid, here.kw_patterns, here, Tok.COMMA);
     }
     new_kid.append(here.gen_token(Tok.RPAREN));
     here.set_kids(nodes=new_kid);
@@ -1777,12 +1674,7 @@ impl NormalizePass._wiring_payload_kids(
         return;
     }
     new_kid.append(owner.gen_token(Tok.LBRACE));
-    for idx in range(len(items)) {
-        new_kid.append(items[idx]);
-        if idx < len(items) - 1 {
-            new_kid.append(owner.gen_token(Tok.COMMA));
-        }
-    }
+    _append_joined(new_kid, items, owner, Tok.COMMA);
     new_kid.append(owner.gen_token(Tok.RBRACE));
 }
 
@@ -1817,12 +1709,7 @@ impl NormalizePass.enter_import_wire with uni.ImportWire entry {
 
 impl NormalizePass.enter_wire_target with uni.WireTarget entry {
     new_kid: list[uni.UniNode] = [];
-    for idx in range(len(here.consumers)) {
-        new_kid.append(here.consumers[idx]);
-        if idx < len(here.consumers) - 1 {
-            new_kid.append(here.gen_token(Tok.BW_OR));
-        }
-    }
+    _append_joined(new_kid, here.consumers, here, Tok.BW_OR);
     if not here.is_module_form {
         self._wiring_payload_kids(here.items, False, new_kid, here);
     }
@@ -1835,19 +1722,9 @@ impl NormalizePass.enter_import_rule with uni.ImportRule entry {
         here.name,
         here.gen_token(Tok.COLON)
     ];
-    for idx in range(len(here.sources)) {
-        new_kid.append(here.sources[idx]);
-        if idx < len(here.sources) - 1 {
-            new_kid.append(here.gen_token(Tok.BW_OR));
-        }
-    }
+    _append_joined(new_kid, here.sources, here, Tok.BW_OR);
     new_kid.append(here.gen_token(Tok.ARROW_R));
-    for idx in range(len(here.targets)) {
-        new_kid.append(here.targets[idx]);
-        if idx < len(here.targets) - 1 {
-            new_kid.append(here.gen_token(Tok.BW_OR));
-        }
-    }
+    _append_joined(new_kid, here.targets, here, Tok.BW_OR);
     self._wiring_payload_kids(here.items, here.is_open, new_kid, here);
     here.set_kids(nodes=new_kid);
 }

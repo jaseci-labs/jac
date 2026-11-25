@@ -530,7 +530,7 @@ test "a backend crash is a compiler error, never a placement decision" {
         if e.code is not None and e.code.code == "E5092"
     ] , "a crash must not read as a refusal";
     assert mod.decided_codespace == 'native' , "a crash must not move the module";
-    assert mod.gen.jcir is None , "a crashed module must keep nothing to run";
+    assert mod.gen.py_tree is None , "a crashed module must keep nothing to run";
 }
 
 test "a native type alias is something the native library provides" {

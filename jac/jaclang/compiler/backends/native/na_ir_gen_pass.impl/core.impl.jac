@@ -17,13 +17,9 @@ impl NaIRGenPass.postinit -> None {
     _ni_src: str = self.module.loc.mod_path if self.module.loc else "";
     _ni_mod_name: str = _ni_os.path.basename(_ni_src) if _ni_src else "jac_native";
     self._llvm_module = ir.Module(name=_ni_mod_name, context=ir.Context());
-    _ni_target = active_host().native_fact(
-        FACT_TARGET, _ni_opts.native_target or ""
-    ).split(
-        FACT_SEP
+    (self.llvm_module.data_layout, self.llvm_module.triple) = target_layout(
+        _ni_opts.native_target or ""
     );
-    self.llvm_module.data_layout = _ni_target[0];
-    self.llvm_module.triple = _ni_target[1];
 
     self._unit_prefix = native_unit_prefix(_ni_src) if _ni_src else "jac_native";
 
@@ -1621,7 +1617,7 @@ impl NaIRGenPass._walk_imported_module_abilities(
             and (_wl_os2.sep + "jaclang" + _wl_os2.sep + "osprey" + _wl_os2.sep)
                 not in _wl_abs;
         if _wl_jac_internal {
-            _wl_internal = bool(active_host().native_fact(FACT_SEALED_RUNTIME, ""));
+            _wl_internal = sealed_runtime_active();
         }
     }
     _imp_fn_unavail: (set | None) = None;
@@ -2399,12 +2395,7 @@ impl NaIRGenPass._primitive_method_names(type_name: str) -> set[str] {
     if _cached is not None {
         return _cached;
     }
-    _names: set[str] = set();
-    for _n in active_host().native_fact(FACT_PRIMITIVE_METHODS, type_name).split(",") {
-        if _n {
-            _names.add(_n);
-        }
-    }
+    _names = set(primitive_method_names(type_name));
     self._primitive_method_name_cache[type_name] = _names;
     return _names;
 }
@@ -2626,44 +2617,6 @@ impl _source_param_names(func: ir.Function) -> list[str] {
 }
 
 impl _native_emitter_of(suffix: str) -> (object | None) {
-    if suffix == "IntEmitter" {
-        return _pn.NativeIntEmitter();
-    }
-    if suffix == "FloatEmitter" {
-        return _pn.NativeFloatEmitter();
-    }
-    if suffix == "BoolEmitter" {
-        return _pn.NativeBoolEmitter();
-    }
-    if suffix == "ComplexEmitter" {
-        return _pn.NativeComplexEmitter();
-    }
-    if suffix == "StrEmitter" {
-        return _pn.NativeStrEmitter();
-    }
-    if suffix == "BytesEmitter" {
-        return _pn.NativeBytesEmitter();
-    }
-    if suffix == "ListEmitter" {
-        return _pn.NativeListEmitter();
-    }
-    if suffix == "DictEmitter" {
-        return _pn.NativeDictEmitter();
-    }
-    if suffix == "SetEmitter" {
-        return _pn.NativeSetEmitter();
-    }
-    if suffix == "FrozensetEmitter" {
-        return _pn.NativeFrozensetEmitter();
-    }
-    if suffix == "TupleEmitter" {
-        return _pn.NativeTupleEmitter();
-    }
-    if suffix == "RangeEmitter" {
-        return _pn.NativeRangeEmitter();
-    }
-    if suffix == "BuiltinEmitter" {
-        return _pn.NativeBuiltinEmitter();
-    }
-    return None;
+    factory = getattr(_pn, "Native" + suffix, None);
+    return factory() if factory is not None else None;
 }

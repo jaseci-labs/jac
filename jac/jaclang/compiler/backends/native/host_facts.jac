@@ -1,15 +1,22 @@
-import json;
+glob _TARGETS: dict[str, tuple[str, str]] = {},
+     _CODEC_TABLES: list[tuple[bytes, bytes]] = [],
+     _PRIMITIVE_METHODS: dict[str, set[str]] = {},
+     _SEALED_RUNTIME: list[bool] = [];
 
-glob _HELD: dict[str, str] = {};
+def target_layout(target: str) -> tuple[str, str];
 
-def host_native_fact(kind: str, key: str) -> str;
+def struct_layouts_of(
+    data_layout: str, counts: dict[str, int], probe_ir: str
+) -> dict[str, tuple[list[int], int]];
 
-def compute_fact(kind: str, key: str) -> str;
+def codec_tables -> tuple[bytes, bytes];
 
-def target_fact(target: str) -> str;
+def canonical_codec_name(encoding: str) -> str;
 
-def struct_layouts_fact(key: str) -> str;
+def primitive_method_names(type_name: str) -> set[str];
 
-def codec_tables_fact -> str;
+def sealed_runtime_active -> bool;
 
-def primitive_methods_fact(type_name: str) -> str;
+def import_search_dirs -> list[str];
+
+def package_store_dir -> str;

@@ -46,7 +46,7 @@ impl owner_scope_options(
 }
 
 impl package_owned(path: str, program: JacProgram, options: CompileOptions) -> bool {
-    return is_package_keyed_path(path)
+    return is_compiler_source_path(path)
         and not (
             options.native_unit
             or options.aot_mode

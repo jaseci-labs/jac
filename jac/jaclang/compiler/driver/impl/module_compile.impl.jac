@@ -1,9 +1,31 @@
-impl session_of(task: ModuleAnalysis) -> SessionHooks {
-    session = task.session;
-    if session is None {
-        raise RuntimeError(f"codegen steps for {task.path} ran without a session");
+impl compiler_of(task: ModuleAnalysis) -> JacCompiler {
+    compiler = task.compiler;
+    if compiler is None {
+        raise RuntimeError(f"codegen steps for {task.path} ran without a compiler");
     }
-    return session;
+    return compiler;
+}
+
+impl assemble_python(program: JacProgram, module: uni.Module) {
+    require(program, module, CompilationProduct.BYTECODE);
+}
+
+impl assemble_native(program: JacProgram, module: uni.Module, checking: bool) {
+    import copy;
+    if not checking {
+        require(program, module, CompilationProduct.NATIVE_OBJECT);
+        return;
+    }
+    previous = program.options;
+    checked = copy.copy(previous);
+    checked.aot_mode = True;
+    checked.skip_native_engine = False;
+    program.options = checked;
+    try {
+        require(program, module, CompilationProduct.NATIVE_OBJECT);
+    } finally {
+        program.options = previous;
+    }
 }
 
 impl admits_native_checks(task: ModuleAnalysis) -> bool {
@@ -22,15 +44,8 @@ impl admits_native_checks(task: ModuleAnalysis) -> bool {
 impl run_native_checks(task: ModuleAnalysis) {
     lowered = task.require(CompilationProduct.NATIVE_IR);
     if lowered and task.options.native_required_for(task.path) {
-        session_of(task).assemble_native(task.program, task.module, True);
+        assemble_native(task.program, task.module, True);
     }
-}
-
-impl admits_client_dependencies(task: ModuleAnalysis) -> bool {
-    options = task.options;
-    return not (
-        task.parse_failed or task.blocked or options.symtab_ir_only or options.no_cgen
-    );
 }
 
 impl run_client_dependencies(task: ModuleAnalysis) {
@@ -65,7 +80,7 @@ impl run_client_dependencies(task: ModuleAnalysis) {
                 paths.extend(os.path.abspath(edge) for edge in served);
                 continue;
             }
-            dep = session_of(task).compile(dep_path, program, None, dep_options);
+            dep = compiler_of(task).compile(dep_path, program, None, dep_options);
         }
         worklist.append(dep);
     }
@@ -74,7 +89,7 @@ impl run_client_dependencies(task: ModuleAnalysis) {
 
 impl admits_interface(task: ModuleAnalysis) -> bool {
     options = task.options;
-    closure = session_of(task).closure_options() or options;
+    closure = compiler_of(task).closure_options() or options;
     if task.parse_failed
         or task.blocked
         or task.source is not None
@@ -109,7 +124,7 @@ impl run_codegen(task: ModuleAnalysis) {
     program.options = options;
     if not task.has_full_ir() {
         task.require(CompilationProduct.PY_IR);
-        session_of(task).assemble_python(program, module);
+        assemble_python(program, module);
         return;
     }
     needs_native = task.native or ModuleFacts.has_native_context_stmts(module);
@@ -121,11 +136,11 @@ impl run_codegen(task: ModuleAnalysis) {
     }
     task.require(CompilationProduct.CODEGEN, ProductRequest(native=needs_native));
     if module.gen.has_native_ir() {
-        session_of(task).assemble_native(program, module, False);
+        assemble_native(program, module, False);
     }
     task.require(CompilationProduct.PY_IR);
     task.require(CompilationProduct.FROZEN);
-    session_of(task).assemble_python(program, module);
+    assemble_python(program, module);
     dropped = drop_products_on_error(program, module);
     if module.decided_codespace == 'native' and options.aot_mode and not dropped {
         report_missing_native_ir(program, module);
@@ -157,7 +172,8 @@ impl drop_products_on_error(program: JacProgram, mod: uni.Module) -> bool {
     if not mod_path {
         return False;
     }
-    blocked = program.count_module_blocking_errors(os.path.normpath(mod_path)) > 0;
+    norm_path = os.path.normpath(mod_path);
+    blocked = program.count_module_errors(norm_path, blocking=True) > 0;
     if not blocked
         and (
             mod.decided_codespace != 'native'
@@ -166,7 +182,7 @@ impl drop_products_on_error(program: JacProgram, mod: uni.Module) -> bool {
         return False;
     }
     gen = mod.gen;
-    gen.jcir = None;
+    gen.py_tree = None;
     gen.py_bytecode = None;
     gen.drop_native_ir();
     gen.native_engine = None;
@@ -186,12 +202,6 @@ impl report_missing_native_ir(program: JacProgram, mod: uni.Module) -> None {
         return;
     }
     reason = unavailable(CompilationProduct.NATIVE_LOWER);
-    if not reason {
-        (available, why) = active_host().native_pipeline_available();
-        if not available {
-            reason = why;
-        }
-    }
     if reason {
         detail = f"the native codegen schedule could not be built ({reason})";
     } elif not ModuleFacts.has_native_context_stmts(mod) {
@@ -222,31 +232,15 @@ impl report_missing_native_ir(program: JacProgram, mod: uni.Module) -> None {
     );
 }
 
-impl analyze_for_compile(
-    program: JacProgram, path: str, options: CompileOptions, source: str | None
-) -> ModuleAnalysis {
-    return analyze_module(program, path, options, source);
-}
-
-impl compile_task(
-    session: SessionHooks,
-    program: JacProgram,
-    path: str,
-    options: CompileOptions,
-    source: str | None = None
-) -> ModuleAnalysis {
-    analysis = analyze_for_compile(program, path, options, source);
-    analysis.session = session;
-    run_plan(analysis, CODEGEN_PLAN);
-    return analysis;
-}
-
 impl compile_module(
-    session: SessionHooks,
+    compiler: JacCompiler,
     program: JacProgram,
     path: str,
     options: CompileOptions,
     source: str | None = None
 ) -> uni.Module {
-    return compile_task(session, program, path, options, source).module;
+    analysis = analyze_module(program, path, options, source);
+    analysis.compiler = compiler;
+    run_plan(analysis, CODEGEN_PLAN);
+    return analysis.module;
 }

@@ -1041,7 +1041,7 @@ test "a backend crash is E9003, never a refusal, and leaves the module nothing t
         prog
     )}";
     assert "lowering exploded" in fmt_errors(prog);
-    assert ir.gen.jcir is None , "the crashed module kept JCIR the kernel would run";
+    assert ir.gen.py_tree is None , "the crashed module kept a Python tree to run";
     assert ir.gen.py_bytecode is None , "the crashed module kept bytecode";
 }
 

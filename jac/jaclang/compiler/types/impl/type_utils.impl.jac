@@ -674,11 +674,6 @@ impl compute_module_source_flags(file_path: str) -> ModuleSourceFlags {
     normalized_path = file_path.replace("\\", "/");
     flags.is_stdlib_stub = "vendor/typeshed/stdlib/" in normalized_path;
 
-    if normalized_path.endswith("stdlib/typing.pyi")
-        or normalized_path.endswith("typing_extensions.pyi") {
-        flags.is_typing_stub = True;
-    }
-
     if (
         normalized_path.endswith("stdlib/builtins.pyi")
         or normalized_path.endswith("stdlib/abc.pyi")

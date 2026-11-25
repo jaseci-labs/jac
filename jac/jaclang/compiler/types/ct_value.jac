@@ -194,8 +194,6 @@ def mk_dict -> CtDict;
 
 def mk_set(items: list[CtValue], frozen: bool = False) -> CtSet;
 
-def int_is_big(v: CtInt) -> bool;
-
 def int_sign_mag(v: CtInt) -> tuple[bool, list[int]];
 
 def int_host(v: CtInt) -> int;

@@ -1,59 +1,8 @@
-impl host_native_fact(kind: str, key: str) -> str {
-    if kind == FACT_STRUCT_LAYOUTS {
-        return struct_layouts_fact(key);
+impl target_layout(target: str) -> tuple[str, str] {
+    held = _TARGETS.get(target);
+    if held is not None {
+        return held;
     }
-    if kind == FACT_IMPORT_PATHS {
-        import sys;
-        import os;
-        return FACT_SEP.join(
-            p
-            for p in sys.path
-            if p and os.path.isabs(p)
-        );
-    }
-    if kind == FACT_PACKAGE_STORE {
-        import from jaclang.project.package_scope { store_root }
-        return str(store_root());
-    }
-    tag = kind + FACT_SEP + key;
-    held = _HELD.get(tag);
-    if held is None {
-        held = compute_fact(kind, key);
-        _HELD[tag] = held;
-    }
-    return held;
-}
-
-impl compute_fact(kind: str, key: str) -> str {
-    if kind == FACT_TARGET {
-        return target_fact(key);
-    }
-    if kind == FACT_CODEC_TABLES {
-        return codec_tables_fact();
-    }
-    if kind == FACT_CODEC_NAME {
-        import codecs;
-        try {
-            return codecs.lookup(key).name;
-        } except LookupError {
-            return "";
-        }
-    }
-    if kind == FACT_PRIMITIVE_METHODS {
-        return primitive_methods_fact(key);
-    }
-    if kind == FACT_SEALED_RUNTIME {
-        try {
-            import from jaclang.jac0core { sealed }
-            return "1" if sealed._jaclang_image() is not None else "";
-        } except Exception {
-            return "";
-        }
-    }
-    raise ValueError(f"unknown native host fact {kind!r}");
-}
-
-impl target_fact(target: str) -> str {
     if target {
         llvm.initialize_all_targets();
         llvm.initialize_all_asmprinters();
@@ -63,14 +12,15 @@ impl target_fact(target: str) -> str {
         found = llvm.Target.from_default_triple();
     }
     machine = found.create_target_machine(reloc="pic", codemodel="small");
-    return str(machine.target_data) + FACT_SEP + str(machine.triple);
+    held = (str(machine.target_data), str(machine.triple));
+    _TARGETS[target] = held;
+    return held;
 }
 
-impl struct_layouts_fact(key: str) -> str {
-    (data_layout, _, probe) = key.partition(FACT_SEP);
-    (counts_text, _, probe_ir) = probe.partition(FACT_SEP);
-    counts: dict[str, int] = json.loads(counts_text);
-    rows: list[str] = [];
+impl struct_layouts_of(
+    data_layout: str, counts: dict[str, int], probe_ir: str
+) -> dict[str, tuple[list[int], int]] {
+    layouts: dict[str, tuple[list[int], int]] = {};
     with llvm.parse_assembly(probe_ir) as bound, llvm.create_target_data(
         data_layout
     ) as target_data {
@@ -78,15 +28,16 @@ impl struct_layouts_fact(key: str) -> str {
             (offsets, size) = target_data.get_global_struct_layout(
                 value, counts[value.name]
             );
-            rows.append(
-                f"{value.name}\t{size}\t" + ",".join(str(offset) for offset in offsets)
-            );
+            layouts[value.name] = ([int(offset) for offset in offsets], int(size));
         }
     }
-    return "\n".join(rows);
+    return layouts;
 }
 
-impl codec_tables_fact -> str {
+impl codec_tables -> tuple[bytes, bytes] {
+    if _CODEC_TABLES {
+        return _CODEC_TABLES[0];
+    }
     import encodings;
     import encodings.aliases;
     import pkgutil;
@@ -102,10 +53,24 @@ impl codec_tables_fact -> str {
             module_rows += bytes([supported.get(mod, 4)]) + mod.encode() + b"\x00";
         }
     }
-    return bytes(alias_rows).hex() + FACT_SEP + bytes(module_rows).hex();
+    _CODEC_TABLES.append((bytes(alias_rows), bytes(module_rows)));
+    return _CODEC_TABLES[0];
 }
 
-impl primitive_methods_fact(type_name: str) -> str {
+impl canonical_codec_name(encoding: str) -> str {
+    import codecs;
+    try {
+        return codecs.lookup(encoding).name;
+    } except LookupError {
+        return "";
+    }
+}
+
+impl primitive_method_names(type_name: str) -> set[str] {
+    held = _PRIMITIVE_METHODS.get(type_name);
+    if held is not None {
+        return held;
+    }
     import inspect;
 
     found: any = None;
@@ -114,17 +79,43 @@ impl primitive_methods_fact(type_name: str) -> str {
             found = getattr(emitters, "Native" + suffix, None);
         }
     }
-    if found is None {
-        return "";
-    }
-    emitter = found();
-    names: list[str] = [];
-    for name in dir(emitter) {
-        if name.startswith("emit_") and not name.startswith("emit_op_") {
-            if len(inspect.signature(getattr(emitter, name)).parameters) >= 3 {
-                names.append(name.removeprefix("emit_"));
+    names: set[str] = set();
+    if found is not None {
+        emitter = found();
+        for name in dir(emitter) {
+            if name.startswith("emit_") and not name.startswith("emit_op_") {
+                if len(inspect.signature(getattr(emitter, name)).parameters) >= 3 {
+                    names.add(name.removeprefix("emit_"));
+                }
             }
         }
     }
-    return ",".join(sorted(names));
+    _PRIMITIVE_METHODS[type_name] = names;
+    return names;
+}
+
+impl sealed_runtime_active -> bool {
+    if not _SEALED_RUNTIME {
+        try {
+            import from jaclang.jac0core { sealed }
+            _SEALED_RUNTIME.append(sealed._jaclang_image() is not None);
+        } except Exception {
+            _SEALED_RUNTIME.append(False);
+        }
+    }
+    return _SEALED_RUNTIME[0];
+}
+
+impl import_search_dirs -> list[str] {
+    import os;
+    import sys;
+    return [
+        p
+        for p in sys.path
+        if p and os.path.isabs(p)
+    ];
+}
+
+impl package_store_dir -> str {
+    return str(store_root());
 }

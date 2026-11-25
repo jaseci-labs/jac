@@ -16,9 +16,7 @@ test "preserve_none definitions and table calls lower with the convention" {
         native_required=True,
         memory_profile="rc",
         no_ir_cache=True,
-        native_target="x86_64-unknown-linux-gnu",
-        native_tls=True,
-        native_sjlj=True
+        native_target="x86_64-unknown-linux-gnu"
     );
     text = str(
         compile_native_ir("clib_preserve_none.jac", options=options).gen.llvm_ir
@@ -45,9 +43,7 @@ test "a tail call to a C function returning a pointer takes the caller's prototy
         native_required=True,
         memory_profile="rc",
         no_ir_cache=True,
-        native_target="x86_64-unknown-linux-gnu",
-        native_tls=True,
-        native_sjlj=True
+        native_target="x86_64-unknown-linux-gnu"
     );
     text = str(
         compile_native_ir("clib_preserve_none_extern.jac", options=options).gen.llvm_ir
@@ -57,37 +53,4 @@ test "a tail call to a C function returning a pointer takes the caller's prototy
     assert text.count("musttail call preserve_nonecc i64 %\"tail.callee") == 2 , text;
     assert "bitcast i8* (i8*, i8*, i32)* @\"c_handler\" to i64 (i64, i64, i32)*"
         in text , text;
-}
-
-test "a runtime build's handlers jump straight in and its views are unchecked" {
-    options = CompileOptions(
-        aot_mode=True,
-        default_codespace="native",
-        skip_native_engine=True,
-        native_required=True,
-        memory_profile="rc",
-        no_ir_cache=True,
-        native_target="x86_64-unknown-linux-gnu",
-        native_tls=True,
-        native_sjlj=True,
-        native_unchecked_views=True,
-        native_direct_c_entries=True
-    );
-    text = str(
-        compile_native_ir("clib_preserve_none_mixed.jac", options=options).gen.llvm_ir
-    );
-    handler = text[text.index('define preserve_nonecc i64 @"pn_hop"('):];
-    handler = handler[:handler.index("\n}\n")];
-    assert "centry.region.open" not in handler , handler;
-    plain = text[text.index('define i64 @"plain_entry"('):];
-    plain = plain[:plain.index("\n}\n")];
-    # A C entry outside the handler convention still escapes an open region.
-    assert "centry.region.open" in plain , plain;
-    assert "c.view.null" not in text , text;
-    assert "null.field.chk" not in handler , handler;
-    # The handler's body takes its C symbol: no thunk jumps into a separate
-    # Jac copy.
-    assert '@"pn_hop.jac"' not in text , text;
-    assert 'define i64 @"plain_entry.jac"(' in text
-        or 'define internal i64 @"plain_entry.jac"(' in text , text;
 }

@@ -23,6 +23,7 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
     }
 
     self.bootstrap_admin();
+    self.warn_provisioned_users();
 
     server = self.server;
     if server is None {
@@ -144,6 +145,50 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
             tags=['Admin'],
             summary='List users',
             description='List all users (admin only)'
+        )
+    );
+    def list_provisioned_users_handler(request: Request) -> TransportResponse {
+        authorization = request.headers.get('Authorization');
+        return self.admin_list_provisioned_users(authorization);
+    }
+    server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/admin/provisioned-users',
+            callback=list_provisioned_users_handler,
+            parameters=[],
+            response_model=None,
+            tags=['Admin'],
+            summary='List provisioned account records',
+            description=(
+                'List blank account records (no identities, credentials or SSO '
+                'link) that fleet apps wrote on this store for tokens of '
+                'deleted or unknown accounts before #10738 was fixed. Each '
+                'keeps a deleted account\'s old token valid. `holds_data` marks '
+                'records whose root has data under it.'
+            )
+        )
+    );
+    def delete_provisioned_users_handler(request: Request) -> TransportResponse {
+        authorization = request.headers.get('Authorization');
+        return self.admin_delete_provisioned_users(authorization);
+    }
+    server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.DELETE,
+            path='/admin/provisioned-users',
+            callback=delete_provisioned_users_handler,
+            parameters=[],
+            response_model=None,
+            tags=['Admin'],
+            summary='Delete provisioned account records',
+            description=(
+                'Delete the blank account records listed by GET '
+                '/admin/provisioned-users, except those whose root holds data, '
+                'which are returned in `kept_with_data` for an operator to '
+                'review and delete one by one. Refused (409) on an app that '
+                'provisions accounts on its own store.'
+            )
         )
     );
     def get_user_handler(request: Request, username: str) -> TransportResponse {
@@ -892,6 +937,79 @@ impl JacAPIServerAdmin.admin_expire_legacy_credentials(
     return TransportResponse.success(
         data=result, meta=Meta(extra={'http_status': 200})
     );
+}
+
+impl JacAPIServerAdmin.admin_list_provisioned_users(
+    Authorization: str | None = None
+) -> TransportResponse {
+    error = self.require_admin(Authorization);
+    if error {
+        return error;
+    }
+    result = self._require_user_manager().list_provisioned_users();
+    if 'error' in result {
+        return TransportResponse.fail(
+            code='NOT_SUPPORTED',
+            message=str(result['error']),
+            meta=Meta(extra={'http_status': 409})
+        );
+    }
+    return TransportResponse.success(
+        data=result, meta=Meta(extra={'http_status': 200})
+    );
+}
+
+impl JacAPIServerAdmin.admin_delete_provisioned_users(
+    Authorization: str | None = None
+) -> TransportResponse {
+    error = self.require_admin(Authorization);
+    if error {
+        return error;
+    }
+    result = self._require_user_manager().delete_provisioned_users();
+    if 'error' in result {
+        return TransportResponse.fail(
+            code='NOT_SUPPORTED',
+            message=str(result['error']),
+            meta=Meta(extra={'http_status': 409})
+        );
+    }
+    deleted = list(result.get('deleted', []));
+    kept = list(result.get('kept_with_data', []));
+    logger.warning(
+        f"Deleted {len(deleted)} provisioned account record(s); kept "
+        f"{len(kept)} whose root holds data"
+    );
+    return TransportResponse.success(
+        data={'deleted': deleted, 'kept_with_data': kept, 'count': len(deleted)},
+        meta=Meta(extra={'http_status': 200})
+    );
+}
+
+impl JacAPIServerAdmin.warn_provisioned_users -> None {
+    import os;
+    if os.environ.get('JAC_SV_NAME', '').strip() not in ('', '__gateway__') {
+        return;
+    }
+    manager = self.user_manager;
+    if manager is None {
+        return;
+    }
+    try {
+        count = manager.count_provisioned_users();
+    } except Exception as e {
+        logger.debug(f"could not count provisioned account records: {e}");
+        return;
+    }
+    if count {
+        logger.warning(
+            f"{count} blank account record(s) on this store were written by fleet "
+            "apps for tokens of deleted or unknown accounts (before #10738 was "
+            "fixed); each keeps a deleted account's old token valid. Review them "
+            "at GET /admin/provisioned-users and remove them with DELETE "
+            "/admin/provisioned-users."
+        );
+    }
 }
 
 impl JacAPIServerAdmin.admin_delete_user(

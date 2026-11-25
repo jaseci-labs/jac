@@ -589,6 +589,20 @@ test "serve call function" {
         data2 = response2.data;
         assert "result" in data2;
         assert data2["result"] == "Hello, World!";
+        # A JSON body binds a datetime from its ISO string and range-checks a u8.
+        for (when, seats, status) in [
+            ("2026-01-02T10:00:00", 3, 200),
+            ("2026-01-02T10:00:00", 300, 422),
+            ("next tuesday", 3, 422)
+        ] {
+            response = client.post(
+                "/function/book_slot", json={"when": when, "seats": seats}
+            );
+            assert response.status_code == status , f"{when} {seats}: {response.json()}";
+            if status == 200 {
+                assert response.data["result"] == ["datetime", 3];
+            }
+        }
         client.close();
     }
 }

@@ -2,11 +2,7 @@ import os;
 
 glob _ROOT_REAL: list[str] = [];
 
-def target_pkg_root -> str;
-
 def _target_root_real -> str;
-
-def is_target_package_path(path: str) -> bool;
 
 def target_package_rel(path: str) -> (str | None);
 

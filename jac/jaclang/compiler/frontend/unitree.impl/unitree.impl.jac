@@ -12,7 +12,6 @@ impl Module.make_stub(
         source=(inject_src or Source('', '')),
         doc=None,
         body=[],
-        terminals=[],
         stub_only=True,
         kid=[EmptyToken()]
     );

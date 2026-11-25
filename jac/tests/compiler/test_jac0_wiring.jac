@@ -96,11 +96,11 @@ test "jac0 and WiringSpec weave the same imports into every seed module" {
         consumer = spec.module_name(path);
         assert consumer is not None , path;
         expected: set[str] = set();
-        for wire in spec.consumer_wires(consumer) {
+        for (wire, scopes) in spec.consumer_wires(consumer) {
             if not wire.is_injected {
                 continue;
             }
-            scope = ".".join(spec.consumer_scope(consumer, wire));
+            scope = ".".join(scopes[0]);
             for binding in wire.bindings() {
                 expected.add(
                     f"{scope}|{spec.import_name(binding.provider)}|{binding.form}|"

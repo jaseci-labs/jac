@@ -51,6 +51,15 @@ obj JacAPIServerAdmin {
         username: str | None = None, Authorization: str | None = None
     ) -> TransportResponse;
 
+    def admin_list_provisioned_users(
+        Authorization: str | None = None
+    ) -> TransportResponse;
+
+    def admin_delete_provisioned_users(
+        Authorization: str | None = None
+    ) -> TransportResponse;
+
+    def warn_provisioned_users -> None;
     def reset_password(
         current_password: str, new_password: str, Authorization: str | None = None
     ) -> TransportResponse;

@@ -1,7 +1,3 @@
-impl InteropBinding.is_cross_module.getter -> bool {
-    return (self.source_module is not None);
-}
-
 impl InteropBinding.native_callable.getter -> bool {
     return self.source_context == InteropContext.SERVER
         and InteropContext.NATIVE in self.callers
@@ -42,18 +38,6 @@ impl InteropManifest.native_exports.getter -> list[InteropBinding] {
         if (
             (b.source_context == InteropContext.NATIVE)
             and (InteropContext.SERVER in b.callers)
-        )
-    ];
-}
-
-impl InteropManifest.native_cross_module_imports.getter -> list[InteropBinding] {
-    return [
-        b
-        for b in self.bindings.values()
-        if (
-            (b.source_context == InteropContext.NATIVE)
-            and (InteropContext.NATIVE in b.callers)
-            and (b.source_module is not None)
         )
     ];
 }
@@ -481,17 +465,9 @@ impl is_compiler_source_path(source_path: str) -> bool {
     }
 }
 
-impl kernel_unit_rels -> list[str] {
-    return list(KERNEL_UNIT_REL);
-}
-
-impl is_package_keyed_path(source_path: str) -> bool {
-    return is_compiler_source_path(source_path);
-}
-
 impl kernel_unit_path(rel: str) -> str {
     import os;
-    return os.path.join(target_pkg_root(), rel.replace("/", os.sep));
+    return os.path.join(jaclang_pkg_root(), rel.replace("/", os.sep));
 }
 
 impl real_path(path: str) -> str {
@@ -514,7 +490,7 @@ impl is_kernel_unit_path(path: str) -> bool {
         return False;
     }
     rp = real_path(path);
-    for rel in kernel_unit_rels() {
+    for rel in KERNEL_UNIT_REL {
         if rp == real_path(kernel_unit_path(rel)) {
             return True;
         }
@@ -569,7 +545,7 @@ impl native_unit_compile_active -> bool {
 
 impl native_stdlib_root -> (str | None) {
     import os;
-    pkg = target_pkg_root();
+    pkg = jaclang_pkg_root();
     if not pkg {
         return None;
     }
@@ -895,7 +871,7 @@ impl resolve_native_module(
 
     if module_name == clean and clean.startswith('jaclang.') {
         runtime_rel = clean[len('jaclang.'):].replace('.', '/') + '.jac';
-        if runtime_rel in kernel_unit_rels() {
+        if runtime_rel in KERNEL_UNIT_REL {
             runtime_path = kernel_unit_path(runtime_rel);
             if os.path.isfile(runtime_path) {
                 return (path_name, runtime_path);
@@ -1007,7 +983,7 @@ impl resolve_native_module(
 
     if clean.startswith('jaclang.') {
         _cand = os.path.join(
-            target_pkg_root(), clean.split('.', 1)[1].replace('.', os.sep) + '.jac'
+            jaclang_pkg_root(), clean.split('.', 1)[1].replace('.', os.sep) + '.jac'
         );
         if clean in SHARED_RUNTIME_MODULES and os.path.isfile(_cand) {
             return (path_name, _cand);

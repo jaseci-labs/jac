@@ -6,44 +6,6 @@ impl SessionContext.merge_alerts {
     self.caller.warnings_had.extend(self.target.warnings_had[self.warnings_mark:]);
 }
 
-impl SessionHooks.enter_compile(ctx: SessionContext) -> CompileFrame {
-    return CompileFrame(nested=True);
-}
-
-impl SessionHooks.leave_compile(ctx: SessionContext, frame: CompileFrame) {}
-
-impl SessionHooks.finish_compile(frame: CompileFrame) {}
-
-impl SessionHooks.check_crash(crash: Exception, file_path: str) {}
-
-impl SessionHooks.closure_options -> (CompileOptions | None) {
-    return None;
-}
-
-impl SessionHooks.compile(
-    file_path: str,
-    target_program: JacProgram,
-    use_str: (str | None),
-    options: CompileOptions
-) -> uni.Module {
-    return compile_in_session(self, file_path, target_program, use_str, options);
-}
-
-impl SessionHooks.compile_attempt(
-    file_path: str,
-    target_program: JacProgram,
-    use_str: (str | None),
-    options: CompileOptions
-) -> uni.Module {
-    return compile_once(self, file_path, target_program, use_str, options);
-}
-
-impl SessionHooks.assemble_python(program: JacProgram, module: uni.Module) {}
-
-impl SessionHooks.assemble_native(
-    program: JacProgram, module: uni.Module, checking: bool
-) {}
-
 impl select_context(
     file_path: str, program: JacProgram, options: CompileOptions
 ) -> SessionContext {
@@ -110,7 +72,7 @@ impl inherit_session_options(
 }
 
 impl compile_in_session(
-    hooks: SessionHooks,
+    compiler: JacCompiler,
     file_path: str,
     program: JacProgram,
     use_str: (str | None),
@@ -120,58 +82,50 @@ impl compile_in_session(
     target = ctx.target;
     with compilation_scope(owner_scope_options(target, ctx.options)) {
         with compile_progress.track(str(file_path)) {
-            frame = hooks.enter_compile(ctx);
+            frame = compiler.enter_compile(ctx);
             previous_codespace = get_effective_default_codespace_override();
             native_token = set_native_unit_compile(bool(ctx.options.native_unit));
             outer_options: (CompileOptions | None) = None;
             entered = False;
             try {
-                target.scratch.compile_depth += 1;
+                target.compile_depth += 1;
                 entered = True;
-                if frame.nested {
+                if frame.depth_prev > 0 {
                     outer_options = target.options;
                 }
-                return compile_attempts(hooks, file_path, target, use_str, ctx.options);
+                try {
+                    return compile_once(
+                        compiler, file_path, target, use_str, ctx.options
+                    );
+                } except Exception as err {
+                    compiler.check_crash(err, file_path);
+                    raise;
+                }
             } finally {
                 ctx.merge_alerts();
                 reset_native_unit_compile(native_token);
                 set_effective_default_codespace(previous_codespace);
-                hooks.leave_compile(ctx, frame);
+                compiler.leave_compile(ctx, frame);
                 if outer_options is not None {
                     target.options = outer_options;
                 }
                 if entered {
-                    target.scratch.compile_depth -= 1;
-                    if target.scratch.compile_depth <= 0 {
-                        target.scratch.compile_depth = 0;
+                    target.compile_depth -= 1;
+                    if target.compile_depth <= 0 {
+                        target.compile_depth = 0;
                         try {
                             target.release_check_caches();
                         } except Exception {}
                     }
                 }
-                hooks.finish_compile(frame);
+                compiler.finish_compile(frame);
             }
         }
     }
 }
 
-impl compile_attempts(
-    hooks: SessionHooks,
-    file_path: str,
-    program: JacProgram,
-    use_str: (str | None),
-    options: CompileOptions
-) -> uni.Module {
-    try {
-        return hooks.compile_attempt(file_path, program, use_str, options);
-    } except Exception as err {
-        hooks.check_crash(err, file_path);
-        raise;
-    }
-}
-
 impl compile_once(
-    hooks: SessionHooks,
+    compiler: JacCompiler,
     file_path: str,
     program: JacProgram,
     use_str: (str | None),
@@ -184,10 +138,10 @@ impl compile_once(
     }
     parent = annex_parent(file_path, program, use_str, options);
     if parent is not None {
-        return hooks.compile(parent, program, None, options);
+        return compiler.compile(parent, program, None, options);
     }
-    options = inherit_session_options(program, options, hooks.closure_options());
-    return hooks.run_module(file_path, program, use_str, options);
+    options = inherit_session_options(program, options, compiler.closure_options());
+    return compiler.run_module(file_path, program, use_str, options);
 }
 
 impl drop_native_bindings(mod: uni.Module, resolved: str) {
