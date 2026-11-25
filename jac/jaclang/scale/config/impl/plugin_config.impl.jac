@@ -1126,6 +1126,36 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                         "type": "bool",
                         "default": True,
                         "description": "Deploy the Kubernetes monitoring stack (Prometheus + Grafana) alongside the app"
+                    },
+                    "storage_enabled": {
+                        "type": "bool",
+                        "default": False,
+                        "description": "Keep Prometheus, Loki and Tempo data on PersistentVolumeClaims instead of `emptyDir`, so a replaced pod keeps its history. Off by default: on `emptyDir` every pod replacement (node drain, lost node, rollout) starts the component empty. Turning it on replaces each pod once, and `jac scale destroy` deletes the claims"
+                    },
+                    "storage_class": {
+                        "type": "string",
+                        "default": "",
+                        "description": "StorageClass for the monitoring data claims. Empty uses the cluster's default class. Use a block-storage class (ReadWriteOnce), not the ReadWriteMany class used for bundles. Cannot be changed on a claim that already exists"
+                    },
+                    "prometheus_storage": {
+                        "type": "string",
+                        "default": "10Gi",
+                        "description": "Size of the Prometheus data claim when storage_enabled is set. A whole-number Kubernetes quantity of at least 1Gi, e.g. 30Gi. Prometheus is capped at 80% of it, so it cannot fill the volume. Can be raised later, not lowered"
+                    },
+                    "loki_storage": {
+                        "type": "string",
+                        "default": "10Gi",
+                        "description": "Size of the Loki data claim when storage_enabled is set. Loki drops data by age only (loki_retention), so size it for the busiest stretch of that length. Can be raised later, not lowered"
+                    },
+                    "tempo_storage": {
+                        "type": "string",
+                        "default": "5Gi",
+                        "description": "Size of the Tempo data claim when storage_enabled is set. Tempo keeps traces for 48h. Can be raised later, not lowered"
+                    },
+                    "loki_retention": {
+                        "type": "string",
+                        "default": "168h",
+                        "description": "How long Loki keeps logs when storage_enabled is set, as hours, days or weeks (e.g. 168h, 7d, 1w). At least 24h"
                     }
                 }
             },

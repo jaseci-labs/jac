@@ -93,7 +93,7 @@ impl MonitoringDeployer._prometheus_deployment(
     config_hash = hashlib.md5(
         self._scrape_config(app_name, namespace).encode()
     ).hexdigest()[:12];
-    return {
+    deployment: dict[str, any] = {
         'apiVersion': 'apps/v1',
         'kind': 'Deployment',
         'metadata': {
@@ -163,6 +163,15 @@ impl MonitoringDeployer._prometheus_deployment(
             }
         }
     };
+    if self.k8s_config.monitoring_storage_enabled {
+        cap: int = (parse_storage_quantity(self.k8s_config.prometheus_storage) * 4 // 5)
+            // (1024 ** 2);
+        deployment['spec']['template']['spec']['containers'][0]['args'] += [
+            '--storage.tsdb.retention.time=15d',
+            f"--storage.tsdb.retention.size={cap}MB"
+        ];
+    }
+    return self._apply_storage(deployment, 'prometheus-data');
 }
 
 impl MonitoringDeployer._deploy_prometheus(
@@ -321,6 +330,11 @@ impl MonitoringDeployer._deploy_prometheus(
         }
     }
 
+    if self.k8s_config.monitoring_storage_enabled {
+        self._ensure_data_pvc(
+            apps_v1, core_v1, self._data_pvc(app_name, namespace, 'prometheus')
+        );
+    }
     prometheus_deployment = self._prometheus_deployment(app_name, namespace);
 
     try {
@@ -1298,7 +1312,7 @@ impl MonitoringDeployer._tempo_deployment(
 ) -> dict[str, any] {
     tempo_name = f"{app_name}-tempo";
     tempo_sa_name = f"{tempo_name}-sa";
-    return {
+    deployment: dict[str, any] = {
         'apiVersion': 'apps/v1',
         'kind': 'Deployment',
         'metadata': {
@@ -1361,6 +1375,7 @@ impl MonitoringDeployer._tempo_deployment(
             }
         }
     };
+    return self._apply_storage(deployment, 'tempo-data');
 }
 
 impl MonitoringDeployer._deploy_tempo(
@@ -1447,6 +1462,11 @@ impl MonitoringDeployer._deploy_tempo(
         }
     }
 
+    if self.k8s_config.monitoring_storage_enabled {
+        self._ensure_data_pvc(
+            apps_v1, core_v1, self._data_pvc(app_name, namespace, 'tempo')
+        );
+    }
     tempo_deployment = self._tempo_deployment(app_name, namespace);
     try {
         apps_v1.patch_namespaced_deployment(
@@ -1498,6 +1518,15 @@ impl MonitoringDeployer._deploy_tempo(
 }
 
 impl MonitoringDeployer._loki_config -> str {
+    retention: str = "";
+    if self.k8s_config.monitoring_storage_enabled {
+        retention = (
+            f"  retention_period: {self.k8s_config.loki_retention}\n"
+            "compactor:\n"
+            "  retention_enabled: true\n"
+            "  delete_request_store: filesystem\n"
+        );
+    }
     return (
         "auth_enabled: false\n"
         "server:\n"
@@ -1526,7 +1555,8 @@ impl MonitoringDeployer._loki_config -> str {
         "limits_config:\n"
         "  reject_old_samples: true\n"
         "  reject_old_samples_max_age: 168h\n"
-    );
+    )
+        + retention;
 }
 
 impl MonitoringDeployer._loki_deployment(
@@ -1534,7 +1564,7 @@ impl MonitoringDeployer._loki_deployment(
 ) -> dict[str, any] {
     loki_name = f"{app_name}-loki";
     loki_sa_name = f"{loki_name}-sa";
-    return {
+    deployment: dict[str, any] = {
         'apiVersion': 'apps/v1',
         'kind': 'Deployment',
         'metadata': {
@@ -1593,6 +1623,12 @@ impl MonitoringDeployer._loki_deployment(
             }
         }
     };
+    if self.k8s_config.monitoring_storage_enabled {
+        deployment['spec']['template']['metadata']['annotations'] = {
+            'checksum/config': hashlib.md5(self._loki_config().encode()).hexdigest()[:12]
+        };
+    }
+    return self._apply_storage(deployment, 'loki-data');
 }
 
 impl MonitoringDeployer._deploy_loki(
@@ -1651,6 +1687,11 @@ impl MonitoringDeployer._deploy_loki(
         }
     }
 
+    if self.k8s_config.monitoring_storage_enabled {
+        self._ensure_data_pvc(
+            apps_v1, core_v1, self._data_pvc(app_name, namespace, 'loki')
+        );
+    }
     loki_deployment = self._loki_deployment(app_name, namespace);
     try {
         apps_v1.patch_namespaced_deployment(
@@ -2076,6 +2117,7 @@ impl MonitoringDeployer._deploy_alloy(
 impl MonitoringDeployer.deploy(
     app_name: str, namespace: str, apps_v1: any, core_v1: any
 ) {
+    self._check_storage();
     if self.k8s_config.monitoring_enabled {
         if self.k8s_config.k8s_metrics_enabled {
             self._deploy_kube_state_metrics(app_name, namespace, apps_v1, core_v1);
@@ -2332,7 +2374,220 @@ impl MonitoringDeployer.destroy(
         'ServiceAccount'
     );
 
+    for part in ['prometheus', 'loki', 'tempo'] {
+        delete_if_exists(
+            core_v1.delete_namespaced_persistent_volume_claim,
+            f"{app_name}-{part}-data",
+            namespace,
+            'PersistentVolumeClaim'
+        );
+    }
+
     if self.logger {
         self.logger.info(f"Monitoring stack destroyed for '{app_name}'");
+    }
+}
+
+impl MonitoringDeployer._storage_problems -> list[str] {
+    cfg = self.k8s_config;
+    problems: list[str] = [];
+    for (key, size) in [
+        ('prometheus_storage', cfg.prometheus_storage),
+        ('loki_storage', cfg.loki_storage),
+        ('tempo_storage', cfg.tempo_storage)
+    ] {
+        try {
+            if parse_storage_quantity(size) < 1024 ** 3 {
+                problems.append(f"[scale.monitoring] {key} = '{size}' is below 1Gi");
+            }
+        } except ValueError as e {
+            problems.append(f"[scale.monitoring] {key}: {e}");
+        }
+    }
+    period = re.fullmatch(r'(\d+)([hdw])', cfg.loki_retention.strip());
+    hours: int = 0;
+    if period {
+        hours = int(period.group(1)) * {'h': 1, 'd': 24, 'w': 168}[period.group(2)];
+    }
+    if hours < 24 {
+        problems.append(
+            f"[scale.monitoring] loki_retention = '{cfg.loki_retention}' must be "
+            "hours, days or weeks and at least 24h, e.g. 168h or 7d"
+        );
+    }
+    return problems;
+}
+
+impl MonitoringDeployer._storage_class_problem(classes: dict[str, bool]) -> str {
+    wanted: str = self.k8s_config.monitoring_storage_class;
+    if wanted and wanted not in classes {
+        return (
+            f"[scale.monitoring] storage_class = '{wanted}' is not a StorageClass "
+            "on this cluster"
+        );
+    }
+    if not wanted and not any(classes.values()) {
+        return (
+            "[scale.monitoring] storage_enabled needs a default StorageClass on "
+            "this cluster, or storage_class set to one that exists"
+        );
+    }
+    return "";
+}
+
+impl MonitoringDeployer._check_storage {
+    if not self.k8s_config.monitoring_storage_enabled {
+        return;
+    }
+    problems: list[str] = self._storage_problems();
+    try {
+        classes: dict[str, bool] = {};
+        for sc in client.StorageV1Api().list_storage_class().items {
+            notes: dict[str, str] = sc.metadata.annotations or {};
+            classes[sc.metadata.name] = 'true'
+                in [
+                    notes.get('storageclass.kubernetes.io/is-default-class'),
+                    notes.get('storageclass.beta.kubernetes.io/is-default-class')
+                ];
+        }
+        problem: str = self._storage_class_problem(classes);
+        if problem {
+            problems.append(problem);
+        }
+    } except ApiException as e {
+        if e.status != 403 {
+            raise;
+        }
+    }
+    if problems {
+        raise ValueError("; ".join(problems));
+    }
+}
+
+impl MonitoringDeployer._apply_storage(
+    deployment: dict[str, any], volume: str
+) -> dict[str, any] {
+    on: bool = self.k8s_config.monitoring_storage_enabled;
+    pod: dict[str, any] = deployment['spec']['template']['spec'];
+    container: dict[str, any] = pod['containers'][0];
+    deployment['spec']['strategy'] = (
+        {'type': 'Recreate', 'rollingUpdate': None} if on else {'type': 'RollingUpdate'}
+    );
+    pod['securityContext']['fsGroup'] = (
+        container['securityContext']['runAsUser'] if on else None
+    );
+    pod['securityContext']['fsGroupChangePolicy'] = 'OnRootMismatch' if on else None;
+    if 'livenessProbe' in container {
+        container['startupProbe'] = (
+            {
+                'httpGet': container['livenessProbe']['httpGet'],
+                'periodSeconds': 10,
+                'failureThreshold': 60
+            }
+                if on
+                else None
+        );
+    }
+    for vol in pod['volumes'] {
+        if vol['name'] == volume {
+            vol['emptyDir'] = None if on else {};
+            vol['persistentVolumeClaim'] = (
+                {'claimName': f"{deployment['metadata']['name']}-data"} if on else None
+            );
+        }
+    }
+    return deployment;
+}
+
+impl MonitoringDeployer._data_pvc(
+    app_name: str, namespace: str, component: str
+) -> dict[str, any] {
+    cfg = self.k8s_config;
+    holder: str = f"{app_name}-{component}";
+    spec: dict[str, any] = {
+        'accessModes': ['ReadWriteOnce'],
+        'resources': {
+            'requests': {
+                'storage': {
+                    'prometheus': cfg.prometheus_storage,
+                    'loki': cfg.loki_storage,
+                    'tempo': cfg.tempo_storage
+                }[component]
+            }
+        }
+    };
+    if cfg.monitoring_storage_class {
+        spec['storageClassName'] = cfg.monitoring_storage_class;
+    }
+    return {
+        'apiVersion': 'v1',
+        'kind': 'PersistentVolumeClaim',
+        'metadata': {
+            'name': f"{holder}-data",
+            'namespace': namespace,
+            'labels': {
+                'app': holder,
+                'managed': 'jac-scale',
+                'jac-scale.role': 'monitoring-data',
+                'jac-scale.owner': k8s_safe_name(app_name)
+            }
+        },
+        'spec': spec
+    };
+}
+
+impl MonitoringDeployer._ensure_data_pvc(
+    apps_v1: any, core_v1: any, manifest: dict[str, any]
+) {
+    name: str = manifest['metadata']['name'];
+    namespace: str = manifest['metadata']['namespace'];
+    try {
+        claim = core_v1.read_namespaced_persistent_volume_claim(
+            name=name, namespace=namespace
+        );
+    } except ApiException as e {
+        if e.status != 404 {
+            raise;
+        }
+        core_v1.create_namespaced_persistent_volume_claim(
+            namespace=namespace, body=manifest
+        );
+        return;
+    }
+    if claim.metadata.deletion_timestamp is not None {
+        delete_if_exists(
+            apps_v1.delete_namespaced_deployment,
+            manifest['metadata']['labels']['app'],
+            namespace,
+            'Deployment'
+        );
+        wait_until_deleted(
+            lambda { core_v1.read_namespaced_persistent_volume_claim(
+                name, namespace
+            ); },
+            f"PVC '{name}'"
+        );
+        core_v1.create_namespaced_persistent_volume_claim(
+            namespace=namespace, body=manifest
+        );
+        return;
+    }
+    refused: str = "";
+    try {
+        resize_pvc_if_needed(
+            core_v1,
+            namespace,
+            name,
+            manifest['spec']['resources']['requests']['storage']
+        );
+    } except ValueError as e {
+        refused = str(e);
+    } except ApiException as e {
+        refused = str(e.reason);
+    }
+    if refused and self.logger {
+        self.logger.warn(
+            f"Monitoring data claim '{name}' keeps its current size: {refused}"
+        );
     }
 }

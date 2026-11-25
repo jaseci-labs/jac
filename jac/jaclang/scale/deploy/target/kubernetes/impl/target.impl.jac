@@ -2135,7 +2135,9 @@ impl KubernetesTarget._foreign_app_resources(
             role == "bundle-store" and pvc.metadata.name != our_bundle
         );
         foreign_volume: bool = (
-            role == "shared-volume" and bool(volume_owner) and volume_owner != owner
+            role in ["shared-volume", "monitoring-data"]
+            and bool(volume_owner)
+            and volume_owner != owner
         );
         if foreign_bundle or foreign_volume {
             found.append(f"PersistentVolumeClaim/{pvc.metadata.name}");
