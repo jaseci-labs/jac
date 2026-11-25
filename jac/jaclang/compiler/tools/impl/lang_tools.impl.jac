@@ -59,10 +59,13 @@ impl AstTool.ir(args: list[str]) -> str {
                 return f"{py_ast.dump(parsed_ast, indent=2)}";
             }
             try {
-                rep = run_utility(
-                    CompilationProduct.PYTHON_AST,
-                    uni.PythonModuleAst(
-                        parsed_ast, orig_src=uni.Source(file_source, file_name)
+                rep = run_pass(
+                    PyastBuildPass,
+                    cast(
+                        uni.Module,
+                        uni.PythonModuleAst(
+                            parsed_ast, orig_src=uni.Source(file_source, file_name)
+                        )
                     ),
                     prog
                 ).module;
@@ -136,9 +139,7 @@ impl AstTool.ir(args: list[str]) -> str {
                     else 'Compile failed.';
 
             case 'docir':
-                return str(
-                    run_utility(CompilationProduct.DOC, ir_mod, prog).module.gen.doc_ir
-                );
+                return str(run_pass(DocIRGenPass, ir_mod, prog).module.gen.doc_ir);
 
             case 'py':
                 import from jaclang.compiler.backends.py.codegen_shim {

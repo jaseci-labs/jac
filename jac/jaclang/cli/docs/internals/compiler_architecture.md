@@ -702,11 +702,10 @@ graph TD
     STR --> NaStr
 ```
 
-Thirteen emitter families are defined: one per primitive type (`int`,
+Twelve emitter families are defined: one per primitive type (`int`,
 `float`, `complex`, `str`, `bytes`, `list`, `dict`, `set`, `frozenset`,
 `tuple`, `range`), plus `BuiltinEmitter` for top-level functions like
-`print()`, `len()`, `range()`, `sorted()`, and `ExceptionEmitter` for the
-exception machinery. The codegen pass calls `StrEmitter.emit_op_add(...)`
+`print()`, `len()`, `range()` and `sorted()`. The codegen pass calls `StrEmitter.emit_op_add(...)`
 and the backend's subclass produces an ES `BinaryExpression` or an LLVM
 `call @str_concat`; the Python backend emits an ordinary `BinOp` whose
 semantics come from CPython directly.
@@ -913,8 +912,8 @@ A short index, organised by the role each file plays in the pipeline.
 
 - [`compiler/driver/jir.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/jir.jac)
   -- section format
-- [`compiler/driver/bccache.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/bccache.jac)
-  -- cache layout
+- [`compiler/driver/annex_discovery.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/annex_discovery.jac)
+  -- annex file discovery
 
 ---
 

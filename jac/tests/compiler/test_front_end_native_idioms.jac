@@ -303,9 +303,15 @@ test "a test block still binds the assert names to symbols" {
 test "version-condition comparisons match the operator table they replaced" {
     import sys;
     import ast as py_ast;
-    import from jaclang.compiler.frontend.unitree { IfStmt, PythonModuleAst, Source }
-    import from jaclang.compiler.driver.pipeline { run_utility }
-    import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
+    import from typing { cast }
+    import from jaclang.compiler.frontend.unitree {
+        IfStmt,
+        Module,
+        PythonModuleAst,
+        Source
+    }
+    import from jaclang.compiler.driver.pass_driver { run_pass }
+    import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
     import from jaclang.compiler.frontend.helpers { evaluate_version_condition }
     code = "import sys\n"
     "if sys.version_info >= (3, 11):\n    a = 1\n"
@@ -317,10 +323,13 @@ test "version-condition comparisons match the operator table they replaced" {
     "if sys.version_info >= (99, 0):\n    g = 1\n"
     "if sys.platform == 'linux':\n    h = 1\n";
     prog = JacProgram();
-    mod = run_utility(
-        CompilationProduct.PYTHON_AST,
-        PythonModuleAst(
-            py_ast.parse(code), orig_src=Source(code, "test_version_ops.py")
+    mod = run_pass(
+        PyastBuildPass,
+        cast(
+            Module,
+            PythonModuleAst(
+                py_ast.parse(code), orig_src=Source(code, "test_version_ops.py")
+            )
         ),
         prog
     ).module;

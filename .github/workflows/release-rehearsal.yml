@@ -2,7 +2,8 @@ name: Release rehearsal
 
 # A full release, minus publishing, every day at 03:00 Asia/Colombo: the
 # release binaries on every platform with their smoke tests, the Docker image
-# for each architecture, and every Nightly lane. ci.yml's `release-rehearsal`
+# for each architecture, every Nightly lane, and the sealed lanes (the site
+# journey on the release-shaped kit). ci.yml's `release-rehearsal`
 # check turns main red while the latest rehearsal is failing, and stays red
 # until one passes. Dispatch it by hand to confirm a fix without waiting.
 
@@ -89,3 +90,9 @@ jobs:
     permissions:
       contents: write
     uses: ./.github/workflows/nightly.yml
+
+  sealed:
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/ci-sealed.yml

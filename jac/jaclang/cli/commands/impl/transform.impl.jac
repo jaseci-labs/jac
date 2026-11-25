@@ -3,10 +3,14 @@ import ast as ast3;
 impl py2jac(filename: str) -> int {
     if filename.endswith('.py') {
         file_source = read_file_with_encoding(filename);
-        converted = run_utility(
-            CompilationProduct.PYTHON_AST,
-            uni.PythonModuleAst(
-                ast3.parse(file_source), orig_src=uni.Source(file_source, filename)
+        import from typing { cast }
+        converted = run_pass(
+            PyastBuildPass,
+            cast(
+                uni.Module,
+                uni.PythonModuleAst(
+                    ast3.parse(file_source), orig_src=uni.Source(file_source, filename)
+                )
             ),
             JacProgram()
         ).module;

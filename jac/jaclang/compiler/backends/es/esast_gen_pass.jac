@@ -355,7 +355,6 @@ walker EsastGenPass(TreePass) {
         nd: uni.UniNode, type_expr: (uni.UniNode | None), hard: bool
     ) -> int;
 
-    def _is_client_destined(nd: uni.UniNode) -> bool;
     def _build_local_osp_spawn(
         nd: uni.BinaryExpr, left: es.Expression, right: es.Expression
     ) -> (es.Expression | None);
@@ -453,7 +452,6 @@ walker EsastGenPass(TreePass) {
     can exit_jsx_element with uni.JsxElement exit;
     can exit_jsx_element_name with uni.JsxElementName exit;
     can exit_jsx_spread_attribute with uni.JsxSpreadAttribute exit;
-    can exit_jsx_normal_attribute with uni.JsxNormalAttribute exit;
     can exit_jsx_text with uni.JsxText exit;
     can exit_jsx_expression with uni.JsxExpression exit;
     can enter_jsx_slot with uni.JsxSlot entry;
@@ -807,8 +805,6 @@ walker EsastGenPass(TreePass) {
     def _gen_seq_array(nd: uni.ListVal | uni.TupleVal | uni.SetVal) -> None;
     can exit_tuple_val with uni.TupleVal exit;
     can exit_dict_val with uni.DictVal exit;
-    can exit_k_v_pair with uni.KVPair exit;
-    can exit_inner_compr with uni.InnerCompr exit;
     can exit_list_compr with uni.ListCompr exit;
     can exit_set_compr with uni.SetCompr exit;
     can exit_gen_compr with uni.GenCompr exit;
@@ -841,8 +837,6 @@ walker EsastGenPass(TreePass) {
     can exit_global_vars with uni.GlobalVars exit;
     can exit_module_code with uni.ModuleCode exit;
     can exit_test with uni.Test exit;
-    can exit_token with uni.Token exit;
-    can exit_semi with uni.Semi exit;
     can finish_expr with uni.Expr exit;
     can finish_scope with uni.UniScopeNode exit;
     def _literal_value(expr: (uni.UniNode | None)) -> (object | None);

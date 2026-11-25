@@ -711,6 +711,28 @@ impl UserManager.list_all_users(
     return self._identity_storage.list_all_users(limit, offset);
 }
 
+impl UserManager.list_provisioned_users -> dict[str, any] {
+    if self.provision_unknown_users {
+        return {'error': PROVISIONED_HERE};
+    }
+    users = self._identity_storage.list_provisioned_users();
+    return {'users': users, 'count': len(users)};
+}
+
+impl UserManager.count_provisioned_users -> int {
+    if self.provision_unknown_users {
+        return 0;
+    }
+    return self._identity_storage.count_provisioned_users();
+}
+
+impl UserManager.delete_provisioned_users -> dict[str, any] {
+    if self.provision_unknown_users {
+        return {'error': PROVISIONED_HERE};
+    }
+    return self._identity_storage.delete_provisioned_users();
+}
+
 impl UserManager.delete_user(user_id: str) -> dict[str, str] {
     if user_id == self.ADMIN_USER_ID {
         return {'error': 'Cannot delete the bootstrap admin account'};

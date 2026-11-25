@@ -316,7 +316,7 @@ test "gap 45 enum iteration false positive" {
 #
 # Currently, standalone compilation of an impl file leaves all parent-scope
 # types (self, parameter types, imports) as Unknown, producing cascading
-# false positives that mask the real type errors. The bccache module
+# false positives that mask the real type errors. The annex_discovery module
 # already provides discover_base_file() for this purpose.
 #
 # Impact: `jac check some.impl.jac` produces hundreds of "Type is Unknown"
@@ -590,11 +590,11 @@ test "gap 52 class enum iteration yields enum instance" {
 # files backed by a .jac declaration were compiled standalone. Without the
 # declaration, self resolved as Unknown → E1032 on every self.x access.
 #
-# Fix: added '.jac' to the extension list in bccache.jac.
+# Fix: added '.jac' to the extension list in annex_discovery.jac.
 # Impact: 1,073 false E1032 in lexer.impl.jac, 211 in parser.impl.jac.
 # =========================================================================
 test "gap 53 discover_base_file finds .jac for impl file" {
-    import from jaclang.compiler.driver.bccache { discover_base_file }
+    import from jaclang.compiler.driver.annex_discovery { discover_base_file }
     impl_path = os.path.join(FIXTURES, "na_impl", "impl", "counter.impl.jac");
     base = discover_base_file(impl_path);
     assert base is not None and base.endswith("counter.jac") , (

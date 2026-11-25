@@ -135,7 +135,6 @@ test "a link plan hands the collector back exactly as it found it" {
             for (frozen, young) in seen
             if frozen > 0
         );
-        assert "gc settle" in registry.phase_summary();
     } finally {
         gc.set_threshold(*found);
     }

@@ -145,7 +145,7 @@ test "placement_pins imports stay within the documented allowlist" {
         "jaclang/compiler/placement/placement_pins.jac",
         "jaclang/compiler/placement/placement_solver.jac"
     };
-    import from jaclang.compiler.driver.bccache { discover_base_file }
+    import from jaclang.compiler.driver.annex_discovery { discover_base_file }
     import from jaclang.compiler.driver.wiring { wiring_for_path }
 
     pkg = os.path.join(JAC_ROOT, "jaclang");
