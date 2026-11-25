@@ -421,10 +421,20 @@ impl serve(
         );
         return 1;
     }
+    import from jaclang.server.settings { requested_port }
+    served_cfg = _effective_config(cfg, served);
+    try {
+        (bind_port, port_pinned) = requested_port(
+            port or None, served_cfg.serve if served_cfg is not None else None
+        );
+    } except ServeConfigError as e {
+        console.error(f"cannot start the server:\n{e}");
+        return 1;
+    }
     if served is not None {
         import from jaclang.client.cli { run_client_start }
         client_rc = run_client_start(
-            served, host, platform, port, api_port, dev, no_client, tunnel
+            served, host, platform, bind_port, api_port, dev, no_client, tunnel
         );
         if client_rc is not None {
             return client_rc;
@@ -451,14 +461,12 @@ impl serve(
     }
     (base, mod, mach) = _proc_file(filename);
 
-    port_pinned = port > 0;
-    port = port if port_pinned else 8000;
     if dev and not no_client {
-        vite_port = port;
-        actual_api_port = api_port if api_port > 0 else port + 1;
+        vite_port = bind_port;
+        actual_api_port = api_port if api_port > 0 else bind_port + 1;
         api_port_pinned = api_port > 0;
     } else {
-        actual_api_port = port;
+        actual_api_port = bind_port;
         vite_port = 0;
         api_port_pinned = port_pinned;
     }
@@ -1202,13 +1210,11 @@ impl _kind_serve_flags(
     if not kind_serves or plan is None {
         return {};
     }
-    if serve_mode is not True {
-        return dict(plan.flags);
-    }
+    derived = {"port"} if serve_mode is not True else {"port", "dev"};
     return {
         k: v
         for (k, v) in plan.flags.items()
-        if k != "dev"
+        if k not in derived
     };
 }
 

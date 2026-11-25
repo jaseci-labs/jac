@@ -3434,6 +3434,7 @@ graph import {
         scale.tests.server.test_sso_grants { AuthSettings, PasswordSettings },
     ]
     server.settings --> [
+        cli.commands.execution.serve { requested_port },
         runtime.source_app.main
             | scale.tests.microservices.test_drain
             | scale.tests.server.test_serve { ServeSettings },

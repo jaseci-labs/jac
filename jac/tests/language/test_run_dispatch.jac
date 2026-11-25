@@ -121,12 +121,81 @@ test "kind service -> serve headless" {
     assert "port" not in p.flags;
 }
 
-test "serve plan forwards a custom [serve] port from jac.toml" {
+test "a served file binds --port, then JAC_SERVE_PORT, then [serve] port, then 8000" {
+    import from unittest.mock { patch }
+    import from jaclang.server.settings { ServeConfigError, ServeSettings }
     p = _plan(
         "kind = \"service\"\nentry-point = \"api\"\n\n[serve]\nport = 3000\n", "api.jac"
     );
     assert p.flags.get("port") == 3000;
     assert "--port 3000" in p.command_line();
+    cli = "kind = \"cli\"\nentry-point = \"main\"\n";
+    service = "kind = \"service\"\nentry-point = \"main\"\n";
+    pinned = "\n[serve]\nport = 18002\n";
+    app_overlay = "\n[apps.api]\nkind = \"service\"\nentry-point = \"main\"\n\n[apps.api.serve]\nport = 8100\n\n[serve]\nport = 8090\n";
+    rows = [
+        (
+            cli,
+            None,
+            None,
+            None,
+            8000,
+            False,
+            "nothing chosen: the default, free to move"
+        ),
+        (cli + pinned, None, None, None, 18002, True, "a cli file takes [serve] port"),
+        (
+            cli + pinned,
+            "18003",
+            None,
+            None,
+            18003,
+            True,
+            "JAC_SERVE_PORT beats jac.toml"
+        ),
+        (cli + pinned, "18003", 18004, None, 18004, True, "a typed --port beats both"),
+        (service, "18003", None, None, 18003, True, "a service kind reads the env"),
+        (
+            service + pinned,
+            "18003",
+            None,
+            None,
+            18003,
+            True,
+            "a service kind's toml port does not outrank the env"
+        ),
+        (cli + pinned, None, None, True, 18003, False, "--dev puts the API one above"),
+        (app_overlay, None, None, None, 8100, True, "an app's [serve] overlay wins")
+    ];
+    seen: list[dict[str, any]] = [];
+    def stop_at_settings(
+        base_path: str = '', overrides: any = None, config: any = None
+    ) -> any {
+        seen.append(dict(overrides or {}));
+        raise ServeConfigError("stopped before binding");
+    }
+    for (toml, env_port, typed, dev, want_port, want_strict, why) in rows {
+        d = _mk_project(toml, "main.jac");
+        seen.clear();
+        with patch.dict(os.environ) {
+            os.environ.pop("JAC_SERVE_PORT", None);
+            if env_port {
+                os.environ["JAC_SERVE_PORT"] = str(env_port);
+            }
+            with patch.object(ServeSettings, "load", stop_at_settings) {
+                rc = execution.run(
+                    target=os.path.join(d, "main.jac"),
+                    serve_mode=True,
+                    port=typed,
+                    dev=dev
+                );
+            }
+        }
+        assert rc == 1 and len(seen) == 1 , f"{why}: never reached the settings";
+        got = (seen[0].get("port"), seen[0].get("strict_port"));
+        assert got == (want_port, want_strict) , f"{why}: bound {got}";
+    }
+    _cleanup();
 }
 
 test "kind service-mesh -> serve consumer" {

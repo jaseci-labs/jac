@@ -202,7 +202,7 @@ impl run_client_start(
         );
     }
 
-    start_port = port or 8000;
+    start_port = port;
     start_api = api_port or 0;
     if target.name == "mobile" {
         if app_platform and app_platform != "auto" {

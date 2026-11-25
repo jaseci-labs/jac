@@ -287,7 +287,7 @@ jac run greet.jac --name Alice
 
 ---
 
-**Serving (`--serve`, `--port`, `--dev`, `--fleet`).** When the app's kind is a serving kind (`service`, `service-mesh`, `web-app`, `web-static`, `desktop`), `jac run` serves instead of executing -- with or without an explicit target. Every `:pub` / `:priv` walker becomes an API endpoint, with OpenAPI docs, auth, and persistence. Outside a server-kind app, `--serve` asks for the same thing explicitly.
+**Serving (`--serve`, `--port`, `--dev`, `--fleet`).** When the app's kind is a serving kind (`service`, `service-mesh`, `web-app`, `web-static`, `desktop`), `jac run` serves instead of executing -- with or without an explicit target. Every `:pub` / `:priv` walker becomes an API endpoint, with OpenAPI docs, auth, and persistence. Outside a server-kind app, `--serve` asks for the same thing explicitly. The port is the first one set of `--port`, `JAC_SERVE_PORT`, the app's `[serve] port`, and `8000`. A port you choose is bound exactly, and the command fails if it is taken; only the `8000` default moves to the next free port.
 
 In a workspace with **service apps** (`kind = "service"`), serving one app also brings up the services it bridges to. By default they are **colocated**: loaded into the served app's process and registered locally, so bridged calls never leave the process. `--fleet` (or `[scale.gateway] colocate = false`) runs each service app as its own local process behind the served app's gateway instead; the boundary is compiled the same way either way. See [Workspaces & Apps](../apps.md#boundary-is-structural-topology-is-profile).
 

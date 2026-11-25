@@ -238,6 +238,12 @@ def env_list(
     name: str, `default: list[str], environ: (dict[str, str] | None) = None
 ) -> list[str];
 
+def requested_port(
+    given: (int | None),
+    cfg: (ServeConfig | None),
+    environ: (dict[str, str] | None) = None
+) -> tuple[int, bool];
+
 def resolve_count(raw: str, quota: int, label: str) -> int;
 def default_threads(worker_count: int, quota: int) -> int;
 def default_worker_count(
