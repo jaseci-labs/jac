@@ -191,7 +191,10 @@ test "a served file binds --port, then JAC_SERVE_PORT, then [serve] port, then 8
     }
     for (toml, env_port, typed, dev, want_port, want_strict, why) in rows {
         d = _mk_project(toml, "main.jac");
-        Path(d, "orders.jac").write_text("with entry { print(\"ok\"); }");
+        is_fleet = toml.startswith(fleet);
+        if is_fleet {
+            Path(d, "orders.jac").write_text("with entry { print(\"ok\"); }");
+        }
         seen.clear();
         with patch.dict(os.environ) {
             os.environ.pop("JAC_SERVE_PORT", None);
@@ -209,7 +212,9 @@ test "a served file binds --port, then JAC_SERVE_PORT, then [serve] port, then 8
                 );
             }
         }
-        assert rc in (0, 1) and len(seen) == 1 , f"{why}: never chose a port";
+        assert rc == (0 if is_fleet else 1) and len(seen) == 1 , (
+            f"{why}: never chose a port"
+        );
         got = (seen[0].get("port"), seen[0].get("strict_port"));
         assert got == (want_port, want_strict) , f"{why}: bound {got}";
     }
@@ -634,7 +639,7 @@ test "entry_override keeps a named file for kinds that plan without one" {
 }
 
 test "serve flags are recognised only when they were actually typed" {
-    # (port, dev, api_port, no_client, faux, host, platform, fleet, cfg): the
+    # (port, dev, api_port, no_client, faux, host, platform, fleet, workers): the
     # old `client` slot is gone with the --client flag.
     over = execution._serve_overrides(
         None, None, None, None, None, None, None, False, None
