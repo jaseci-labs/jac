@@ -526,10 +526,10 @@ def run_with_both(
     client_modules: bool = False
 ) {
     reqd: list[any] = require if require is not None else [];
-    if not reqd {
+    if not reqd or any(backend not in ("cl", "na") for backend in reqd) {
         raise AssertionError(
-            f"[{fixture}] run_with_both needs require=['cl'] and/or ['na']: "
-            "a backend that is not required is not compared"
+            f"[{fixture}] run_with_both needs require=['cl'] and/or ['na'], got "
+            f"{reqd!r}: a backend that is not required is not compared"
         );
     }
     stem = fixture[:-4] if fixture.endswith(".jac") else fixture;
