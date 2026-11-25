@@ -26,6 +26,9 @@ obj DrainState {
 }
 
 
+def on_drain(hook: Callable[[], any]) -> Callable[[], any];
+
+
 async def run_hooks(hooks: list[Callable[..., any]], what: str);
 
 
