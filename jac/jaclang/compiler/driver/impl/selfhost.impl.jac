@@ -16,38 +16,32 @@ impl SelfHostCache.jaclang_root -> str {
     return resolved;
 }
 
-impl SelfHostCache.owns(file_path: str) -> bool {
-    return is_compiler_source_path(file_path);
-}
-
-impl SelfHostCache.resolve(
-    file_path: str, target_program: JacProgram, force: bool = False
-) -> JacProgram {
-    if not force and self.owns(file_path) {
-        if self.is_selfhost(target_program) {
-            return self.program;
-        }
-        if target_program.options.native_required_for(file_path) {
-            return target_program;
-        }
-        directory = os.path.dirname(os.path.realpath(file_path));
-        package_root = self.jaclang_root();
-        while directory.startswith(package_root + os.sep) {
-            if os.path.isfile(os.path.join(directory, 'jac.toml')) {
-                return target_program;
-            }
-            directory = os.path.dirname(directory);
-        }
-        import from jaclang.compiler.frontend.codeinfo {
-            is_native_by_location,
-            is_shared_runtime_module
-        }
-        if is_native_by_location(file_path) or is_shared_runtime_module(file_path) {
-            return target_program;
-        }
+impl SelfHostCache.resolve(file_path: str, target_program: JacProgram) -> JacProgram {
+    if not is_compiler_source_path(file_path) {
+        return target_program;
+    }
+    if self.is_selfhost(target_program) {
         return self.program;
     }
-    return target_program;
+    if target_program.options.native_required_for(file_path) {
+        return target_program;
+    }
+    directory = os.path.dirname(os.path.realpath(file_path));
+    package_root = self.jaclang_root();
+    while directory.startswith(package_root + os.sep) {
+        if os.path.isfile(os.path.join(directory, 'jac.toml')) {
+            return target_program;
+        }
+        directory = os.path.dirname(directory);
+    }
+    import from jaclang.compiler.frontend.codeinfo {
+        is_native_by_location,
+        is_shared_runtime_module
+    }
+    if is_native_by_location(file_path) or is_shared_runtime_module(file_path) {
+        return target_program;
+    }
+    return self.program;
 }
 
 impl SelfHostCache.evict_unit(

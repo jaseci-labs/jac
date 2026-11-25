@@ -63,7 +63,6 @@ impl OwnershipCheckPass._nogc_resolve_provenance -> (str | None) {
 impl OwnershipCheckPass._nogc_setup -> None {
     self.nogc_prov = self._nogc_resolve_provenance();
     self.module.gen.nogc_enforced = self.nogc_prov is not None;
-    self.module.gen.nogc_provenance = self.nogc_prov or '';
     if self.nogc_prov is not None {
         self._nogc_infer_locals();
         self._stamp_view_borrows();
@@ -613,19 +612,6 @@ impl OwnershipCheckPass._nogc_is_container_expr(expr: Expr | None) -> bool {
         }
     }
     return False;
-}
-
-impl OwnershipCheckPass._nogc_is_list_expr(expr: Expr | None) -> bool {
-    if not isinstance(expr, Expr) or expr.type is None {
-        return False;
-    }
-    _tk = "";
-    try {
-        _tk = expr.type.mangle();
-    } except Exception {
-        return False;
-    }
-    return _tk == "list" or _tk.startswith("list[");
 }
 
 impl OwnershipCheckPass._nogc_container_grow_method(call: FuncCall) -> (str | None) {

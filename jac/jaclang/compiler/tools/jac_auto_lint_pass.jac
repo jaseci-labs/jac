@@ -5,8 +5,7 @@ glob _HEADER_COL = 10000;
 
 walker JacAutoLintPass(TreePass) {
     static has contract: PassContract = PassContract();
-    has lint_enabled: bool = True,
-        report_only: bool = False,
+    has report_only: bool = False,
         main_module: (uni.Module | None) = None,
         _exclude_patterns: list[str] = [],
         _project_root: str = "",

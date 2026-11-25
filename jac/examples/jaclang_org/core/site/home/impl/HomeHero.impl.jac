@@ -21,11 +21,44 @@ impl HomeHero -> JsxElement {
                     <span className="text-primary">everything</span>
                     .
                 </h1>
-                <div className="anim-fade-up anim-d2 mt-10 max-w-xl">
+                <div className="anim-fade-up anim-d2 mt-10 max-w-4xl">
                     <p className="text-lg leading-8 text-muted-foreground sm:text-xl">
                         Install Jac's single binary with this command:
                     </p>
-                    <CopyCommand command={HOME_INSTALL} className="mt-4 w-full"/>
+                    <div
+                        className="mt-4 flex flex-col-reverse gap-2 lg:flex-row lg:items-center lg:gap-5"
+                    >
+                        <div className="relative w-full lg:max-w-xl">
+                            <CopyCommand
+                                command={NEOJAC_INSTALL}
+                                className="cmd-glow w-full border-primary/60 bg-card"
+                            />
+                            <span
+                                aria-hidden="true"
+                                className="sticker-wiggle pointer-events-none absolute -left-4 -top-4 z-10 select-none rounded-md bg-primary px-2 py-0.5 font-mono text-[11px] font-bold uppercase tracking-wider text-primary-foreground shadow-lg shadow-primary/40"
+                            >
+                                neojac
+                            </span>
+                        </div>
+                        <span
+                            className="self-start whitespace-nowrap rounded-full border border-primary/40 bg-primary/10 px-3 py-1 font-mono text-xs uppercase tracking-[0.15em] text-primary lg:self-auto"
+                        >
+                            Jac's most advanced compiler
+                        </span>
+                    </div>
+                    <div
+                        className="mt-4 flex flex-col-reverse gap-2 lg:flex-row lg:items-center lg:gap-5"
+                    >
+                        <CopyCommand
+                            command={HOME_INSTALL}
+                            className="w-full lg:max-w-xl"
+                        />
+                        <span
+                            className="self-start whitespace-nowrap rounded-full border border-border px-3 py-1 font-mono text-xs uppercase tracking-[0.15em] text-muted-foreground lg:self-auto"
+                        >
+                            Jac's reference compiler
+                        </span>
+                    </div>
                     <p
                         className="mt-8 text-lg leading-8 text-muted-foreground sm:text-xl"
                     >
@@ -34,7 +67,7 @@ impl HomeHero -> JsxElement {
                     <CopyCommand
                         command={HOME_PROMPT}
                         prefix="›"
-                        className="mt-4 w-full"
+                        className="mt-4 w-full lg:max-w-xl"
                     />
                 </div>
                 <ol

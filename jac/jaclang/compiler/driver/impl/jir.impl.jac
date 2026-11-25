@@ -2,21 +2,6 @@ import struct;
 import sys;
 import zlib;
 
-impl JirHeader.to_bytes -> bytes {
-    return struct.pack(
-        HEADER_FMT,
-        self.magic,
-        self.format_version,
-        self.python_version,
-        self.jaclang_version_hash,
-        self.source_content_hash,
-        self.node_count,
-        self.symbol_count,
-        self.string_pool_size,
-        self.flags
-    );
-}
-
 impl JirHeader.is_compatible -> bool {
     expected_py = (sys.version_info.major << 8) | sys.version_info.minor;
     if self.python_version != expected_py {
@@ -81,11 +66,9 @@ impl NativeStamp.matches(other: NativeStamp) -> bool {
     return self.key() == other.key();
 }
 
-impl current_native_stamp(
-    codegen_identity: str, triple: str, producer: str = ""
-) -> NativeStamp {
+impl current_native_stamp(codegen_identity: str, triple: str) -> NativeStamp {
     return NativeStamp(
-        compiler_digest=producer or running_compiler_digest(),
+        compiler_digest=running_compiler_digest(),
         codegen_identity=codegen_identity,
         triple=triple
     );
@@ -274,7 +257,7 @@ impl is_compiler_tree_path(source_path: str) -> bool {
 }
 
 impl _module_codespace_mode(source_path: str) -> str {
-    if is_package_keyed_path(source_path) {
+    if is_compiler_source_path(source_path) {
         return "internal";
     }
     try {
@@ -323,9 +306,6 @@ impl compiler_source_files(pkg_dir: str) -> list[str] {
                 rel = os.path.relpath(os.path.join(walk_dir, name), base).replace(
                     os.sep, "/"
                 );
-                if rel in COMPILER_DIGEST_SKIP {
-                    continue;
-                }
                 rels.append(rel);
             }
         }
@@ -355,14 +335,6 @@ impl compiler_source_digest(pkg_dir: str) -> str {
     rows = [
         (rel, resolve_compiler_input(base, rel)) for rel in compiler_source_files(base)
     ];
-    return fold_compiler_digest(rows);
-}
-
-impl _manifest_compiler_digest(pkg_dir: str) -> str {
-    base = str(Path(pkg_dir));
-    rows = [
-        (rel, resolve_compiler_input(base, rel)) for rel in compiler_source_files(base)
-    ];
     digest = fold_compiler_digest(rows);
     _COMPILER_INPUT_ROWS[digest] = rows;
     return digest;
@@ -370,7 +342,7 @@ impl _manifest_compiler_digest(pkg_dir: str) -> str {
 
 impl running_compiler_digest -> str {
     if not _COMPILER_DIGEST_CACHE {
-        _COMPILER_DIGEST_CACHE.append(_manifest_compiler_digest(_jaclang_pkg_dir));
+        _COMPILER_DIGEST_CACHE.append(compiler_source_digest(_jaclang_pkg_dir));
     }
     return _COMPILER_DIGEST_CACHE[0];
 }
@@ -387,13 +359,12 @@ impl py_emitter_digest -> str {
     }
     rows = _COMPILER_INPUT_ROWS.get(current);
     if rows is None {
-        _manifest_compiler_digest(_jaclang_pkg_dir);
+        compiler_source_digest(_jaclang_pkg_dir);
         rows = _COMPILER_INPUT_ROWS.get(current, []);
     }
     h = hashlib.sha256();
     for (rel, sha) in rows {
-        if _rel_under(rel, PY_EMITTER_ROOTS)
-            and not _rel_under(rel, PY_EMITTER_EXCLUDED) {
+        if _rel_under(rel, PY_EMITTER_ROOTS) {
             h.update(rel.encode());
             h.update(b"\x00");
             h.update(sha.encode());
@@ -408,16 +379,12 @@ impl require_exact_compiler_products {
     update_handoff(exact=True);
 }
 
-impl _handoff -> dict[str, object] {
-    return handoff();
-}
-
 impl dev_source -> str {
-    return str(_handoff().get("compiler_source") or "");
+    return str(handoff().get("compiler_source") or "");
 }
 
 impl dev_carry_enabled -> bool {
-    record = _handoff();
+    record = handoff();
     if record.get("exact") {
         return False;
     }
@@ -538,7 +505,7 @@ impl _full_env_fingerprint(source_path: str) -> str {
 }
 
 impl _env_fingerprint_for(source_path: str) -> str {
-    if is_stub_like_path(source_path) or is_package_keyed_path(source_path) {
+    if is_stub_like_path(source_path) or is_compiler_source_path(source_path) {
         return _toolchain_env_fingerprint();
     }
     return _full_env_fingerprint(source_path);
@@ -698,7 +665,7 @@ impl _compute_module_key_uncached(source_path: str) -> str {
     stat_note("key_compute");
     h = hashlib.sha256();
     projection = ''
-        if is_package_keyed_path(source_path)
+        if is_compiler_source_path(source_path)
         else _module_projection(source_path);
     h.update(projection.encode());
     h.update(_env_fingerprint_for(source_path).encode());
@@ -711,15 +678,15 @@ impl _compute_module_key_uncached(source_path: str) -> str {
     return h.hexdigest();
 }
 
+impl _section_table(data: bytes) -> dict[int, bytes] {
+    magic: any = SECTIONS_MAGIC;
+    pos = data.find(magic, HEADER_SIZE);
+    return read_sections(data, pos + len(magic)) if pos >= 0 else {};
+}
+
 impl read_section_bytes(data: bytes, sec_type: int) -> (bytes | None) {
     try {
-        magic: any = SECTIONS_MAGIC;
-        pos = data.find(magic, HEADER_SIZE);
-        if pos < 0 {
-            return None;
-        }
-        sections = read_sections(data, pos + len(magic));
-        return sections.get(sec_type);
+        return _section_table(data).get(sec_type);
     } except Exception {
         return None;
     }
@@ -732,14 +699,6 @@ impl _read_key_section(data: bytes, sec_type: int) -> (str | None) {
     } except Exception {
         return None;
     }
-}
-
-impl read_modkey(data: bytes) -> (str | None) {
-    return _read_key_section(data, SEC_MODKEY);
-}
-
-impl read_envkey(data: bytes) -> (str | None) {
-    return _read_key_section(data, SEC_ENVKEY);
 }
 
 impl _ct_dep_rows(text: str) -> list[tuple[(str, str, str)]] {
@@ -794,8 +753,8 @@ impl _ct_pkg_ref(path: str) -> str {
 
 impl _ct_row_path(stored: str, base: str) -> str {
     if stored.startswith(CT_PKG_PREFIX) {
-        import from jaclang.compiler.pkg_paths { target_pkg_root }
-        return os.path.join(target_pkg_root(), *stored[len(CT_PKG_PREFIX):].split("/"));
+        parts = stored[len(CT_PKG_PREFIX):].split("/");
+        return os.path.join(jaclang_pkg_root(), *parts);
     }
     if os.path.isabs(stored) or not base {
         return stored;
@@ -978,48 +937,6 @@ impl _compute_definition_digest(files: list[str], qualname: str) -> str {
     return h.hexdigest() if found else "";
 }
 
-impl rebase_placement_section(raw: bytes, base: str) -> bytes {
-    import json as _json;
-    try {
-        parsed = _json.loads(raw.decode("utf-8"));
-    } except Exception {
-        return raw;
-    }
-    roots: list[str] = [];
-    for cand in (os.path.normpath(base), os.path.realpath(base)) {
-        if cand not in roots {
-            roots.append(cand);
-        }
-    }
-
-    def _rebase(value: any) -> any {
-        if isinstance(value, str) {
-            for base_dir in roots {
-                if value == base_dir {
-                    return PRECOMPILE_SENTINEL;
-                }
-                prefix = base_dir + os.sep;
-                if value.startswith(prefix) {
-                    return (
-                        PRECOMPILE_SENTINEL
-                        + "/"
-                        + value[len(prefix):].replace(os.sep, "/")
-                    );
-                }
-            }
-            return value;
-        }
-        if isinstance(value, list) {
-            return [_rebase(v) for v in value];
-        }
-        if isinstance(value, dict) {
-            return {k: _rebase(v) for (k, v) in value.items()};
-        }
-        return value;
-    }
-    return _json.dumps(_rebase(parsed), sort_keys=True).encode("utf-8");
-}
-
 impl rebase_ct_deps_section(raw: bytes, base: str) -> bytes {
     lines: list[str] = [];
     for (path, digest, flag) in _ct_dep_rows(raw.decode("utf-8")) {
@@ -1096,14 +1013,6 @@ impl read_dep_rows(data: bytes, base_dir: str = "") -> list[DepRow] {
     return out;
 }
 
-impl read_dep_hashes(data: bytes, base_dir: str = "") -> list[tuple[str, str]] {
-    out: list[tuple[str, str]] = [];
-    for row in read_dep_rows(data, base_dir) {
-        out.append((row.path, row.digest, ));
-    }
-    return out;
-}
-
 impl native_deps_section(dep_digests: dict[str, str]) -> bytes {
     lines: list[str] = [];
     for path in sorted(dep_digests) {
@@ -1124,25 +1033,11 @@ impl parse_native_dep_rows(raw: bytes, anchor: str = "") -> list[tuple[str, str]
     return out;
 }
 
-impl _dep_row_path(stored: str, base_dir: str) -> str {
-    prefix = PRECOMPILE_SENTINEL + "/";
-    if base_dir and stored.startswith(prefix) {
-        return os.path.normpath(os.path.join(base_dir, stored[len(prefix):]));
-    }
-    return stored;
-}
-
 impl read_native_dep_hashes(
-    data: bytes, stamp: NativeStamp, base_dir: str = "", anchor: str = ""
+    data: bytes, stamp: NativeStamp, anchor: str = ""
 ) -> list[tuple[str, str]] {
     raw = native_section_payload(read_section_bytes(data, SEC_NDEPS), stamp);
-    if not raw {
-        return [];
-    }
-    return [
-        (_dep_row_path(path, base_dir), digest, )
-        for (path, digest) in parse_native_dep_rows(raw, anchor)
-    ];
+    return parse_native_dep_rows(raw, anchor) if raw else [];
 }
 
 impl compute_stub_module_key(source_path: str) -> str {
@@ -1182,7 +1077,7 @@ impl module_jir_key_sections(source_path: str) -> dict[int, bytes] {
 }
 
 impl jir_env_matches(jir_data: bytes, source_path: str) -> bool {
-    stored = read_envkey(jir_data);
+    stored = _read_key_section(jir_data, SEC_ENVKEY);
     if stored is None {
         return False;
     }
@@ -1190,7 +1085,7 @@ impl jir_env_matches(jir_data: bytes, source_path: str) -> bool {
 }
 
 impl jir_matches_source(jir_data: bytes, source_path: str) -> bool {
-    stored = read_modkey(jir_data);
+    stored = _read_key_section(jir_data, SEC_MODKEY);
     if stored is None {
         return False;
     }
@@ -1211,7 +1106,7 @@ impl compute_precompile_module_key(source_path: str, compiler_digest: str = "") 
 impl precompiled_jir_matches_source(
     jir_data: bytes, source_path: str, compiler_digest: str = "", package_root: str = ""
 ) -> bool {
-    stored = read_modkey(jir_data);
+    stored = _read_key_section(jir_data, SEC_MODKEY);
     if stored is None {
         return False;
     }
@@ -1224,7 +1119,7 @@ impl jir_cacheable_source_path(source_path: str) -> bool {
 }
 
 impl cache_mode -> tuple[bool, bool] {
-    record = _handoff();
+    record = handoff();
     return (bool(record.get("rebuild")), bool(record.get("no_precompile")));
 }
 
@@ -1253,7 +1148,7 @@ impl _module_cache_root(source_path: str) -> Path {
     resolved_str = str(resolved);
 
     if resolved_str.startswith(_jaclang_pkg_dir + os.sep)
-        or is_package_keyed_path(resolved_str) {
+        or is_compiler_source_path(resolved_str) {
         return get_jir_cache_dir() / 'modules';
     }
     try {
@@ -1290,7 +1185,7 @@ impl get_module_cache_path(source_path: str) -> Path {
     cache_dir = _get_module_cache_dir(source_path);
     source = Path(source_path).resolve();
     projection = ''
-        if is_package_keyed_path(str(source))
+        if is_compiler_source_path(str(source))
         else _module_projection(source_path);
     path_hash = hashlib.sha256((str(source) + projection).encode()).hexdigest()[:8];
     (major, minor) = (sys.version_info.major, sys.version_info.minor);
@@ -1457,17 +1352,7 @@ impl read_jir(cache_path: Path) -> bytes {
 }
 
 impl read_bytecode_only(data: bytes) -> (bytes | None) {
-    try {
-        magic_bytes: any = SECTIONS_MAGIC;
-        pos = data.find(magic_bytes, HEADER_SIZE);
-        if pos < 0 {
-            return None;
-        }
-        sections = read_sections(data, pos + len(magic_bytes));
-        return sections.get(SEC_BYTECODE);
-    } except Exception {
-        return None;
-    }
+    return read_section_bytes(data, SEC_BYTECODE);
 }
 
 impl write_precompiled_jir(
@@ -1506,13 +1391,7 @@ impl write_precompiled_jir(
 
 impl read_debug_source(data: bytes) -> (str | None) {
     try {
-        magic_bytes: any = SECTIONS_MAGIC;
-        pos = data.find(magic_bytes, HEADER_SIZE);
-        if pos < 0 {
-            return None;
-        }
-        sections = read_sections(data, pos + len(magic_bytes));
-        src = sections.get(SEC_DEBUG_SRC);
+        src = read_section_bytes(data, SEC_DEBUG_SRC);
         return zlib.decompress(src).decode('utf-8') if src is not None else None;
     } except Exception {
         return None;
@@ -1567,12 +1446,7 @@ impl _mergeable_sections(
         if header is None or not header.is_compatible() {
             return ({}, 0, False);
         }
-        magic: any = SECTIONS_MAGIC;
-        pos = data.find(magic, HEADER_SIZE);
-        if pos < 0 {
-            return ({}, 0, False);
-        }
-        secs = read_sections(data, pos + len(magic));
+        secs = _section_table(data);
         if secs.get(SEC_MODKEY) != key_sections.get(SEC_MODKEY) {
             return ({}, 0, False);
         }
@@ -1780,11 +1654,7 @@ impl drop_python_lane_products(source_path: str) -> None {
         try {
             data = cache_path.read_bytes();
             header = parse_header(data[:HEADER_SIZE]);
-            magic: any = SECTIONS_MAGIC;
-            pos = data.find(magic, HEADER_SIZE);
-            secs = read_sections(data, pos + len(magic))
-                if header is not None and pos >= 0
-                else {};
+            secs = _section_table(data) if header is not None else {};
         } except OSError {
             return;
         }

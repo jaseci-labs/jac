@@ -35,7 +35,6 @@ walker OwnershipCheckPass(CompilerPass) {
 
     has owned_decl: dict[SymId, Name] = {},
         linear_decl: dict[SymId, Name] = {},
-        consumed_syms: set[SymId] = set(),
         borrow_meta: dict[SymId, BorrowMeta] = {},
         declared_borrows: set[SymId] = set(),
         e1304_borrow_ids: set[SymId] = set(),
@@ -103,7 +102,6 @@ walker OwnershipCheckPass(CompilerPass) {
     def _nogc_expr_type_is_heap(expr: Expr | None) -> bool;
     def _expr_scalar_typed(expr: Expr | None) -> bool;
     def _nogc_is_container_expr(expr: Expr | None) -> bool;
-    def _nogc_is_list_expr(expr: Expr | None) -> bool;
     def _nogc_container_grow_method(call: FuncCall) -> (str | None);
     def _nogc_module_enforced(mod_name: str) -> bool;
     def _nogc_check_call(call: FuncCall, prov: str) -> None;
@@ -206,7 +204,6 @@ walker OwnershipCheckPass(CompilerPass) {
     def _emit_marker_diagnostics -> None;
     def _emit_imm_mutation(sid: SymId, site: UniNode, decl: Name | None) -> None;
     def _return_roots_at_param_borrow(nd: Expr | None) -> bool;
-    def _borrow_region(sym_id: SymId) -> (UniScopeNode | None);
     def _region_strictly_outlives(
         dest: UniScopeNode | None, region: UniScopeNode | None
     ) -> bool;
@@ -249,14 +246,6 @@ walker OwnershipCheckPass(CompilerPass) {
     def _cfg_owner(sub: UniNode) -> (UniCFGNode | None);
     def _call_move_gen(nd: UniCFGNode) -> set[SymId];
     def _return_move_gen(nd: UniCFGNode) -> set[SymId];
-    def _solve_forward_dataflow(
-        cfg_nodes: list[UniCFGNode], transfer: DataflowTransfer
-    ) -> dict[int, set[SymId]];
-
-    def _solve_backward_dataflow(
-        cfg_nodes: list[UniCFGNode], transfer: DataflowTransfer
-    ) -> dict[int, set[SymId]];
-
     def _transfer(nd: UniCFGNode, in_set: set[SymId]) -> set[SymId];
     def _run_dataflow(cfg_nodes: list[UniCFGNode]) -> None;
     def _borrow_read_gen(nd: UniCFGNode) -> set[SymId];

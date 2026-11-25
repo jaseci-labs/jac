@@ -44,7 +44,6 @@ obj PrefetchedTypes {
 
 obj MatchArgsToParamsResult {
     has arg_params: dict[(Expr | KWPair, Parameter | None)],
-        overload: FunctionType | None = None,
         argument_errors: bool = False;
 }
 

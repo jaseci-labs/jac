@@ -174,7 +174,6 @@ test "executing a compiler-tree module leaves the program's own context unclaime
     compiler.get_native_interop_setup(
         _tree_path('compiler/driver/pipeline.jac'), program
     );
-    compiler.get_native_layout(_tree_path('compiler/driver/pipeline.jac'), program);
     assert not program.context_key;
     assert not program.contexts;
 }

@@ -230,7 +230,7 @@ impl _is_named_test_file(filename: str) -> bool {
 impl _suite_source(filepath: str) -> str {
     if is_test(os.path.basename(filepath)) {
         try {
-            import from jaclang.compiler.driver.bccache { discover_base_file }
+            import from jaclang.compiler.driver.annex_discovery { discover_base_file }
             base = discover_base_file(filepath);
             if base {
                 return os.path.realpath(base);

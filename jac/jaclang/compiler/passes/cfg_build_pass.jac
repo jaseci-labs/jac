@@ -2,13 +2,7 @@ import from typing { cast }
 
 walker CFGBuildPass(TreePass) {
     static has contract: PassContract = PassContract(
-        provides=(
-            AnalysisFact.CFG_CATCH,
-            AnalysisFact.CFG_SUCC,
-            AnalysisFact.CFG_TRUE,
-            AnalysisFact.CFG_FALSE,
-
-        )
+        provides=(AnalysisFact.CFG_SUCC, )
     );
 
     def link_bbs(source: UniCFGNode, target: UniCFGNode) -> None;

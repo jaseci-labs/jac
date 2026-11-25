@@ -1,58 +1,13 @@
-glob TEST_ASSERT_METHOD_NAMES: tuple[str, ...] = (
-         'assertAlmostEqual',
-         'assertCountEqual',
-         'assertDictEqual',
-         'assertEndsWith',
-         'assertEqual',
-         'assertFalse',
-         'assertGreater',
-         'assertGreaterEqual',
-         'assertHasAttr',
-         'assertIn',
-         'assertIs',
-         'assertIsInstance',
-         'assertIsNone',
-         'assertIsNot',
-         'assertIsNotNone',
-         'assertIsSubclass',
-         'assertLess',
-         'assertLessEqual',
-         'assertListEqual',
-         'assertLogs',
-         'assertMultiLineEqual',
-         'assertNoLogs',
-         'assertNotAlmostEqual',
-         'assertNotEndsWith',
-         'assertNotEqual',
-         'assertNotHasAttr',
-         'assertNotIn',
-         'assertNotIsInstance',
-         'assertNotIsSubclass',
-         'assertNotRegex',
-         'assertNotStartsWith',
-         'assertRaises',
-         'assertRaisesRegex',
-         'assertRegex',
-         'assertSequenceEqual',
-         'assertSetEqual',
-         'assertStartsWith',
-         'assertTrue',
-         'assertTupleEqual',
-         'assertWarns',
-         'assertWarnsRegex'
+import from unittest { TestCase }
+
+glob TEST_ASSERT_METHOD_NAMES: tuple[str, ...] = tuple(
+         name
+         for name in dir(TestCase)
+         if name.startswith("assert")
      );
 
 walker SymTabBuildPass(TreePass) {
-    static has contract: PassContract = PassContract(
-        provides=(
-            AnalysisFact.SYM_OF,
-            AnalysisFact.DEFINES,
-            AnalysisFact.IN_SCOPE,
-            AnalysisFact.SCOPE_CHILD,
-
-        )
-    );
-
+    static has contract: PassContract = PassContract(provides=(AnalysisFact.SYM_OF, ));
     has cur_sym_tab: list[UniScopeNode] = [];
 
     can prepare with entry;

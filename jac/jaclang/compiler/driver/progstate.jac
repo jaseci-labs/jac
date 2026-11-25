@@ -11,6 +11,7 @@ obj ModuleHub {
     def install(resolved_path: str, mod: uni.Module) -> (uni.Module | None);
     def evict(resolved_path: str);
     def reset(retain_stubs: bool = True);
+    def detach(mods: list[uni.Module]);
 }
 
 obj DepGraph {
@@ -32,13 +33,6 @@ obj DiagLedger {
     def owned_warnings(path: str) -> list[Alert];
     def drop_module(resolved_path: str);
     def _owned(alert: Alert, path: str) -> bool;
-    def clear;
-}
-
-obj BuildScratch {
-    has boundary_parse_memo: dict[str, any] = {},
-        compile_depth: int = 0;
-
     def clear;
 }
 

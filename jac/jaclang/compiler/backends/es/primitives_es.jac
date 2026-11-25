@@ -1399,9 +1399,6 @@ class ESBuiltinEmitter(BuiltinEmitter[(str, ESEmitCtx)]) {
     ) -> (str | None);
 
     override def static_names(self: ESBuiltinEmitter) -> list[str];
-    override def dispatch_static(
-        self: ESBuiltinEmitter, name: str, ctx: ESEmitCtx, args: list[str]
-    ) -> (str | None);
 }
 
 def es_primitive_emitter(suffix: str) -> (PrimitiveEmitter[(str, ESEmitCtx)] | None);

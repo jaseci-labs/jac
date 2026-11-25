@@ -35,7 +35,8 @@ obj ClientResponse {
         body: bytes = b'',
         reader: any = None,
         writer: any = None,
-        chunked: bool = False;
+        chunked: bool = False,
+        bodiless: bool = False;
 
     def json -> any;
     def text -> str;

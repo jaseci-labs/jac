@@ -230,9 +230,8 @@ test "preparation does not execute modules and warm restoration does not compile
         assert first.manifests[str(path)]['surface']['hello']['exposure'] == 'public';
         assert first.manifests[str(path)]['surface']['message']['exposure'] == 'public';
         forget(str(path));
-        with patch.object(
-            JacCompiler,
-            '_compile_pipeline',
+        with patch(
+            'jaclang.compiler.driver.compiler.compile_module',
             side_effect=AssertionError('warm preparation entered the compiler')
         ) {
             second = prepare_application(str(path), JacProgram(), tmp);
@@ -360,9 +359,8 @@ test "runtime logs and toolchain directories do not become application inputs" {
                 prepare_application(str(path), JacProgram(), tmp);
             }
             log.write_text('still running');
-            with patch.object(
-                JacCompiler,
-                '_compile_pipeline',
+            with patch(
+                'jaclang.compiler.driver.compiler.compile_module',
                 side_effect=AssertionError('log invalidated revision')
             ) {
                 prepare_application(str(path), JacProgram(), tmp);
@@ -523,9 +521,8 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                 for retained in [path, package_init, models, service] {
                     retained.write_text('retained source must never be analyzed');
                 }
-                with patch.object(
-                    JacCompiler,
-                    '_compile_pipeline',
+                with patch(
+                    'jaclang.compiler.driver.compiler.compile_module',
                     side_effect=AssertionError('sealed source was compiled')
                 ), patch.object(
                     JacCompiler,
@@ -752,9 +749,8 @@ test "unrelated source changes do not invalidate a prepared dependency closure" 
                 prepare_application(str(path), JacProgram(), tmp);
             }
             unrelated.write_text('def other -> int { return 3; }\n');
-            with patch.object(
-                JacCompiler,
-                '_compile_pipeline',
+            with patch(
+                'jaclang.compiler.driver.compiler.compile_module',
                 side_effect=AssertionError('unrelated source invalidated preparation')
             ) {
                 prepare_application(str(path), JacProgram(), tmp);

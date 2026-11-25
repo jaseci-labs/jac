@@ -27,9 +27,7 @@ def scope_ir -> str {
         native_required=True,
         memory_profile="rc",
         no_ir_cache=True,
-        native_target="x86_64-unknown-linux-gnu",
-        native_tls=True,
-        native_sjlj=True
+        native_target="x86_64-unknown-linux-gnu"
     );
     return str(compile_native_ir(FIXTURE, options=options).gen.llvm_ir);
 }
@@ -38,7 +36,7 @@ test "locals a raise cannot leave stale stay promotable" {
     text = scope_ir();
     for name in ["loop_after_try", "loop_inside_try", "stored_after_call"] {
         body = function_ir(text, name);
-        assert "llvm.eh.sjlj.setjmp" in body , body;
+        assert "_setjmp" in body , body;
         assert not re.search(r"(load|store) volatile", body) , body;
     }
 }

@@ -1206,9 +1206,6 @@ impl NaIRGenPass._demote_method_if_unlowerable(
 
     _own = list(self.ctx.errors_had[local_mark:]);
     _refusals = [refusal_from_alert(_diag) for _diag in _own];
-    if self._legality is not None {
-        self._legality.late[full_name] = _refusals;
-    }
     required = self.prog.options.native_required_for(self.module.loc.mod_path)
         or self._owner_required(full_name);
     if not required and not self._lacks_python_body(full_name) {
@@ -4102,9 +4099,6 @@ impl NaIRGenPass._narrow_receiver_ptr(
     }
 
     if isinstance(obj_val.type, ir.PointerType) {
-        if type_name in self.clib_struct_names and self._unchecked_views_on() {
-            return obj_val;
-        }
         null_ptr = ir.Constant(obj_val.type, None);
         is_null = self.builder.icmp_unsigned(
             "==", obj_val, null_ptr, name="null.field.chk"

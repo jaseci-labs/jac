@@ -2596,39 +2596,6 @@ impl DocIRGenPass._assign_else_doc_ir(
     nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
 }
 
-impl DocIRGenPass._emit_keyword_block(nd: uni.UniNode, kw: Tok) -> None {
-    parts: list[doc.DocType] = [];
-    body_parts: list[doc.DocType] = [];
-    in_body = False;
-    prev_body_item: (uni.UniNode | None) = None;
-    for i in [nd->:Kid:->] {
-        if (isinstance(i, uni.Token) and (i.name == kw)) {
-            parts.append(i.gen.doc_ir);
-            parts.append(self.space());
-        } elif (isinstance(i, uni.Token) and (i.name == Tok.LBRACE)) {
-            parts.append(i.gen.doc_ir);
-            body_parts.append(self.hard_line());
-            in_body = True;
-        } elif (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
-            in_body = False;
-            self.trim_trailing_line(body_parts);
-            parts.append(self.indent(self.concat(body_parts), ast_node=nd));
-            if len(body_parts) {
-                parts.append(self.hard_line());
-            }
-            parts.append(i.gen.doc_ir);
-            parts.append(self.space());
-        } elif in_body {
-            self.add_body_stmt_with_spacing(body_parts, i, prev_body_item);
-            prev_body_item = i;
-        } else {
-            parts.append(i.gen.doc_ir);
-            parts.append(self.space());
-        }
-    }
-    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
-}
-
 impl DocIRGenPass._child_docs(nd: uni.UniNode) -> list[doc.DocType] {
     docs: list[doc.DocType] = [];
     for kid in [nd->:Kid:->] {

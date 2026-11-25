@@ -65,7 +65,6 @@ obj CompileContext {
 
     def _is_suppressed(diag: DiagnosticInfo, loc: CodeLocInfo | None = None) -> bool;
     def ice(msg: str = 'Something went horribly wrong!') -> str;
-    def log_info(msg: str) -> None;
     def walk_subtree(nd: UniNode, walk: Walker) -> None;
     def enter_node(nd: UniNode) -> None;
     def exit_node(nd: UniNode) -> None;

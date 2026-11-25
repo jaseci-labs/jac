@@ -256,8 +256,7 @@ glob FORBIDDEN: dict[str, str] = {
          ),
          ("native/impl/host_facts.impl.jac", ".lookup("): (
              1,
-             "codecs.lookup on a literal bytes.decode encoding name, asked "
-             "of the host because the generator runs in the kernel: it "
+             "codecs.lookup on a literal bytes.decode encoding name: it "
              "asks CPython's codec registry for the canonical codec, the "
              "same registry the run-time alias table is built from. No "
              "scope table is read and no name is re-resolved"
@@ -304,7 +303,7 @@ def wired_lines(
     src: Path, passes_root: Path, compiled: dict[str, re.Pattern]
 ) -> dict[tuple[str, str], int] {
     import from jaclang.compiler.driver.wiring { wiring_for_path }
-    import from jaclang.compiler.driver.bccache { discover_annex_files }
+    import from jaclang.compiler.driver.annex_discovery { discover_annex_files }
     out: dict[tuple[str, str], int] = {};
     spec = wiring_for_path(str(src));
     module = spec.module_name(str(src)) if spec is not None else None;
@@ -330,8 +329,8 @@ def wired_lines(
             targets.setdefault(m.group(1), (f_rel, m.group(2)));
         }
     }
-    for wire in spec.consumer_wires(module) {
-        scope = ".".join(spec.consumer_scope(module, wire));
+    for (wire, scopes) in spec.consumer_wires(module) {
+        scope = ".".join(scopes[0]);
         dest = head_rel;
         body = module_text;
         best = -1;

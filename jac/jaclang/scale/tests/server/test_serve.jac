@@ -1393,7 +1393,7 @@ def setup_dev_mode_server -> subprocess.Popen {
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        env={** os.environ, "JAC_KERNEL_TIMING": "1"}
+        env={** os.environ, "JAC_PREPARE_TRACEBACK": "1"}
     );
 
     max_attempts = 60;

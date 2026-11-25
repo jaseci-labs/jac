@@ -19,7 +19,6 @@ obj OspModel {
     has arch_kind: dict[(str, str)] = {},
         tags: dict[(str, int)] = {},
         order: list[str] = [],
-        order_index: dict[(str, int)] = {},
         isa: dict[(str, list[str])] = {},
         slots: list[OspSlot] = [],
         collisions: list[tuple[str, str]] = [],
@@ -28,7 +27,6 @@ obj OspModel {
     def has_event_ability -> bool;
     def local_slots -> list[OspSlot];
     def has_local_ability -> bool;
-    def local_index(name: str) -> int;
     def trigger_tags(slot: OspSlot) -> list[int];
     def entry_slots(owner: str) -> list[OspSlot];
     def exit_slots(owner: str) -> list[OspSlot];

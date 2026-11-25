@@ -14,10 +14,6 @@ impl OspModel.has_local_ability -> bool {
     return len(self.local_slots()) > 0;
 }
 
-impl OspModel.local_index(name: str) -> int {
-    return self.order_index.get(name, -1);
-}
-
 impl OspModel.trigger_tags(slot: OspSlot) -> list[int] {
     if not slot.trigger_names {
         return [-1];
@@ -244,7 +240,6 @@ impl OspAnalysis.compute(
         }
         _by_tag[_tag] = _name;
         model.tags[_name] = _tag;
-        model.order_index[_name] = len(model.order);
         model.order.append(_name);
     }
 

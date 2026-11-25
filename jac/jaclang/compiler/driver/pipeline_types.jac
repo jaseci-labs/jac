@@ -1,22 +1,13 @@
 import from enum { StrEnum }
 
 enum AnalysisFact(StrEnum) {
-    CFG_CATCH = 'CfgCatch',
-    CFG_FALSE = 'CfgFalse',
     CFG_SUCC = 'CfgSucc',
-    CFG_TRUE = 'CfgTrue',
-    DECIDED_CODESPACE = 'DecidedCodespace',
-    DEFINES = 'Defines',
     IMPL_OF = 'ImplOf',
-    IN_SCOPE = 'InScope',
     PLACED_IN = 'PlacedIn',
-    SCOPE_CHILD = 'ScopeChild',
     SYM_OF = 'SymOf',
     TYPE_OF = 'TypeOf',
     ACCESS_CHECKS = 'access-checks',
     CAPABILITY = 'capability',
-    CLIENT_CAPABILITY = 'client_capability',
-    CODESPACE_PULL = 'codespace-pull',
     COMPTIME = 'comptime',
     DECL_TYPES = 'decl-types',
     FROZEN = 'frozen',
@@ -50,18 +41,7 @@ enum CompilationProduct {
     BYTECODE = "bytecode",
     NATIVE_IR = "native-ir",
     NATIVE_LOWER = "native-lower",
-    NATIVE_OBJECT = "native-object",
-    FORMAT = "format",
-    FORMAT_LINTFIX = "format-lintfix",
-    LINT = "lint",
-    PYTHON_AST = "python-ast",
-    PYTHON_SYMBOLS = "python-symbols",
-    GRAMMAR = "grammar",
-    CFG_DOT = "cfg-dot",
-    NORMALIZE = "normalize",
-    UNPARSE = "unparse",
-    DOC = "doc",
-    FORMAT_TEXT = "format-text"
+    NATIVE_OBJECT = "native-object"
 }
 
 enum ImportFallback {
@@ -88,6 +68,5 @@ enum TaskState {
 obj ProductTask {
     has product: CompilationProduct,
         state: TaskState = TaskState.PENDING,
-        elapsed: float = 0.0,
         import_fallback: bool = False;
 }

@@ -979,7 +979,7 @@ impl CatalogWriter.encode_scope(idx: int) -> bytes {
     put_ref(out, parent);
     put_ref(out, self.ref_module(module_of(scope)));
     put_ref(out, self.ref_symbol(owner));
-    loc = scope.loc if self.spans else None;
+    loc = scope.loc;
     put_uvar(out, max(loc.first_line, 0) if loc else 0);
     put_uvar(out, max(loc.col_start, 0) if loc else 0);
     put_uvar(out, max(loc.last_line, 0) if loc else 0);
@@ -1061,7 +1061,7 @@ impl CatalogWriter.encode_symbol(idx: int) -> bytes {
     }
     put_uvar(out, access);
     put_uvar(out, 1 if sym.imported else 0);
-    loc = sym.decl.loc if sym.decl and self.spans else None;
+    loc = sym.decl.loc if sym.decl else None;
     if loc is not None and is_arch_file(loc.mod_path) {
         loc = None;
     }
@@ -1592,33 +1592,21 @@ impl build_module_iface(
     mod: Module,
     evaluator: TypeEvaluator,
     pkg_dir: str,
-    path_mapper: (PathMapper | None) = None,
-    spans: bool = True
+    path_mapper: (PathMapper | None) = None
 ) -> bytes {
-    body = module_iface_body(mod, evaluator, pkg_dir, path_mapper, spans);
+    body = module_iface_body(mod, evaluator, pkg_dir, path_mapper);
     digest = hashlib.sha256(body).hexdigest();
     return digest.encode("utf-8") + body;
-}
-
-impl module_iface_shape(mod: Module, evaluator: TypeEvaluator, pkg_dir: str) -> str {
-    return hashlib.sha256(
-        module_iface_body(mod, evaluator, pkg_dir, None, False)
-    ).hexdigest();
 }
 
 impl module_iface_body(
     mod: Module,
     evaluator: TypeEvaluator,
     pkg_dir: str,
-    path_mapper: (PathMapper | None),
-    spans: bool
+    path_mapper: (PathMapper | None)
 ) -> bytes {
     writer = CatalogWriter(
-        evaluator=evaluator,
-        pkg_dir=pkg_dir,
-        boundary=mod,
-        path_mapper=path_mapper,
-        spans=spans
+        evaluator=evaluator, pkg_dir=pkg_dir, boundary=mod, path_mapper=path_mapper
     );
     dotted = mod.name or "";
     writer.add_module(mod, dotted);

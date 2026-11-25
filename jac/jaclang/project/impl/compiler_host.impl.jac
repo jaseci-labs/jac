@@ -306,16 +306,8 @@ impl ProjectHost.save_native_debug_ir(path: str, text: str) {
     self.note(f"[native debug] IR saved to: {saved}", style="info");
 }
 
-impl ProjectHost.native_fact(kind: str, key: str) -> str {
-    import sys;
-    if kind == HOST_FACT_STDLIB_MODULES {
-        return HOST_FACT_SEP.join(sorted(sys.stdlib_module_names));
-    }
-    if kind == HOST_FACT_GIT_IGNORED {
-        return HOST_FACT_SEP.join(_git_ignored_under(key));
-    }
-    import from jaclang.compiler.backends.native.host_facts { host_native_fact }
-    return host_native_fact(kind, key);
+impl ProjectHost.git_ignored_under(root_dir: str) -> list[str] {
+    return _git_ignored_under(root_dir);
 }
 
 def _git_ignored_under(root_dir: str) -> list[str];
@@ -542,16 +534,20 @@ impl ProjectHost.parse_python(
     source_str: str, file_path: str, program: JacProgram
 ) -> tuple[Module, bool] {
     import ast as py_ast;
-    built = run_utility(
-        CompilationProduct.PYTHON_AST,
-        uni.PythonModuleAst(
-            py_ast.parse(source_str),
-            orig_src=uni.Source(source_str, mod_path=file_path)
+    import from typing { cast }
+    built = run_pass(
+        PyastBuildPass,
+        cast(
+            uni.Module,
+            uni.PythonModuleAst(
+                py_ast.parse(source_str),
+                orig_src=uni.Source(source_str, mod_path=file_path)
+            )
         ),
         program,
         cancel_token=program.options.cancel_token if program.options else None
     );
-    return (built.module, len(built.ctx.errors_had) > 0);
+    return (cast(uni.Module, built.module), len(built.ctx.errors_had) > 0);
 }
 
 impl UnitCollectBudget.due -> bool {
@@ -612,12 +608,6 @@ impl ProjectHost.compile_module(
     return self.compiler_for(program).compile(
         file_path=file_path, target_program=program, use_str=use_str, options=options
     );
-}
-
-impl ProjectHost.build_module(
-    program: JacProgram, file_path: str, use_str: (str | None)
-) -> Module {
-    return self.compiler_for(program).build(file_path, program, use_str);
 }
 
 impl ProjectHost.native_session_active(program: JacProgram) -> bool {

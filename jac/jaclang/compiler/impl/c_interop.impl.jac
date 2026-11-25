@@ -253,25 +253,7 @@ impl c_lent_elem(
     if spec[0] not in ("s", "ptr", "struct") or spec == ["s", "bool"] {
         return None;
     }
-    return elem if c_spec_same(c_type_spec(operand_type, None), spec) else None;
-}
-
-impl c_spec_same(a: any, b: any) -> bool {
-    if isinstance(a, list) and isinstance(b, list) {
-        if len(a) != len(b) {
-            return False;
-        }
-        for i in range(len(a)) {
-            if not c_spec_same(a[i], b[i]) {
-                return False;
-            }
-        }
-        return True;
-    }
-    if isinstance(a, list) or isinstance(b, list) {
-        return False;
-    }
-    return a == b;
+    return elem if c_type_spec(operand_type, None) == spec else None;
 }
 
 impl c_abi_callee(call: (UniNode | None)) -> (Ability | None) {
