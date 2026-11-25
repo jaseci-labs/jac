@@ -159,3 +159,205 @@ test "Alloy discovers pods only in the namespace it was deployed for" {
         assert f'names = ["{ns}"]' in discovery , discovery;
     }
 }
+
+
+def _stored(on: bool, extra: (dict[str, any] | None) = None) -> MonitoringDeployer {
+    # from_dict reads the storage keys where the config declares them and drops
+    # them where it does not, so code without the feature fails on what it
+    # builds instead of on the constructor.
+    return MonitoringDeployer(
+        k8s_config=KubernetesConfig.from_dict(
+            KubernetesConfig,
+            {"app_name": "t", "namespace": "t-ns", "monitoring_storage_enabled": on}
+                | (extra or {})
+        )
+    );
+}
+
+
+def _data_deployments(
+    deployer: MonitoringDeployer
+) -> list[tuple[str, dict[str, any]]] {
+    return [
+        ("prometheus", deployer._prometheus_deployment("t", "t-ns")),
+        ("loki", deployer._loki_deployment("t", "t-ns")),
+        ("tempo", deployer._tempo_deployment("t", "t-ns"))
+    ];
+}
+
+
+test "with storage on, each data volume is a claim the pod can write to and the rollout cannot hang" {
+    for (component, deployment) in _data_deployments(_stored(True)) {
+        spec = deployment["spec"];
+        pod = spec["template"]["spec"];
+        container = pod["containers"][0];
+        volume = {v["name"]: v for v in pod["volumes"]}[f"{component}-data"];
+        assert volume.get("persistentVolumeClaim")
+            == {"claimName": f"t-{component}-data"} , (component, volume);
+        # The deployer merges its manifest into the live Deployment. A volume
+        # merged by name keeps its old source, and the API refuses a volume
+        # with two, so the old one is cleared in the same entry.
+        assert "emptyDir" in volume and volume["emptyDir"] is None , (
+            component,
+            volume
+        );
+        # The volume attaches to one node, so starting the new pod before the
+        # old one stops never finishes. The rollingUpdate the server filled in
+        # is cleared too, or it refuses Recreate.
+        assert spec.get("strategy") == {"type": "Recreate", "rollingUpdate": None} , (
+            component,
+            spec.get("strategy")
+        );
+        # A new volume is owned by root and these processes are not.
+        security = pod["securityContext"];
+        assert security.get("fsGroup") == container["securityContext"]["runAsUser"] , (
+            component,
+            security
+        );
+        assert security.get("fsGroupChangePolicy") == "OnRootMismatch" , component;
+        # A log kept across restarts is replayed on start. Liveness on /ready
+        # would kill a long replay and start it again, forever.
+        if "livenessProbe" in container {
+            assert container.get("startupProbe", {}).get("httpGet")
+                == container["livenessProbe"]["httpGet"] , (component, container);
+        }
+    }
+}
+
+
+test "with storage off, the three pods are built as before and nothing storage set is left behind" {
+    off = _stored(False);
+    for (component, deployment) in _data_deployments(off) {
+        spec = deployment["spec"];
+        pod = spec["template"]["spec"];
+        container = pod["containers"][0];
+        volume = {v["name"]: v for v in pod["volumes"]}[f"{component}-data"];
+        assert volume.get("emptyDir") == {} , (component, volume);
+        # Switching back off is a patch too: each field storage sets is
+        # cleared, which changes nothing for an app that never turned it on.
+        assert "persistentVolumeClaim" in volume
+            and volume["persistentVolumeClaim"] is None , (component, volume);
+        assert spec.get("strategy") == {"type": "RollingUpdate"} , (
+            component,
+            spec.get("strategy")
+        );
+        assert pod["securityContext"]
+            == {
+                "seccompProfile": {"type": "RuntimeDefault"},
+                "fsGroup": None,
+                "fsGroupChangePolicy": None
+            } , (component, pod["securityContext"]);
+        assert container.get("startupProbe") is None , (component, container);
+    }
+    # A changed pod template restarts the pod, and on emptyDir a restart is
+    # the data loss. What the template carried before is what it carries now.
+    prometheus = off._prometheus_deployment("t", "t-ns")["spec"]["template"];
+    assert prometheus["spec"]["containers"][0]["args"]
+        == [
+            "--config.file=/etc/prometheus/prometheus.yml",
+            "--storage.tsdb.path=/prometheus",
+            "--web.console.libraries=/usr/share/prometheus/console_libraries",
+            "--web.console.templates=/usr/share/prometheus/consoles",
+            "--web.enable-lifecycle"
+        ];
+    for name in ["loki", "tempo"] {
+        template = dict(_data_deployments(off))[name]["spec"]["template"];
+        assert template["metadata"] == {"labels": {"app": f"t-{name}"}} , (
+            name,
+            template["metadata"]
+        );
+    }
+    assert "compactor" not in yaml.safe_load(off._loki_config());
+}
+
+
+test "with storage on, Prometheus and Loki are bounded so the volume cannot fill" {
+    deployer = _stored(True, {"prometheus_storage": "10Gi", "loki_retention": "72h"});
+    args = deployer._prometheus_deployment("t", "t-ns")["spec"]["template"]["spec"][
+        "containers"
+    ][0]["args"];
+    caps = [
+        a.split("=", 1)[1]
+        for a in args
+        if a.startswith("--storage.tsdb.retention.size=")
+    ];
+    assert caps == ["8192MB"] , args;
+    # A size cap on its own drops Prometheus's 15-day default, so the time
+    # limit is passed with it.
+    assert "--storage.tsdb.retention.time=15d" in args , args;
+
+    loki = yaml.safe_load(deployer._loki_config());
+    assert loki.get("compactor")
+        == {"retention_enabled": True, "delete_request_store": "filesystem"} , loki;
+    assert loki["limits_config"].get("retention_period") == "72h" , loki;
+    # Loki reads its config once, at start. The pod has to restart when the
+    # retention changes, so its template carries a hash of the config.
+    hashes = [
+        _stored(True, {"loki_retention": period})._loki_deployment("t", "t-ns")["spec"][
+            "template"
+        ]["metadata"].get(
+            "annotations", {}
+        ).get(
+            "checksum/config"
+        ) for period in ["72h", "96h"]
+    ];
+    assert hashes[0] and hashes[1] and hashes[0] != hashes[1] , hashes;
+}
+
+
+test "storage settings that would take the stack down are refused before anything is deployed" {
+    assert _stored(True)._storage_problems() == [];
+    for (key, bad) in [
+        ("prometheus_storage", "ten"),
+        ("loki_storage", "1.5Gi"),
+        ("tempo_storage", "500Mi"),
+        ("loki_retention", "2h"),
+        ("loki_retention", "soon")
+    ] {
+        problems = _stored(True, {key: bad})._storage_problems();
+        assert len(problems) == 1 and key in problems[0] , (key, bad, problems);
+    }
+    # A claim on a class the cluster does not have stays Pending. Recreate has
+    # stopped the old pod by then, so the class is checked first.
+    for (wanted, classes, refused) in [
+        ("", {"gp3": True}, False),
+        ("", {"gp3": False}, True),
+        ("", {}, True),
+        ("gp3", {"gp3": False}, False),
+        ("fast", {"gp3": True}, True)
+    ] {
+        problem = _stored(
+            True, {"monitoring_storage_class": wanted}
+        )._storage_class_problem(
+            classes
+        );
+        assert bool(problem) == refused , (wanted, classes, problem);
+    }
+}
+
+
+test "each data claim is the app's own and asks for the configured size and class" {
+    claim = _stored(True, {"loki_storage": "20Gi"})._data_pvc("t", "t-ns", "loki");
+    assert claim["metadata"]["name"] == "t-loki-data";
+    assert claim["metadata"]["namespace"] == "t-ns";
+    # The role keeps it out of the bundle and shared-volume sweeps, and the
+    # owner is what tells a neighbour's claim from this app's on destroy.
+    assert claim["metadata"]["labels"]
+        == {
+            "app": "t-loki",
+            "managed": "jac-scale",
+            "jac-scale.role": "monitoring-data",
+            "jac-scale.owner": "t"
+        };
+    # No class named: the cluster's default class provisions it.
+    assert claim["spec"]
+        == {
+            "accessModes": ["ReadWriteOnce"],
+            "resources": {"requests": {"storage": "20Gi"}}
+        };
+    classed = _stored(True, {"monitoring_storage_class": "gp3"})._data_pvc(
+        "t", "t-ns", "tempo"
+    );
+    assert classed["spec"]["storageClassName"] == "gp3";
+    assert classed["spec"]["resources"]["requests"]["storage"] == "5Gi";
+}

@@ -8,6 +8,7 @@ import unittest.mock;
 import from types { SimpleNamespace }
 import from kubernetes.client.exceptions { ApiException }
 import from jaclang.scale.deploy.target.kubernetes { target as target_mod }
+import from jaclang.scale.deploy.target.kubernetes { monitoring as monitoring_mod }
 import from jaclang.scale.deploy.target.kubernetes.utils { kubernetes_utils as utils }
 
 glob APP: str = "test01",
@@ -198,30 +199,43 @@ test "a failed monitoring teardown keeps the namespace" {
 
 
 test "a namespace this app created but no longer holds alone is kept" {
-    deleted_namespaces: list[str] = [];
-    apps_v1 = unittest.mock.MagicMock();
-    apps_v1.list_namespaced_stateful_set.return_value = SimpleNamespace(
-        items=[SimpleNamespace(metadata=SimpleNamespace(name=f"{CO_TENANT}-postgres"))]
-    );
-    core_v1 = unittest.mock.MagicMock();
-    core_v1.list_namespaced_service.return_value = SimpleNamespace(items=[]);
-    core_v1.read_namespace.side_effect = ApiException(status=404);
-    core_v1.list_namespaced_persistent_volume_claim.return_value = SimpleNamespace(
-        items=[_pvc(bundle_pvc_name(CO_TENANT), "bundle-store")]
-    );
+    # A neighbour shows as its database and bundle, or as nothing more than
+    # the volume its monitoring data is kept on. Either is enough.
+    for (stateful_sets, claims) in [
+        ([f"{CO_TENANT}-postgres"], [_pvc(bundle_pvc_name(CO_TENANT), "bundle-store")]),
+        ([], [_pvc(f"{CO_TENANT}-prometheus-data", "monitoring-data", CO_TENANT)])
+    ] {
+        deleted_namespaces: list[str] = [];
+        apps_v1 = unittest.mock.MagicMock();
+        apps_v1.list_namespaced_stateful_set.return_value = SimpleNamespace(
+            items=[
+                SimpleNamespace(metadata=SimpleNamespace(name=name))
+                for name in stateful_sets
+            ]
+        );
+        core_v1 = unittest.mock.MagicMock();
+        core_v1.list_namespaced_service.return_value = SimpleNamespace(items=[]);
+        core_v1.read_namespace.side_effect = ApiException(status=404);
+        core_v1.list_namespaced_persistent_volume_claim.return_value = SimpleNamespace(
+            items=claims
+        );
 
-    _run_destroy(apps_v1, core_v1, _recording(deleted_namespaces));
+        _run_destroy(apps_v1, core_v1, _recording(deleted_namespaces));
 
-    assert not deleted_namespaces , (
-        f"the namespace was deleted whole while '{CO_TENANT}' was still "
-        "deployed into it, taking that app's database and volumes with it"
-    );
-    assert apps_v1.delete_namespaced_stateful_set.called , (
-        "the shared-namespace path did not run, so this app's own database "
-        "was left behind instead"
-    );
-    assert bundle_loader_pod_name(APP)
-        in [call.args[0] for call in core_v1.delete_namespaced_pod.call_args_list] , "a leftover bundle loader holds the PVC destroy deleted in Terminating";
+        assert not deleted_namespaces , (
+            f"the namespace was deleted whole while '{CO_TENANT}' was still "
+            "deployed into it, taking that app's database and volumes with it; "
+            f"its claims were {[c.metadata.name for c in claims]}"
+        );
+        assert apps_v1.delete_namespaced_stateful_set.called , (
+            "the shared-namespace path did not run, so this app's own database "
+            "was left behind instead"
+        );
+        assert bundle_loader_pod_name(APP)
+            in [
+                call.args[0] for call in core_v1.delete_namespaced_pod.call_args_list
+            ] , "a leftover bundle loader holds the PVC destroy deleted in Terminating";
+    }
 }
 
 
@@ -236,7 +250,8 @@ test "a namespace this app created and holds alone is still reclaimed" {
     core_v1.list_namespaced_persistent_volume_claim.return_value = SimpleNamespace(
         items=[
             _pvc(bundle_pvc_name(APP), "bundle-store"),
-            _pvc("uploads", "shared-volume", APP)
+            _pvc("uploads", "shared-volume", APP),
+            _pvc(f"{APP}-prometheus-data", "monitoring-data", APP)
         ]
     );
 
@@ -583,4 +598,61 @@ test "a redeploy reuses a live bundle PVC and replaces a terminating one" {
             == len(reads) , "the redeploy stopped reading before the PVC was gone";
         assert core_v1.create_namespaced_persistent_volume_claim.called == recreated;
     }
+}
+
+
+test "destroying monitoring deletes the volumes its data was kept on" {
+    core_v1 = unittest.mock.MagicMock();
+    fake_client = SimpleNamespace(
+        RbacAuthorizationV1Api=lambda { unittest.mock.MagicMock(); }
+    );
+    with unittest.mock.patch.object(monitoring_mod, "client", fake_client) {
+        monitoring_mod.MonitoringDeployer(
+            k8s_config=KubernetesConfig(app_name=APP, namespace=NS)
+        ).destroy(
+            APP, NS, unittest.mock.MagicMock(), core_v1
+        );
+    }
+    deleted: list[str] = [
+        call.args[0]
+        for call in core_v1.delete_namespaced_persistent_volume_claim.call_args_list
+    ];
+    assert sorted(deleted)
+        == sorted([f"{APP}-{part}-data" for part in ["prometheus", "loki", "tempo"]]) , (
+        "a data volume outlived the monitoring stack it belonged to and is "
+        f"billed with nothing mounting it; destroy deleted {deleted}"
+    );
+}
+
+
+test "a data claim still terminating is let go by the pod holding it, then made again" {
+    # A claim deleted while its pod runs stays Terminating for as long as the
+    # pod does. Waiting on it alone never ends, so the holder goes first.
+    dying = SimpleNamespace(
+        metadata=SimpleNamespace(deletion_timestamp="2026-11-25T00:00:00Z")
+    );
+    apps_v1 = unittest.mock.MagicMock();
+    core_v1 = unittest.mock.MagicMock();
+    core_v1.read_namespaced_persistent_volume_claim.side_effect = [
+        dying,
+        dying,
+        ApiException(status=404)
+    ];
+    deployer = monitoring_mod.MonitoringDeployer(
+        k8s_config=KubernetesConfig(app_name=APP, namespace=NS)
+    );
+    with unittest.mock.patch("time.sleep") {
+        deployer._ensure_data_pvc(
+            apps_v1, core_v1, deployer._data_pvc(APP, NS, "loki")
+        );
+    }
+    released: list[str] = [
+        call.args[0] for call in apps_v1.delete_namespaced_deployment.call_args_list
+    ];
+    assert released == [f"{APP}-loki"] , (
+        f"the pod holding the claim was left running, so it never went; {released}"
+    );
+    assert core_v1.create_namespaced_persistent_volume_claim.called , (
+        "the claim was not made again, so the new pod has nothing to mount"
+    );
 }
