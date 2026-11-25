@@ -114,17 +114,9 @@ impl run_jab_image(
             return 1;
         }
         serve_port = arg_port if arg_port is not None else port;
-        if serve_port is None {
-            import from jaclang.project.config { get_config_for_path }
-            img_cfg = get_config_for_path(img_root);
-
-            serve_port = (
-                img_cfg.serve.port if img_cfg and img_cfg.serve.port != 8000 else 0
-            );
-        }
         return serve(
             filename=entry_abs,
-            port=serve_port,
+            port=serve_port or 0,
             no_client=(kind == "service"),
             dev=False
         );
