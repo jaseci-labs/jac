@@ -257,6 +257,12 @@ impl arequest(
     } elif data is not None {
         body = data if isinstance(data, bytes) else str(data).encode('utf-8');
     }
+    asked_close = [
+        v
+        for (k, v) in header_list
+        if k.lower() == 'connection'
+    ];
+    keep_alive = keep_alive and not any('close' in v.lower() for v in asked_close);
     origin = (scheme, host, port);
     idle = _take_idle(origin) if keep_alive else None;
     conn: _PooledConn = idle if idle is not None else await _connect(origin, timeout);
