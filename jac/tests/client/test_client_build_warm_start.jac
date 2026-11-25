@@ -99,14 +99,24 @@ def _stray_caches(proj: Path) -> list[str] {
 test "a warm client build over a real layout is served from the cache" {
     import from jaclang.server.hmr { HotReloader }
     import from jaclang.server.watcher { JacFileWatcher }
+    import from jaclang.client.build_stages { record_stages }
     proj = _project();
 
-    cold = _build(proj);
+    with record_stages() as stages {
+        cold = _build(proj);
+    }
     for name in ["main.jac", "Navbar.jac", "button.jac", "index.jac", "about.jac"] {
         assert name in cold , f"the cold build must compile {name}, saw {cold}";
     }
+    assert [name for (name, _) in stages]
+        == ["JavaScript written for the entry and its imports", "Pages compiled"] , (
+        f"a recorded build must time each compile stage, saw {stages}"
+    );
     warm = _build(proj);
     assert warm == [] , f"the warm build must be served from the cache, compiled {warm}";
+    assert len(stages) == 2 , (
+        f"a build nobody is recording must report no stage, saw {stages}"
+    );
 
     pinned = project_scope_is_pinned();
     saved = get_config();
@@ -163,38 +173,51 @@ test "a warm client build over a real layout is served from the cache" {
 }
 
 test "a client build that cannot bundle the app as written is refused" {
+    import from jaclang.client.build_stages { record_stages }
     import from jaclang.client.targets.web_target { WebTarget }
-    cases: list[tuple[str, str, str, list[str]]] = [
+    entry_done = [
+        "Entry module and its imports compiled",
+        "JavaScript written for the entry and its imports"
+    ];
+    cases: list[tuple[str, str, str, list[str], list[str]]] = [
         (
             "an app that declares no children would drop every routed page",
             "main.jac",
             'def:pub app -> JsxElement {\n    return <main>shell</main>;\n}\n',
-            ["children"]
+            ["children"],
+            entry_done
         ),
         (
             "an entry with a syntax error",
             "main.jac",
             'def:pub app(children: any = None) -> any {\n    return <main>{children}</main>\n',
-            ["main.jac", "Missing"]
+            ["main.jac", "Missing"],
+            []
         ),
         (
             "a page with a syntax error",
             "pages/about.jac",
             'def:pub page -> JsxPage {\n    return <p>about</p>\n',
-            ["about.jac", "Missing"]
+            ["about.jac", "Missing"],
+            entry_done
         )
     ];
-    for (what, rel, text, needles) in cases {
+    for (what, rel, text, needles, finished) in cases {
         proj = _project();
         (proj / rel).write_text(text);
         failure = "";
-        try {
-            WebTarget().build(proj / "main.jac", proj);
-        } except RuntimeError as e {
-            failure = str(e);
+        with record_stages() as stages {
+            try {
+                WebTarget().build(proj / "main.jac", proj);
+            } except RuntimeError as e {
+                failure = str(e);
+            }
         }
         assert all(needle in failure for needle in needles) , (
             f"{what}: the build must stop and name {needles}, got {failure!r}"
+        );
+        assert [name for (name, _) in stages] == finished , (
+            f"{what}: only the stages that finished may be reported, saw {stages}"
         );
     }
 }
