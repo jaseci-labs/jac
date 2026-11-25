@@ -1,0 +1,1 @@
+- **Fix: First `jac scale build` on a new machine no longer fails after installing the Kubernetes client**: `jac scale build --out` now installs the deploy tooling before the code that needs it loads, as `jac scale deploy` already did, so the first build on a fresh machine (what `jachammer deploy --build-local` runs) completes instead of asking to be run again.
