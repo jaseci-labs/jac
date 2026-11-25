@@ -4185,7 +4185,12 @@ graph import cli.shadcn {
 
 graph import client {
     artifact ++> [
-        client_bundle { ClientBundle, ClientBundleError, prebuilt_bundle },
+        client_bundle {
+            ClientBundle,
+            ClientBundleError,
+            ClientCompileError,
+            prebuilt_bundle
+        },
         serving { client_output_dir },
     ]
     asset_processor ++> jac_client_compiler { AssetProcessor }
@@ -4203,6 +4208,7 @@ graph import client {
         jac_client_compiler | npm_provider | route_scanner | vite_bundler {
             ClientBundleError
         },
+        jac_client_compiler.JacClientCompiler._route_exports_of { ClientCompileError },
         jac_client_compiler.JacClientCompiler.compile { client_source_root },
         targets.web_target.WebTarget.build {
             client_context_program,
@@ -10370,6 +10376,7 @@ graph import compiler.driver {
     pipeline --> [
         application._tree_source { CompilationProduct, require },
         compiler.JacCompiler._format_program { execute_passes },
+        compiler.JacCompiler._get_client_artifact { mark_failed },
         compiler.JacCompiler.ensure_client_codegen
             | ifacecache.IfaceRegistry._ensure_flow_graph { require },
         compiler.JacCompiler.jac_file_linter { execute_passes },

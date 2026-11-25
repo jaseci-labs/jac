@@ -162,19 +162,39 @@ test "a warm client build over a real layout is served from the cache" {
     assert _build(proj) == [] , "the build after that must be fully served again";
 }
 
-test "a pages entry whose app cannot receive the route tree is refused" {
-    # The generated entry renders `app` with the routes as its children; an
-    # `app` without `children` would drop every page, so the build stops here.
-    import from jaclang.client.client_bundle { ClientBundleError }
-    proj = _project();
-    (proj / "main.jac").write_text(
-        'def:pub app -> JsxElement {\n    return <main>shell</main>;\n}\n'
-    );
-    refused = False;
-    try {
-        _compiler(proj).jac_client_compiler.compile(None, proj / "main.jac");
-    } except ClientBundleError as e {
-        refused = "children" in str(e);
+test "a client build that cannot bundle the app as written is refused" {
+    import from jaclang.client.targets.web_target { WebTarget }
+    cases: list[tuple[str, str, str, list[str]]] = [
+        (
+            "an app that declares no children would drop every routed page",
+            "main.jac",
+            'def:pub app -> JsxElement {\n    return <main>shell</main>;\n}\n',
+            ["children"]
+        ),
+        (
+            "an entry with a syntax error",
+            "main.jac",
+            'def:pub app(children: any = None) -> any {\n    return <main>{children}</main>\n',
+            ["main.jac", "Missing"]
+        ),
+        (
+            "a page with a syntax error",
+            "pages/about.jac",
+            'def:pub page -> JsxPage {\n    return <p>about</p>\n',
+            ["about.jac", "Missing"]
+        )
+    ];
+    for (what, rel, text, needles) in cases {
+        proj = _project();
+        (proj / rel).write_text(text);
+        failure = "";
+        try {
+            WebTarget().build(proj / "main.jac", proj);
+        } except RuntimeError as e {
+            failure = str(e);
+        }
+        assert all(needle in failure for needle in needles) , (
+            f"{what}: the build must stop and name {needles}, got {failure!r}"
+        );
     }
-    assert refused , "an app that drops the route tree must fail the client build";
 }
