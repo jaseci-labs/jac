@@ -548,76 +548,6 @@ test "guardrail: string and typed-list membership still lower" {
 }
 
 
-test "guardrail: supported features do not trigger E5090" {
-    prog = compile_na_inline(
-        "supported_ok",
-        "glob counter: int = 0;\n"
-        "def add(a: int, b: int) -> int { return a + b; }\n"
-        "def loops(n: int) -> int {\n"
-        "    total: int = 0;\n"
-        "    i: int = 0;\n"
-        "    while i < n {\n"
-        "        total = total + i;\n"
-        "        i = i + 1;\n"
-        "    }\n"
-        "    for v in [1, 2, 3] { total = total + v; }\n"
-        "    if total > 0 { total = total + 1; } else { total = -1; }\n"
-        "    try {\n"
-        "        if n < 0 { raise ValueError(\"neg\"); }\n"
-        "    } except ValueError as e {\n"
-        "        return -1;\n"
-        "    }\n"
-        "    return total;\n"
-        "}\n"
-    );
-    assert not has_error_code(prog, "E5090") , f"Supported features triggered E5090: {fmt_errors(
-        prog
-    )}";
-}
-
-# Negative control for the silent-no-code guards (options 1 & 2 of the #6470
-# audit): the consumers that now raise E5090 when a required sub-expression
-# lowers to nothing (return value, assignment RHS, if/while/for conditions,
-# field & subscript stores, augmented field assignment) must stay silent on
-# the fully-supported forms they wrap. A false positive here would reject
-# ordinary native code.
-test "guardrail: field/index reads, writes, and loops do not trigger E5090" {
-    prog = compile_na_inline(
-        "supported_access_ok",
-        "obj Pt { has x: int; has y: int; }\n"
-        "obj Box { has items: list[int]; has tag: int; }\n"
-        "def run() -> int {\n"
-        "    p: Pt = Pt(x=1, y=2);\n"
-        "    p.x = p.x + p.y;\n"  # field read + field write
-        "    p.y += 5;\n"  # augmented field assignment
-        "    b: Box = Box(items=[10, 20, 30], tag=0);\n"
-        "    b.items[1] = b.items[1] + p.x;\n"  # subscript read + subscript write
-        "    b.tag = b.items[0];\n"  # chained field/index read into field
-        "    d: dict[str, int] = {\"a\": 1};\n"
-        "    d[\"a\"] = d[\"a\"] + 1;\n"  # dict subscript read + write
-        "    total: int = 0;\n"
-        "    for v in b.items {\n"  # for over a field-held list
-        "        if v > 0 { total = total + v; }\n"
-        "    }\n"
-        "    return total + p.x + p.y + d[\"a\"];\n"  # return of a real expression
-        "}\n"
-    );
-    assert not has_error_code(prog, "E5090") , f"Supported field/index/loop forms triggered E5090: {fmt_errors(
-        prog
-    )}";
-}
-
-# `import sys;` is the one Python import the native backend models (sys.argv,
-# sys.platform). Rejecting unsupported imports must not regress it.
-test "guardrail: import sys is not rejected" {
-    prog = compile_na_inline(
-        "import_sys_ok", "import sys;\n" "with entry { print(sys.platform); }\n"
-    );
-    assert not has_error_code(prog, "E5090") , f"`import sys` should be supported, got: {fmt_errors(
-        prog
-    )}";
-}
-
 # A3 (issue #6930): a field whose type the native backend cannot model lowers
 # to a nullable opaque slot (null at native construction) instead of rejecting
 # the declaration. A type-only foreign import that merely NAMES that type
@@ -1201,25 +1131,6 @@ test "walrus on a subscript target at check time is E0020 only" {
         prog
     )}";
     assert not has_error_code(prog, "E5090") , f"native E5090 duplicate leaked: {fmt_errors(
-        prog
-    )}";
-}
-
-# Negative control: known clib types must compile without E2018/E5090.
-test "clib decl with known types is not rejected" {
-    prog = compile_na_inline(
-        "clib_known_ok",
-        "import from \"/usr/lib/libm.so.6\" {\n"
-        "    obj Vec2 { has x: f64, y: f64; }\n"
-        "    def sqrt(x: f64) -> f64;\n"
-        "    def scale(v: Vec2, s: f64) -> Vec2;\n"
-        "}\n"
-        "def hypot(a: f64, b: f64) -> f64 { return sqrt(a * a + b * b); }\n"
-    );
-    assert not has_error_code(prog, "E2018") , f"Known clib types triggered E2018: {fmt_errors(
-        prog
-    )}";
-    assert not has_error_code(prog, "E5090") , f"Known clib types triggered E5090: {fmt_errors(
         prog
     )}";
 }

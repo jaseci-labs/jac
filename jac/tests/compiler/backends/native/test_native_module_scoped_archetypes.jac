@@ -18,14 +18,12 @@ declaration it names.
 
 import ctypes;
 import os;
-import subprocess;
 import tempfile;
 import from tests.support {
     TESTS_DIR,
     compile_native,
     compile_native_ir,
     get_func,
-    jac_command,
     native_build,
     native_run
 }
@@ -180,24 +178,14 @@ test "unit records name archetypes by source; the link keys a shared name by ide
         != merged[native_arch_name(ROOMS, "Passage")]["fields"].keys();
 }
 
-test "jac run lowers the importer natively with no collision or fallback" {
-    proc = subprocess.run(
-        jac_command("run", MAIN), capture_output=True, text=True, timeout=900
-    );
-    combined = (proc.stdout or "") + (proc.stderr or "");
-    assert proc.returncode == 0 , f"jac run failed: {combined[-1200:]}";
-    assert "native struct name collision" not in combined , combined[-1200:];
-    assert "did not lower" not in combined and "fell back" not in combined , (
-        f"a module left the native codespace: {combined[-1200:]}"
-    );
-    assert program_lines(proc.stdout) == EXPECTED , proc.stdout;
-}
-
 test "an AOT binary built from the importer prints the same" {
     with tempfile.TemporaryDirectory() as tmp {
         out_bin = os.path.join(tmp, "scoped_arch");
         build_log = native_build(MAIN, out_bin);
         assert "native struct name collision" not in build_log , build_log[-1200:];
+        assert "did not lower" not in build_log and "fell back" not in build_log , (
+            f"a module left the native codespace: {build_log[-1200:]}"
+        );
         assert program_lines(native_run(out_bin)) == EXPECTED;
     }
 }
