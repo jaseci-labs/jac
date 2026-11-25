@@ -14156,6 +14156,7 @@ graph import scale {
             in_cluster_namespace
         },
         deploy.target.kubernetes.database_provisioner
+            | deploy.target.kubernetes.monitoring
             | deploy.target.kubernetes.ops_rbac
             | sdk.client { k8s_safe_name },
         deploy.target.kubernetes.manifest_builder
@@ -14800,7 +14801,14 @@ graph import scale.deploy.target.kubernetes {
             in_cluster_kubectl,
             kubectl_cluster
         },
-        monitoring { FLEET_SELECTOR, delete_if_exists, delete_k8s_secret },
+        monitoring {
+            FLEET_SELECTOR,
+            delete_if_exists,
+            delete_k8s_secret,
+            parse_storage_quantity,
+            resize_pvc_if_needed,
+            wait_until_deleted
+        },
         target {
             FLEET_SELECTOR,
             PSS_ENFORCE_LABEL,
