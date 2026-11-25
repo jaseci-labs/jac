@@ -75,7 +75,6 @@ impl JacClientCompiler.compile(
     self.client_modules = {};
     source_root = client_source_root(self.project_dir, module_path);
     self.jac_compiler.source_root = source_root;
-    import from jaclang.client.build_stages { stage }
     self.emit_prelude();
     visited: set[Path] = set();
     with stage("JavaScript written for the entry and its imports") {

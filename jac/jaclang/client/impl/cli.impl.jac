@@ -133,9 +133,8 @@ impl run_client_build(
         Jac.set_full_target_path(str(entry_path));
         build_platform = platform or app.platform or None;
         import time;
-        import from jaclang.client.build_stages { record_stages }
         began = time.monotonic();
-        with record_stages() {
+        with timing_stages() {
             target.ensure_ready(project_dir, platform=build_platform);
             bundle_path = target.build(entry_path, project_dir, build_platform);
         }

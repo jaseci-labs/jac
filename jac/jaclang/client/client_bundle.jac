@@ -1,5 +1,8 @@
 import hashlib;
 import os;
+import time;
+import from contextlib { contextmanager }
+import from contextvars { ContextVar }
 import from pathlib { Path }
 import from types { ModuleType }
 
@@ -49,6 +52,19 @@ def client_program(program: JacProgram | None) -> JacProgram;
 
 
 def client_source_root(project_dir: Path, entry_path: Path) -> Path;
+
+glob STAGE_SHOWN_FROM_SECONDS: float = 0.1,
+     _stage_timing: ContextVar[bool] = ContextVar(
+         'jac_build_stage_timing', `default=False
+     );
+
+"""Turn on stage lines for one `jac build`; the dev server and the seal leave it off."""
+@contextmanager
+def timing_stages -> Iterator[None];
+
+"""Time a build stage and print its line, when timing is on and it took long enough."""
+@contextmanager
+def stage(done: str) -> Iterator[None];
 
 
 def client_context_program(

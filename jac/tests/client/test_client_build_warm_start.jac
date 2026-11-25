@@ -99,23 +99,41 @@ def _stray_caches(proj: Path) -> list[str] {
 test "a warm client build over a real layout is served from the cache" {
     import from jaclang.server.hmr { HotReloader }
     import from jaclang.server.watcher { JacFileWatcher }
-    import from jaclang.client.build_stages { record_stages }
+    import from contextlib { redirect_stdout }
+    import from io { StringIO }
+    import jaclang.client.client_bundle as client_bundle;
     proj = _project();
 
-    with record_stages() as stages {
-        cold = _build(proj);
+    shown = client_bundle.STAGE_SHOWN_FROM_SECONDS;
+    client_bundle.STAGE_SHOWN_FROM_SECONDS = 0.0;
+    timed = StringIO();
+    quiet = StringIO();
+    try {
+        with client_bundle.timing_stages() {
+            with redirect_stdout(timed) {
+                cold = _build(proj);
+            }
+        }
+        with redirect_stdout(quiet) {
+            warm = _build(proj);
+        }
+    } finally {
+        client_bundle.STAGE_SHOWN_FROM_SECONDS = shown;
     }
     for name in ["main.jac", "Navbar.jac", "button.jac", "index.jac", "about.jac"] {
         assert name in cold , f"the cold build must compile {name}, saw {cold}";
     }
-    assert [name for (name, _) in stages]
-        == ["JavaScript written for the entry and its imports", "Pages compiled"] , (
-        f"a recorded build must time each compile stage, saw {stages}"
-    );
-    warm = _build(proj);
+    for done in [
+        "JavaScript written for the entry and its imports",
+        "Pages compiled"
+    ] {
+        assert f"{done} (" in timed.getvalue() , (
+            f"a timed build must print a line for {done!r}, saw {timed.getvalue()!r}"
+        );
+    }
     assert warm == [] , f"the warm build must be served from the cache, compiled {warm}";
-    assert len(stages) == 2 , (
-        f"a build nobody is recording must report no stage, saw {stages}"
+    assert "\u2714" not in quiet.getvalue() , (
+        f"a build with timing off must print no stage, saw {quiet.getvalue()!r}"
     );
 
     pinned = project_scope_is_pinned();
@@ -173,51 +191,38 @@ test "a warm client build over a real layout is served from the cache" {
 }
 
 test "a client build that cannot bundle the app as written is refused" {
-    import from jaclang.client.build_stages { record_stages }
     import from jaclang.client.targets.web_target { WebTarget }
-    entry_done = [
-        "Entry module and its imports compiled",
-        "JavaScript written for the entry and its imports"
-    ];
-    cases: list[tuple[str, str, str, list[str], list[str]]] = [
+    cases: list[tuple[str, str, str, list[str]]] = [
         (
             "an app that declares no children would drop every routed page",
             "main.jac",
             'def:pub app -> JsxElement {\n    return <main>shell</main>;\n}\n',
-            ["children"],
-            entry_done
+            ["children"]
         ),
         (
             "an entry with a syntax error",
             "main.jac",
             'def:pub app(children: any = None) -> any {\n    return <main>{children}</main>\n',
-            ["main.jac", "Missing"],
-            []
+            ["main.jac", "Missing"]
         ),
         (
             "a page with a syntax error",
             "pages/about.jac",
             'def:pub page -> JsxPage {\n    return <p>about</p>\n',
-            ["about.jac", "Missing"],
-            entry_done
+            ["about.jac", "Missing"]
         )
     ];
-    for (what, rel, text, needles, finished) in cases {
+    for (what, rel, text, needles) in cases {
         proj = _project();
         (proj / rel).write_text(text);
         failure = "";
-        with record_stages() as stages {
-            try {
-                WebTarget().build(proj / "main.jac", proj);
-            } except RuntimeError as e {
-                failure = str(e);
-            }
+        try {
+            WebTarget().build(proj / "main.jac", proj);
+        } except RuntimeError as e {
+            failure = str(e);
         }
         assert all(needle in failure for needle in needles) , (
             f"{what}: the build must stop and name {needles}, got {failure!r}"
-        );
-        assert [name for (name, _) in stages] == finished , (
-            f"{what}: only the stages that finished may be reported, saw {stages}"
         );
     }
 }

@@ -104,7 +104,6 @@ impl WebTarget.build(
     loaded_mod.__file__ = str(entry_file.resolve());
     builder = make_client_bundle_builder(project_dir);
     try {
-        import from jaclang.client.build_stages { stage }
         with stage("Entry module and its imports compiled") {
             artifact = builder._compile_to_js(
                 entry_file.resolve(), client_source_root(project_dir, entry_file)
