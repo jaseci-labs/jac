@@ -1,8 +1,8 @@
 walker BoundaryAnalysisPass(TreePass) {
     static has contract: PassContract = PassContract();
     has _func_defs: dict[(str, tuple[(InteropContext, Ability)])] = {},
-        _imported_native_funcs: dict[(str, tuple[(str, InteropContext)])] = {},
-        _imported_native_modules: dict[(str, tuple[(str, InteropContext)])] = {};
+        _imported_native_funcs: dict[str, str] = {},
+        _imported_native_modules: dict[str, str] = {};
 
     can prepare with entry;
     def _resolved_native_decl(name_node: (UniNode | None)) -> (Ability | None);

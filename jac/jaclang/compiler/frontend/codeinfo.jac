@@ -153,8 +153,7 @@ def native_runtime_probe_name(path: str) -> str;
 
 def native_test_symbol(name: str, line: int, prefix: str = "") -> str;
 
-glob JAC_ENTRY_SYMBOL: str = "jac_entry",
-     JAC_SHARED_INIT_SYMBOL: str = "__jac_shared_init";
+glob JAC_ENTRY_SYMBOL: str = "jac_entry";
 
 glob KERNEL_UNIT_REL: tuple[str, ...] = (
          "runtime/osp_kernel.jac",
@@ -172,10 +171,6 @@ glob _PKG_REAL: list[str] = [];
 def jaclang_pkg_root -> str;
 
 def is_compiler_source_path(source_path: str) -> bool;
-
-def kernel_unit_rels -> list[str];
-
-def is_package_keyed_path(source_path: str) -> bool;
 
 def kernel_unit_path(rel: str) -> str;
 
@@ -358,7 +353,6 @@ obj InteropBinding {
         endpoint_id: str = '',
         symbol: str = '';
 
-    has is_cross_module: bool { getter; }
     has native_callable: bool { getter; }
 }
 
@@ -375,7 +369,6 @@ obj InteropManifest {
     has native_imports: list[InteropBinding] { getter; }
     has callable_native_imports: list[InteropBinding] { getter; }
     has native_exports: list[InteropBinding] { getter; }
-    has native_cross_module_imports: list[InteropBinding] { getter; }
     has client_native_imports: list[InteropBinding] { getter; }
     has server_exports_to_client: list[InteropBinding] { getter; }
     has server_exports_to_server: list[InteropBinding] { getter; }
@@ -399,7 +392,7 @@ obj CodeGenTarget {
         _client_manifest: (ClientManifest | None) = None,
         py_ast: list[any] = [],
         py_bytecode: (bytes | None) = None,
-        jcir: (bytes | None) = None,
+        py_tree: any = None,
         es_ast: EsNode | Sequence[EsNode] | SliceInfo | IndexInfo | None = None,
         llvm_ir: any = None,
         ir_module: (IRModule | None) = None,
@@ -411,7 +404,6 @@ obj CodeGenTarget {
         native_codespace: bool = False,
         native_refusal: str = "",
         native_fallbacks: (NativeFallbacks | None) = None,
-        native_refusal_code: str = "",
         placement_mode: str = "",
         native_undecided: bool = False,
         native_closed_why: str = "",
@@ -422,10 +414,8 @@ obj CodeGenTarget {
         osp_model: (OspModel | None) = None,
         native_osp_model: (OspModel | None) = None,
         component_call_abi: str = "",
-        jc_layout: (str | None) = None,
         has_root_access: (bool | None) = None,
         nogc_enforced: bool = False,
-        nogc_provenance: str = '',
         layout_registry: (LayoutRegistry | None) = None,
         _clib_paths: list[str] = [],
         _clib_symbol_lib: dict[(str, str)] = {},

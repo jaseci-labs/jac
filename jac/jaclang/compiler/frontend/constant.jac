@@ -114,12 +114,6 @@ enum CodeContext {
         def __str__(self: CodeContext) -> str {
             return self.value;
         }
-
-        has is_server: bool { getter; }
-
-        has is_client: bool { getter; }
-
-        has is_native: bool { getter; }
     }
 }
 

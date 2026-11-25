@@ -378,8 +378,6 @@ impl EsastGenPass.exit_bool with uni.Bool exit {
     here.gen.es_ast = bool_lit;
 }
 
-impl EsastGenPass.exit_inner_compr with uni.InnerCompr exit {}
-
 impl EsastGenPass.exit_list_compr with uni.ListCompr exit {
     if here.__class__ is not uni.ListCompr {
         return;
@@ -587,8 +585,6 @@ impl EsastGenPass._compr_param(
 
     return self.sync_loc(es.Identifier(name='x'), jac_node=jac_node);
 }
-
-impl EsastGenPass.exit_k_v_pair with uni.KVPair exit {}
 
 impl EsastGenPass.exit_dict_val with uni.DictVal exit {
     properties: list[(es.Property | es.SpreadElement)] = [];

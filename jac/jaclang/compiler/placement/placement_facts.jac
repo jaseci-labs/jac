@@ -5,13 +5,6 @@ glob SPACE_SERVER: str = 'server',
      SPACE_NATIVE: str = 'native';
 
 glob NATIVE_POLICY_DIR_REL: tuple[str, ...] = ("client/targets/desktop/native", );
-glob TOOLCHAIN_NATIVE_ONLY_REL: tuple[str, ...] = ("runtime", "na_stdlib"),
-     TOOLCHAIN_MIXED_NATIVE_REL: tuple[str, ...] = (
-         "client",
-         "targets",
-         "desktop",
-         "native"
-     );
 
 
 def native_placement_hard(prog: JacProgram, mod_path: str) -> bool;

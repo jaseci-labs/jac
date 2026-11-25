@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Proves watch_scale_targets observes a real scale-to-zero cycle (#7405 criterion 12).
+# Then turns http_activation off while the target is parked and checks it comes back (#10846).
 #
 # Wraps the HTTP-activation e2e rather than deploying its own app: that script
 # already drives a full 0 -> 1 -> ready -> 0 cycle on a live cluster, and a
@@ -98,8 +99,10 @@ import tomllib
 with open('jac.toml', 'rb') as f:
     cfg = tomllib.load(f)
 print(cfg['scale']['kubernetes'].get('namespace', 'default'))
+print(cfg['project']['name'])
 ")
 NAMESPACE=$(echo "${CFG}" | sed -n '1p')
+SCALE_TARGET="$(echo "${CFG}" | sed -n '2p')-deployment"
 
 # A namespace read wrongly would leave the observer watching nothing while the
 # cycle succeeded elsewhere, so reject anything that is not a DNS label rather
@@ -185,5 +188,18 @@ fi
 RECORDER_PID=""
 
 check_cycle "${TRANSITIONS}"
+
+# Parked at 0 here: turning activation off is the case the HPA never scales up from (#10846).
+echo "=== turn http_activation off while parked at 0; the redeploy must bring it back ==="
+fail() { echo "FAIL: $*" >&2; exit 1; }
+[[ "$(kubectl get deployment "${SCALE_TARGET}" -n "${NAMESPACE}" -o jsonpath='{.spec.replicas}')" == "0" ]] \
+    || fail "${SCALE_TARGET} is not parked at 0"
+sed -i.bak 's/^enabled = true$/enabled = false/' "${FIXTURE_DIR}/jac.toml"
+deploy_rc=0
+(cd "${FIXTURE_DIR}" && jac scale deploy app.jac) || deploy_rc=$?
+mv "${FIXTURE_DIR}/jac.toml.bak" "${FIXTURE_DIR}/jac.toml"
+[[ "${deploy_rc}" == "0" ]] || fail "the redeploy with http_activation off failed"
+kubectl wait --for=jsonpath='{.status.readyReplicas}'=1 "deployment/${SCALE_TARGET}" -n "${NAMESPACE}" \
+    --timeout="${READY_TIMEOUT:-180}s" || fail "${SCALE_TARGET} did not come back up"
 
 echo "=== KEDA observer REAL e2e PASSED ==="

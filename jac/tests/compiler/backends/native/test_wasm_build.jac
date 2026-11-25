@@ -57,7 +57,7 @@ def _require_libc {
 
 """The fixture's whole program for wasm: its unit merged with the runtime
 units it links and the glue that defines `jac_entry` and `__jac_glob_init`,
-the text `compile_to_wasm` hands the emitter."""
+the text `wasm_artifact_inputs` hands the emitter."""
 def fixture_ir -> str {
     import from jaclang.compiler.backends.native.link_plan {
         build_link_plan,
@@ -569,7 +569,7 @@ test "a floor without a manifest is refused until it is rebuilt" {
 }
 
 """[memory] profile = "nogc" promises an RC-free artifact; the audit is what makes
-compile_to_wasm fail loudly instead of shipping RC machinery the shim then has
+a wasm build fail loudly instead of shipping RC machinery the shim then has
 to service. Pure-IR checks -- no vendored libc needed."""
 test "rc audit passes clean IR and rejects rc machinery" {
     import from jaclang.compiler.backends.native.wasm_build { _assert_ir_rc_free }

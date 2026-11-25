@@ -225,9 +225,7 @@ impl CodeIntelligence._emit(
                 "ms": (time.time() - t0) * 1000.0
             }
         );
-    } except Exception as e {
-        _ = e;
-    }
+    } except Exception {}
 }
 
 impl CodeIntelligence.refresh(file: str = "") -> None {
@@ -262,9 +260,7 @@ impl CodeIntelligence.refresh(file: str = "") -> None {
         self._records.pop(p, None);
         try {
             self.prog.invalidate_module(p);
-        } except Exception as e {
-            _ = e;
-        }
+        } except Exception {}
     }
     self._compile_and_index(stale);
     self._emit(mode, target, len(stale), t0);
@@ -315,9 +311,7 @@ impl CodeIntelligence._full_compile_one(file: str) -> tuple[list[Alert], list[Al
         self.prog.compile(
             file_path=file, options=CompileOptions(no_cgen=True, need_full_ast=True)
         );
-    } except Exception as e {
-        _ = e;
-    }
+    } except Exception {}
     return (list(self.prog.errors_had[err0:]), list(self.prog.warnings_had[warn0:]));
 }
 
@@ -389,9 +383,7 @@ impl CodeIntelligence._compile_and_index(stale: set[str]) {
         syms: list[uni.Symbol] = [];
         try {
             self._collect_syms(mod.sym_tab, syms);
-        } except Exception as e {
-            _ = e;
-        }
+        } except Exception {}
         for sym in syms {
             decl = sym.decl;
             if getattr(sym, "imported", False) or decl is None or decl.loc is None {
@@ -447,9 +439,7 @@ impl CodeIntelligence._build_record(
     syms: list[uni.Symbol] = [];
     try {
         self._collect_syms(mod.sym_tab, syms);
-    } except Exception as e {
-        _ = e;
-    }
+    } except Exception {}
     for sym in syms {
         decl = sym.decl;
         if getattr(sym, "imported", False) or decl is None or decl.loc is None {
@@ -485,9 +475,7 @@ impl CodeIntelligence._build_record(
                 top.append(info.to_dict());
             }
         }
-    } except Exception as e {
-        _ = e;
-    }
+    } except Exception {}
     archetypes: list[dict[str, any]] = [];
     try {
         for arch in mod.get_all_sub_nodes(uni.Archetype) {
@@ -496,9 +484,7 @@ impl CodeIntelligence._build_record(
                 archetypes.append(info.to_dict());
             }
         }
-    } except Exception as e {
-        _ = e;
-    }
+    } except Exception {}
     deps: set[str] = set();
     external: dict[str, str] = {};
     for prog in [self.prog] + list(self.prog.contexts.values()) {
@@ -603,9 +589,7 @@ impl CodeIntelligence._dir_signature -> dict[str, float] {
     for d in dirs {
         try {
             sig[d] = os.path.getmtime(d);
-        } except OSError as e {
-            _ = e;
-        }
+        } except OSError {}
     }
     return sig;
 }
@@ -653,10 +637,8 @@ impl CodeIntelligence._kind_of(owner: uni.UniNode) -> str {
         raw = "";
         try {
             raw = str(owner.arch_type.value);
-        } except Exception as e {
-            _ = e;
-        }
-        return _ARCH_KIND.get(raw, raw or "obj");
+        } except Exception {}
+        return raw or "obj";
     }
     if isinstance(owner, uni.Enum) {
         return "enum";
@@ -679,8 +661,7 @@ impl CodeIntelligence._expr_str(expr: uni.UniNode | None) -> str {
     }
     try {
         return str(unparse_node(expr)).strip();
-    } except Exception as e {
-        _ = e;
+    } except Exception {
         return "";
     }
 }
@@ -693,9 +674,7 @@ impl CodeIntelligence._doc_of(owner: uni.UniNode) -> str {
                 return str(doc.value).strip().strip('"');
             }
         }
-    } except Exception as e {
-        _ = e;
-    }
+    } except Exception {}
     return "";
 }
 
@@ -707,9 +686,7 @@ impl CodeIntelligence._info(sym: uni.Symbol) -> SymbolInfo | None {
     owner: uni.UniNode = decl;
     try {
         owner = decl.name_of;
-    } except Exception as e {
-        _ = e;
-    }
+    } except Exception {}
     loc = decl.loc;
     info = SymbolInfo(
         name=sym.sym_name,
@@ -730,9 +707,7 @@ impl CodeIntelligence._info(sym: uni.Symbol) -> SymbolInfo | None {
         try {
             owner_type = owner?.type;
             info.type_str = str(owner_type) if owner_type else "";
-        } except Exception as e {
-            _ = e;
-        }
+        } except Exception {}
     }
     return info;
 }
@@ -743,27 +718,21 @@ impl CodeIntelligence._fill_archetype(info: SymbolInfo, arch: uni.Archetype) {
             vt = self._expr_str(v.type_tag.tag) if v.type_tag else "";
             info.fields.append(f"{v.name.sym_name}: {vt}" if vt else v.name.sym_name);
         }
-    } except Exception as e {
-        _ = e;
-    }
+    } except Exception {}
     try {
         for m in arch.get_methods() {
             mname = m.name_ref.sym_name if m.name_ref else "?";
             tag = " by llm" if getattr(m, "is_genai_ability", False) else "";
             info.abilities.append(mname + "()" + tag);
         }
-    } except Exception as e {
-        _ = e;
-    }
+    } except Exception {}
     try {
         if arch.base_classes {
             for b in arch.base_classes {
                 info.base_classes.append(self._expr_str(b));
             }
         }
-    } except Exception as e {
-        _ = e;
-    }
+    } except Exception {}
 }
 
 impl CodeIntelligence.lookup(name: str) -> list[SymbolInfo] {
@@ -884,9 +853,7 @@ impl CodeIntelligence._module_entry_points(mod: uni.Module) -> list[EntryPoint] 
                 event = "";
                 try {
                     event = str(sig.event.value);
-                } except Exception as e {
-                    _ = e;
-                }
+                } except Exception {}
                 mloc = m.loc;
                 out.append(
                     EntryPoint(
@@ -900,9 +867,7 @@ impl CodeIntelligence._module_entry_points(mod: uni.Module) -> list[EntryPoint] 
                 );
             }
         }
-    } except Exception as e {
-        _ = e;
-    }
+    } except Exception {}
     return out;
 }
 

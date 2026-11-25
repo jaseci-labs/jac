@@ -11,10 +11,6 @@ impl UniNode._attach(child: UniNode, role: type[Edge]) -> None {
     self +>:(role):+> child;
 }
 
-impl UniNode._as_node_list(value: any) -> list[UniNode] {
-    return value;
-}
-
 impl UniNode._link(kid: Sequence[UniNode], roles: dict[type, any]) -> None {
     if not roles {
         for k in kid {
@@ -35,8 +31,7 @@ impl UniNode._link(kid: Sequence[UniNode], roles: dict[type, any]) -> None {
                 shapes[role] = "none";
             } elif isinstance(value, (list, tuple)) {
                 shapes[role] = "many";
-                vlist = self._as_node_list(value);
-                for v in vlist {
+                for v in value {
                     if isinstance(v, UniNode) {
                         prev = role_of.get(id(v));
                         if prev is None {
@@ -80,8 +75,7 @@ impl UniNode._link(kid: Sequence[UniNode], roles: dict[type, any]) -> None {
     }
     for (role, value) in roles.items() {
         if isinstance(value, (list, tuple)) {
-            vlist2 = self._as_node_list(value);
-            for v in vlist2 {
+            for v in value {
                 if isinstance(v, UniNode) and id(v) not in attached {
                     self._attach(v, role);
                     attached.add(id(v));
@@ -217,8 +211,7 @@ impl UniNode._role_set(role: type[Role], value: any) -> None {
         shapes[role] = "none";
     } elif isinstance(value, (list, tuple)) {
         shapes[role] = "many";
-        vsrc = self._as_node_list(value);
-        for v in vsrc {
+        for v in value {
             if isinstance(v, UniNode) {
                 self._attach(v, role);
             }
@@ -1279,10 +1272,6 @@ impl AstAccessNode.access_type.getter -> SymbolAccess {
             else SymbolAccess.PUBLIC;
 }
 
-impl AstAccessNode.public_access.getter -> bool {
-    return (self.access_type == SymbolAccess.PUBLIC);
-}
-
 impl AstAccessNode.exposure.getter -> SymbolAccess {
     tag = self.access.tag.name if self.access else None;
     if tag == Tok.KW_PUB {
@@ -1596,7 +1585,6 @@ impl SubTag.postinit -> None {
 
 
 impl Module.postinit -> None {
-    self.src_terminals = self.terminals;
     self.codespace_inferred = False;
     self.persistence = [];
     self.ct_file_deps = [];
@@ -2805,11 +2793,6 @@ impl DeleteStmt.type_may_hold_graph(t: (TypeBase | None)) -> bool {
 }
 
 
-impl DeleteStmt.target_may_hold_graph(target: Expr) -> bool {
-    return DeleteStmt.type_may_hold_graph(target.type);
-}
-
-
 impl ReportStmt.postinit -> None {
     UniNode.postinit(self);
     CodeBlockStmt.postinit(self);
@@ -3142,36 +3125,6 @@ impl JsxElement.postinit -> None {
     AstSymbolStubNode._init_stub(self, sym_type=SymbolType.OBJECT_ARCH);
 }
 
-
-impl JsxElement.get_body_start_line -> (int | None) {
-    if not [self->:Kid:->] {
-        return None;
-    }
-    opening_tag = [self->:Kid:->][0];
-    if isinstance(opening_tag, JsxElement) {
-        for k in [opening_tag->:Kid:->] {
-            if (isinstance(k, Token) and (k.name == Tok.JSX_TAG_END) and k.loc) {
-                return k.loc.last_line + 1;
-            }
-        }
-    }
-    return None;
-}
-
-impl JsxElement.get_body_end_line -> (int | None) {
-    if not [self->:Kid:->] {
-        return None;
-    }
-    closing_tag = [self->:Kid:->][-1];
-    if isinstance(closing_tag, JsxElement) {
-        for k in [closing_tag->:Kid:->] {
-            if (isinstance(k, Token) and (k.name == Tok.JSX_CLOSE_START) and k.loc) {
-                return k.loc.first_line;
-            }
-        }
-    }
-    return None;
-}
 
 impl JsxElementName.postinit -> None {
     UniNode.postinit(self);
@@ -3918,10 +3871,6 @@ impl kind_has_runtime_binding(
         return True;
     }
     return decl is None or not isinstance(decl.name_of, TypeAlias);
-}
-
-impl has_runtime_binding(sym: Symbol, space: CodeContext) -> bool {
-    return kind_has_runtime_binding(sym.binding_kind, resolved_decl_of(sym), space);
 }
 
 impl is_comptime_stmt(nd: UniNode) -> bool {

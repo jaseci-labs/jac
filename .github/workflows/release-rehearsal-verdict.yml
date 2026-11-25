@@ -1,0 +1,45 @@
+name: Release rehearsal verdict
+
+# When a release rehearsal on main finishes, re-run the `release-rehearsal`
+# check in main's latest CI run, so main shows the new result right away
+# instead of at its next push or scheduled run. Re-running a job also re-runs
+# the jobs that need it, so Everything Passed follows.
+
+on:
+  workflow_run:
+    workflows: ["Release rehearsal"]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  refresh-main-ci:
+    if: >-
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.conclusion != 'cancelled' &&
+      github.event.workflow_run.conclusion != 'skipped'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Re-run main's release-rehearsal check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          run_id="$(gh api "repos/$GH_REPO/actions/workflows/ci.yml/runs?branch=main&status=completed&per_page=20" \
+            --jq '[.workflow_runs[] | select(.event != "pull_request")][0].id // empty')"
+          if [ -z "$run_id" ]; then
+            echo "No finished main CI run yet."
+            exit 0
+          fi
+          job_id="$(gh api --paginate "repos/$GH_REPO/actions/runs/$run_id/jobs?per_page=100" \
+            --jq '.jobs[] | select(.name == "release-rehearsal") | .id' | head -1)"
+          if [ -z "$job_id" ]; then
+            echo "Main CI run $run_id has no release-rehearsal job."
+            exit 0
+          fi
+          gh run rerun "$run_id" --job "$job_id"
+          echo "Re-ran release-rehearsal in https://github.com/$GH_REPO/actions/runs/$run_id"

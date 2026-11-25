@@ -355,10 +355,8 @@ impl JacFormatPass.run_walk with uni.Module entry {
 }
 
 impl format_module(mod: uni.Module) -> str {
-    return run_utility(
-        CompilationProduct.FORMAT_TEXT,
-        run_utility(CompilationProduct.DOC, mod, JacProgram()).module,
-        JacProgram()
+    return run_pass(
+        JacFormatPass, run_pass(DocIRGenPass, mod, JacProgram()).module, JacProgram()
     ).module.gen.jac;
 }
 
@@ -386,13 +384,11 @@ impl unparse_module(mod: uni.Module, requires_format: bool = True) -> str {
             mod.set_kids(nodes=head_kid or [uni.EmptyToken()]);
         }
         try {
-            import from jaclang.compiler.driver.pipeline { run_utility }
-            import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
-            run_utility(CompilationProduct.NORMALIZE, mod, JacProgram());
+            run_pass(NormalizePass, mod, JacProgram());
             if requires_format {
                 return format_module(mod);
             }
-            run_utility(CompilationProduct.UNPARSE, mod, JacProgram());
+            run_pass(UnparsePass, mod, JacProgram());
             return mod.gen.jac;
         } finally {
             if filtered {

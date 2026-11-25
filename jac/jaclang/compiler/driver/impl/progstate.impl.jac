@@ -78,7 +78,14 @@ impl ModuleHub.reset(retain_stubs: bool = True) {
             dropped.append(mod);
         }
     }
-    dropped_ids: set[int] = {id(m) for m in dropped};
+    self.detach(dropped);
+    self.mod.hub.clear();
+    self.stamps.clear();
+    self.client_artifacts.clear();
+}
+
+impl ModuleHub.detach(mods: list[uni.Module]) {
+    dropped_ids: set[int] = {id(m) for m in mods};
     prog_root = self.mod;
     main = prog_root.main_mod;
     if main is not None and id(main) in dropped_ids {
@@ -92,12 +99,9 @@ impl ModuleHub.reset(retain_stubs: bool = True) {
         ],
         pos_update=False
     );
-    for mod in dropped {
+    for mod in mods {
         del [edge mod<-:ScopeChild:<-];
     }
-    prog_root.hub.clear();
-    self.stamps.clear();
-    self.client_artifacts.clear();
 }
 
 impl DepGraph.record(importer_path: str, target_path: str) -> None {
@@ -215,11 +219,6 @@ impl DiagLedger._owned(alert: Alert, path: str) -> bool {
 impl DiagLedger.clear {
     self.errors.clear();
     self.warnings.clear();
-}
-
-impl BuildScratch.clear {
-    self.boundary_parse_memo.clear();
-    self.compile_depth = 0;
 }
 
 impl AnalysisCaches.init(self: AnalysisCaches) {

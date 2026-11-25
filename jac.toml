@@ -5,7 +5,7 @@
 # here (not from a Python pyproject backend).
 [project]
 name = "jaclang"
-version = "0.40.1"
+version = "0.40.2"
 description = "Jac programming language - Python-like syntax, compiles to Python bytecode, JavaScript, and native machine code with novel constructs for AI-integrated programming."
 license = "MIT"
 readme = "jac/README.md"
@@ -74,9 +74,8 @@ exclude = [
     "checker_*.jac",
     "*_err.jac",
 
-    # Examples and benchmarks are not shipped compiler or runtime code.
+    # Examples are not shipped compiler or runtime code.
     "jac/examples/*",
-    "scripts/bench*",
 ]
 
 [check.lint]

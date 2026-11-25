@@ -11,37 +11,9 @@ obj SessionContext {
 }
 
 obj CompileFrame {
-    has nested: bool = False;
-}
-
-obj SessionHooks {
-    def enter_compile(ctx: SessionContext) -> CompileFrame;
-    def leave_compile(ctx: SessionContext, frame: CompileFrame);
-    def finish_compile(frame: CompileFrame);
-    def check_crash(crash: Exception, file_path: str);
-    def closure_options -> (CompileOptions | None);
-    def compile(
-        file_path: str,
-        target_program: JacProgram,
-        use_str: (str | None),
-        options: CompileOptions
-    ) -> uni.Module;
-
-    def compile_attempt(
-        file_path: str,
-        target_program: JacProgram,
-        use_str: (str | None),
-        options: CompileOptions
-    ) -> uni.Module;
-
-    def assemble_python(program: JacProgram, module: uni.Module);
-    def assemble_native(program: JacProgram, module: uni.Module, checking: bool);
-    def run_module(
-        file_path: str,
-        target_program: JacProgram,
-        use_str: (str | None),
-        options: CompileOptions
-    ) -> uni.Module abst;
+    has depth_prev: int = 0,
+        gc_prev: (tuple[int, int, int] | None) = None,
+        retain_selfhost: bool = False;
 }
 
 def select_context(
@@ -57,15 +29,7 @@ def inherit_session_options(
 ) -> CompileOptions;
 
 def compile_in_session(
-    hooks: SessionHooks,
-    file_path: str,
-    program: JacProgram,
-    use_str: (str | None),
-    options: CompileOptions
-) -> uni.Module;
-
-def compile_attempts(
-    hooks: SessionHooks,
+    compiler: JacCompiler,
     file_path: str,
     program: JacProgram,
     use_str: (str | None),
@@ -73,7 +37,7 @@ def compile_attempts(
 ) -> uni.Module;
 
 def compile_once(
-    hooks: SessionHooks,
+    compiler: JacCompiler,
     file_path: str,
     program: JacProgram,
     use_str: (str | None),

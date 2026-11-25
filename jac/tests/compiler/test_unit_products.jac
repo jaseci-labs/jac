@@ -1,4 +1,4 @@
-"""Compile products cross the kernel boundary and the JIR cache as JSON records.
+"""Compile products cross the JIR cache as JSON records.
 
 The MTIR graph shares nodes and closes cycles (a method points back at its
 class), so its record keys nodes by position; a client manifest's global
@@ -111,14 +111,7 @@ test "a placement summary record round-trips and skips rows of the wrong shape" 
         summary_to_dict
     }
     element = ElementSummary(
-        index=2,
-        kind="ability",
-        name="walk",
-        import_items=["a", "b"],
-        reqs=[["native", "pin"]],
-        refs=[0, 1],
-        escapes=[(3, "x")],
-        glob_writes=[4]
+        index=2, name="walk", reqs=[["native", "pin"]], glob_writes=[4]
     );
     summary = PlacementSummary(
         mod_path="/app/main.jac",
@@ -133,38 +126,8 @@ test "a placement summary record round-trips and skips rows of the wrong shape" 
     assert summary_to_dict(restored) == summary_to_dict(summary);
     record = summary_to_dict(summary);
     record["anchors"] = "walk";
-    record["elements"] = [
-        {"index": 5, "refs": "0", "escapes": [[1, "y"], "z", [], [2]]},
-        "row"
-    ];
+    record["elements"] = [{"index": 5, "glob_writes": "0"}, "row"];
     odd = summary_from_dict(record);
     assert odd is not None and odd.anchors == [] and len(odd.elements) == 1;
-    assert odd.elements[0].index == 5
-        and odd.elements[0].refs == []
-        and odd.elements[0].escapes == [(1, "y")];
-}
-
-test "a unit's jac dependencies follow plain, from and item imports" {
-    import os;
-    import tempfile;
-    import from pathlib { Path }
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.unit_products { jac_dependencies }
-    with tempfile.TemporaryDirectory(prefix="jac-unit-deps-") as tmp {
-        Path(tmp, "helper.jac").write_text("def f -> int { return 1; }\n");
-        Path(tmp, "other.jac").write_text("glob x: int = 1;\n");
-        Path(tmp, "pkg").mkdir();
-        Path(tmp, "pkg", "inner.jac").write_text("def g -> int { return 2; }\n");
-        main = Path(tmp, "main.jac");
-        main.write_text(
-            "import from helper { f }\nimport other;\nimport from pkg { inner }\n"
-                + "import os;\nwith entry { print(f(), other.x, inner.g(), os.sep); }\n"
-        );
-        module = JacProgram().compile(str(main));
-        assert jac_dependencies(module)
-            == sorted(
-                os.path.realpath(str(Path(tmp, name)))
-                for name in ("helper.jac", "other.jac", "pkg/inner.jac")
-            ) , jac_dependencies(module);
-    }
+    assert odd.elements[0].index == 5 and odd.elements[0].glob_writes == [];
 }

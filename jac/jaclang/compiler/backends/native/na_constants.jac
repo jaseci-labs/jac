@@ -1,15 +1,5 @@
-glob FACT_SEP: str = "\x1e",
-     FACT_TARGET: str = "target",
-     FACT_STRUCT_LAYOUTS: str = "struct_layouts",
-     FACT_CODEC_TABLES: str = "codec_tables",
-     FACT_CODEC_NAME: str = "codec_name",
-     FACT_PRIMITIVE_METHODS: str = "primitive_methods",
-     FACT_SEALED_RUNTIME: str = "sealed_runtime",
-     FACT_IMPORT_PATHS: str = "import_paths",
-     FACT_PACKAGE_STORE: str = "package_store";
-
-glob NATIVE_COPY_FUNCS: set[str] = {"copy", "deepcopy"};
-glob NATIVE_OS_FUNCS: set[str] = {
+glob NATIVE_COPY_FUNCS: set[str] = {"copy", "deepcopy"},
+     NATIVE_OS_FUNCS: set[str] = {
          "getpid",
          "listdir",
          "getcwd",
@@ -25,8 +15,8 @@ glob NATIVE_OS_FUNCS: set[str] = {
          "read",
          "isatty",
 
-     };
-glob NATIVE_OSPATH_FUNCS: set[str] = {
+     },
+     NATIVE_OSPATH_FUNCS: set[str] = {
          "join",
          "basename",
          "dirname",
@@ -38,8 +28,8 @@ glob NATIVE_OSPATH_FUNCS: set[str] = {
          "getmtime",
          "normcase",
 
-     };
-glob NATIVE_RANDOM_FUNCS: set[str] = {
+     },
+     NATIVE_RANDOM_FUNCS: set[str] = {
          "seed",
          "random",
          "getrandbits",
@@ -47,8 +37,8 @@ glob NATIVE_RANDOM_FUNCS: set[str] = {
          "randrange",
          "uniform",
 
-     };
-glob NATIVE_STRUCT_FUNCS: set[str] = {
+     },
+     NATIVE_STRUCT_FUNCS: set[str] = {
          "pack",
          "unpack",
          "calcsize",

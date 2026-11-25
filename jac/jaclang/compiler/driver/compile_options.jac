@@ -34,11 +34,6 @@ obj CompileOptions {
         native_threads: (int | None) = None,
         rc_debug_codegen: (bool | None) = None,
         native_target: (str | None) = None,
-        native_tls: bool = False,
-        native_sjlj: bool = False,
-        native_unchecked_views: bool = False,
-        native_direct_c_entries: bool = False,
-        native_heap: str = "",
         native_debug: (bool | None) = None,
         opt_level: (int | None) = None,
         dump_ir_path: (str | None) = None,
@@ -62,9 +57,14 @@ obj CompileOptions {
 
     def postinit;
     def effective_triple -> str;
-    def native_options_identity -> str;
+    def _required_terms -> list[str];
+    def _memory_terms -> list[str];
+    def _codegen_terms -> list[str];
+    def _app_terms -> list[str];
+    def _lane_terms -> list[str];
+    def _flow_suffix -> str;
+    def _client_suffix -> str;
     def codegen_identity -> str;
-    def codegen_fingerprint -> str;
     def analysis_identity -> str;
     def artifact_identity -> str;
     def analysis_fingerprint -> str;
@@ -82,12 +82,6 @@ obj CompileOptions {
 glob NATIVE_LINK_MODE_OBJECTS: str = "objects",
      NATIVE_LINK_MODE_BITCODE: str = "bitcode",
      NATIVE_LINK_MODES: tuple[str, str] = ("objects", "bitcode");
-
-def effective_codegen_fingerprint -> str;
-
-def link_fingerprint_mismatches(
-    participants: list[tuple[str, str]], current_fp: str
-) -> list[str];
 
 def env_symmap_requested -> bool;
 

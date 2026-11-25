@@ -184,6 +184,10 @@ profiles = true
   `jacIsLoggedIn()` work as after a sign-in.
 - `profiles` needs an embedded backend. With `backends`, it applies while an
   embedded backend runs, and a remote one keeps its own sign-in.
+- If a server rejects the profile's session, the page reloads once to get a
+  fresh one. A server that keeps rejecting it does not reload the app again
+  until the session has expired or another profile is picked. Once an expired
+  session has been dropped, the next call reloads to get a fresh one.
 
 The UI manages them through `profiles` from `@jac/desktop`:
 

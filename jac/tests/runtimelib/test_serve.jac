@@ -110,13 +110,13 @@ test "faux flag prints endpoint docs" {
         assert "client_page" in output;
         # Verify summary is present
         assert "TOTAL:" in output;
-        # 3 functions / 22 endpoints: only the user functions (add_numbers, greet,
-        # echo_defaults) are exposed. The served surface skips jaclang framework helpers
+        # 4 functions / 24 endpoints: only the user functions (add_numbers, greet,
+        # book_slot, echo_defaults) are exposed. The served surface skips jaclang framework helpers
         # (connect, spawn, on_entry, set_trigger, …) that the compiler imports
         # into every module's namespace, so they no longer leak as endpoints.
-        assert "3 functions" in output;
+        assert "4 functions" in output;
         assert "5 walkers" in output;
-        assert "22 endpoints" in output;
+        assert "24 endpoints" in output;
         # Verify parameter details are included
         assert "required" in output;
         assert "optional" in output;

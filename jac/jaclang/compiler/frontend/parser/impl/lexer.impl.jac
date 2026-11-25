@@ -207,14 +207,8 @@ impl Lexer.match_string(expected: str) -> bool {
     if not matched {
         return False;
     }
-    if "\n" in expected {
-        for _ in range(n) {
-            self.advance();
-        }
-    } else {
-        self.pos += nbytes;
-        self.col += n;
-    }
+    self.pos += nbytes;
+    self.col += n;
     return True;
 }
 

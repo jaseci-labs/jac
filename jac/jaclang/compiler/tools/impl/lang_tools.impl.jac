@@ -59,10 +59,13 @@ impl AstTool.ir(args: list[str]) -> str {
                 return f"{py_ast.dump(parsed_ast, indent=2)}";
             }
             try {
-                rep = run_utility(
-                    CompilationProduct.PYTHON_AST,
-                    uni.PythonModuleAst(
-                        parsed_ast, orig_src=uni.Source(file_source, file_name)
+                rep = run_pass(
+                    PyastBuildPass,
+                    cast(
+                        uni.Module,
+                        uni.PythonModuleAst(
+                            parsed_ast, orig_src=uni.Source(file_source, file_name)
+                        )
                     ),
                     prog
                 ).module;
@@ -136,9 +139,7 @@ impl AstTool.ir(args: list[str]) -> str {
                     else 'Compile failed.';
 
             case 'docir':
-                return str(
-                    run_utility(CompilationProduct.DOC, ir_mod, prog).module.gen.doc_ir
-                );
+                return str(run_pass(DocIRGenPass, ir_mod, prog).module.gen.doc_ir);
 
             case 'py':
                 import from jaclang.compiler.backends.py.codegen_shim {
@@ -226,7 +227,6 @@ impl AstTool.init -> None {
                     'UniCFGNode',
                     'ContextAwareNode',
                     'ProgramModule',
-                    'OOPAccessNode',
                     'WalkerStmtOnlyNode',
                     'Source',
                     'EmptyToken',
@@ -236,12 +236,10 @@ impl AstTool.init -> None {
                     'Literal',
                     'AstDocNode',
                     'AstImplNeedingNode',
-                    'AstSemStrNode',
                     'PythonModuleAst',
                     'AstAsyncNode',
                     'AstElseBodyNode',
                     'AstTypedVarNode',
-                    'AstImplOnlyNode',
                     'Expr',
                     'AtomExpr',
                     'ElementStmt',
@@ -264,8 +262,6 @@ impl AstTool.init -> None {
 impl UniNodeInfo.process(cls: type[uni.UniNode]) -> None {
     self.name = cls.__name__;
     self.doc = cls.__doc__;
-    UniNodeInfo.type_map[self.name] = cls;
-    self.class_name_snake = pascal_to_snake(cls.__name__);
     self.init_sig = inspect.signature(cls.__init__);
     self.kids = [];
     for (param_name, param) in self.init_sig.parameters.items() {

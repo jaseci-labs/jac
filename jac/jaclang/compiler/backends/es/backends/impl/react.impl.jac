@@ -219,7 +219,7 @@ impl ReactBackend.lower_view(view: ViewElement, locator: ViewLocator) -> es.Expr
                         es.ObjectExpression(
                             properties=[self._view_attr_property(a, locator)]
                         ),
-                        jac_node=view_attr_node(a)
+                        jac_node=a.jac_node
                     )
                 );
             }

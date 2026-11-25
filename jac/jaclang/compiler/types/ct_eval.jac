@@ -67,8 +67,6 @@ def _scope_of(nd: UniNode) -> (UniScopeNode | None);
 
 def _impl_body(nd: UniNode) -> list[UniNode];
 
-def _is_builtin_name(name: str) -> bool;
-
 obj CtEvaluator(CtCaller) {
     has evaluator: TypeEvaluator,
         env: CtEnvironment = CtEnvironment(),
