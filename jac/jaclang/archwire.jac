@@ -11308,6 +11308,13 @@ graph import compiler.tests {
             run_with_both
         },
         test_native_list_search_equality { compile_native, get_func },
+        test_native_followups_probe {
+            compare_results,
+            compile_native,
+            compile_native_errors,
+            run_native_function,
+            run_py_fixture
+        },
         test_prim_equivalence {
             compare_results,
             compile_fixture_to_js,

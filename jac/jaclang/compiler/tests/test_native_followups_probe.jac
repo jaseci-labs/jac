@@ -1,14 +1,5 @@
 import os;
 import tempfile;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.tests.xbackend_equiv {
-    _fixture_shadow_dir,
-    compare_results,
-    remember_engine_unit,
-    run_native_function,
-    run_py_fixture
-}
 
 glob PROBES: list[tuple[str, list[tuple[str, str, str]]]] = [
          ("prim_int.jac", [("int", "int_py", "int_na")]),
