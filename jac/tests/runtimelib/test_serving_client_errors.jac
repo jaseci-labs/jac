@@ -11,6 +11,7 @@ import asyncio;
 import socket;
 import struct;
 import threading;
+import time;
 import from jaclang.server.serving.client {
     ClientConnectionError,
     ClientRequestNotSent,
@@ -19,6 +20,15 @@ import from jaclang.server.serving.client {
     arequest,
     request_sync,
     post_stream_aware_sync
+}
+import from jaclang.server.serving.client {
+    IDLE_TIMEOUT,
+    MAX_CONNECTION_AGE,
+    MAX_IDLE_PER_ORIGIN,
+    _PooledConn,
+    _idle_pool,
+    _release,
+    _take_idle
 }
 
 
@@ -175,6 +185,80 @@ test "retry-unsafe types are not OSErrors" {
     assert issubclass(ClientReadTimeout, ClientRequestSent);
     assert issubclass(ClientRequestSent, ClientConnectionError);
     assert issubclass(ClientRequestNotSent, ClientConnectionError);
+}
+
+
+async def _pooled_pair(origin: tuple[str, str, int]) -> tuple[any, any] {
+    (ours, peer) = socket.socketpair();
+    (reader, writer) = await asyncio.open_connection(sock=ours);
+    conn = _PooledConn(
+        origin=origin, reader=reader, writer=writer, opened=time.monotonic()
+    );
+    return (conn, peer);
+}
+
+
+async def _pool_outcome(scenario: str) -> tuple[bool, bool] {
+    origin = ("http", "svc", 80);
+    peers: list[any] = [];
+    if scenario == "pool full" {
+        for _ in range(MAX_IDLE_PER_ORIGIN) {
+            (other, other_peer) = await _pooled_pair(origin);
+            peers.append(other_peer);
+            _release(other);
+        }
+    }
+    if scenario == "expired elsewhere" {
+        (stale, stale_peer) = await _pooled_pair(("http", "gone", 80));
+        peers.append(stale_peer);
+        _release(stale);
+        stale.idle_since -= IDLE_TIMEOUT;
+        loop: any = asyncio.get_running_loop();
+        loop._jac_idle_swept = 0.0;
+    }
+    (conn, peer) = await _pooled_pair(origin);
+    peers.append(peer);
+    if scenario == "too old" {
+        conn.opened -= MAX_CONNECTION_AGE;
+    } elif scenario == "unread bytes" {
+        peer.sendall(b"x");
+    } elif scenario == "peer closed" {
+        peer.close();
+    }
+    await asyncio.sleep(0.05);
+    _release(conn);
+    if scenario == "idle too long" {
+        conn.idle_since -= IDLE_TIMEOUT;
+    }
+    taken = _take_idle(("http", "other", 80) if scenario == "other origin" else origin);
+    closed = conn.writer.is_closing();
+    leftovers = [conn] + [c for bucket in _idle_pool().values() for c in bucket];
+    if taken is not None {
+        leftovers.append(taken);
+    }
+    for c in leftovers {
+        c.writer.close();
+    }
+    for p in peers {
+        p.close();
+    }
+    return (taken is conn and ("http", "gone", 80) not in _idle_pool(), closed);
+}
+
+
+test "the idle pool hands back only clean, recent connections" {
+    cases: dict[str, tuple[bool, bool]] = {
+        "fresh": (True, False),
+        "idle too long": (False, True),
+        "too old": (False, True),
+        "unread bytes": (False, True),
+        "peer closed": (False, True),
+        "other origin": (False, False),
+        "pool full": (False, True),
+        "expired elsewhere": (True, False)
+    };
+    outcomes = {scenario: asyncio.run(_pool_outcome(scenario)) for scenario in cases};
+    assert outcomes == cases , outcomes;
 }
 
 
