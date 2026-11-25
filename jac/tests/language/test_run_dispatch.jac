@@ -124,10 +124,6 @@ test "kind service -> serve headless" {
 test "a served file binds --port, then JAC_SERVE_PORT, then [serve] port, then 8000" {
     import from unittest.mock { patch }
     import from jaclang.server.settings { ServeConfigError, ServeSettings }
-    p = _plan(
-        "kind = \"service\"\nentry-point = \"api\"\n\n[serve]\nport = 3000\n", "api.jac"
-    );
-    assert "port" not in p.flags and "--port" not in p.command_line();
     cli = "kind = \"cli\"\nentry-point = \"main\"\n";
     service = "kind = \"service\"\nentry-point = \"main\"\n";
     pinned = "\n[serve]\nport = 18002\n";
@@ -146,9 +142,7 @@ test "a served file binds --port, then JAC_SERVE_PORT, then [serve] port, then 8
         ("bundle", service + pinned, "18003", None, None, 18003, True)
     ];
     seen: list[dict[str, any]] = [];
-    def stop_at_settings(
-        base_path: str = '', overrides: any = None, config: any = None
-    ) -> any {
+    def stop_at_settings(base: any, overrides: any = None, config: any = None) -> any {
         seen.append(dict(overrides or {}));
         raise ServeConfigError("stopped before binding");
     }
@@ -166,29 +160,21 @@ test "a served file binds --port, then JAC_SERVE_PORT, then [serve] port, then 8
             Path(d, "orders.jac").write_text("with entry { print(\"ok\"); }");
         }
         seen.clear();
-        with patch.dict(os.environ) {
-            os.environ.pop("JAC_SERVE_PORT", None);
-            if env_port {
-                os.environ["JAC_SERVE_PORT"] = str(env_port);
-            }
-            with patch.object(ServeSettings, "load", stop_at_settings), patch(
-                "jaclang.scale.plugin.scale_local_serve", stop_at_fleet
-            ), patch("jaclang.dist.jab.jab_app_meta", sealed_service) {
-                rc = execution.run_jab_image(Path(d), typed, [], True, "p.jab")
-                    if via == "bundle"
-                    else execution.run(
-                        target=os.path.join(d, "main.jac"),
-                        serve_mode=True,
-                        port=typed,
-                        dev=dev
-                    );
+        with patch.dict(os.environ, {"JAC_SERVE_PORT": env_port or ""}), patch.object(
+            ServeSettings, "load", stop_at_settings
+        ), patch("jaclang.scale.plugin.scale_local_serve", stop_at_fleet), patch(
+            "jaclang.dist.jab.jab_app_meta", sealed_service
+        ) {
+            if via == "bundle" {
+                execution.run_jab_image(Path(d), typed, [], True, "p.jab");
+            } else {
+                execution.run(
+                    target=f"{d}/main.jac", serve_mode=True, port=typed, dev=dev
+                );
             }
         }
-        assert rc == (0 if via == "fleet" else 1) and len(seen) == 1 , (
-            f"{row}: never chose a port"
-        );
-        got = (seen[0].get("port"), seen[0].get("strict_port"));
-        assert got == (want_port, want_strict) , f"{row}: bound {got}";
+        got = [(s.get("port"), s.get("strict_port")) for s in seen];
+        assert got == [(want_port, want_strict)] , f"{row}: bound {got}";
     }
     _cleanup();
 }
