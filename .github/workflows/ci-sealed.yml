@@ -533,6 +533,8 @@ jobs:
         run: |
           Xvfb :99 -screen 0 1280x800x24 &
           XVFB_PID=$!
+          for i in $(seq 1 50); do [ -S /tmp/.X11-unix/X99 ] && break; sleep 0.2; done
+          [ -S /tmp/.X11-unix/X99 ] || { echo "::error::Xvfb did not start on :99"; exit 1; }
           DISPLAY=:99 GDK_BACKEND=x11 timeout 600s ./jaclang-launch.sh > /tmp/site-desktop.log 2>&1 &
           APP_PID=$!
           for i in $(seq 1 110); do

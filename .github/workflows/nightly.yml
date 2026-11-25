@@ -51,6 +51,8 @@ jobs:
       run: |
         Xvfb :99 -screen 0 1280x720x24 &
         XVFB_PID=$!
+        for i in $(seq 1 50); do [ -S /tmp/.X11-unix/X99 ] && break; sleep 0.2; done
+        [ -S /tmp/.X11-unix/X99 ] || { echo "::error::Xvfb did not start on :99"; exit 1; }
         DISPLAY=:99 \
         FONTCONFIG_FILE=$PWD/minimal-fonts.conf \
         JAC_CEF_DISABLE_GPU=1 \
