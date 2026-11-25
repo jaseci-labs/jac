@@ -586,17 +586,15 @@ impl env_int(name: str, `default: int, environ: (dict[str, str] | None) = None) 
 }
 
 impl requested_port(
-    given: (int | None),
-    cfg: (ServeConfig | None),
-    environ: (dict[str, str] | None) = None
+    given: (int | None), cfg: (ServeConfig | None)
 ) -> tuple[int, bool] {
     if given is not None {
         return (int(given), True);
     }
     default_port = ServeConfig().port;
     configured = cfg.port if cfg is not None else default_port;
-    if env_value('PORT', environ) is not None {
-        return (env_int('PORT', configured, environ), True);
+    if env_value('PORT') is not None {
+        return (env_int('PORT', configured), True);
     }
     return (configured, configured != default_port);
 }

@@ -135,116 +135,16 @@ test "a served file binds --port, then JAC_SERVE_PORT, then [serve] port, then 8
     app_overlay = "\n[apps.api]\nkind = \"service\"\nentry-point = \"main\"\n\n[apps.api.serve]\nport = 8100\n\n[serve]\nport = 8090\n";
     fleet = "\n[apps.api]\nkind = \"service\"\nentry-point = \"main\"\n\n[apps.orders]\nkind = \"service\"\nentry-point = \"orders\"\n\n[scale.gateway]\ncolocate = false\n";
     rows = [
-        (
-            "file",
-            cli,
-            None,
-            None,
-            None,
-            8000,
-            False,
-            "nothing chosen: the default, free to move"
-        ),
-        (
-            "file",
-            cli + pinned,
-            None,
-            None,
-            None,
-            18002,
-            True,
-            "a cli file takes [serve] port"
-        ),
-        (
-            "file",
-            cli + pinned,
-            "18003",
-            None,
-            None,
-            18003,
-            True,
-            "JAC_SERVE_PORT beats jac.toml"
-        ),
-        (
-            "file",
-            cli + pinned,
-            "18003",
-            18004,
-            None,
-            18004,
-            True,
-            "a typed --port beats both"
-        ),
-        (
-            "file",
-            service,
-            "18003",
-            None,
-            None,
-            18003,
-            True,
-            "a service kind reads the env"
-        ),
-        (
-            "file",
-            service + pinned,
-            "18003",
-            None,
-            None,
-            18003,
-            True,
-            "a service kind's toml port does not outrank the env"
-        ),
-        (
-            "file",
-            cli + pinned,
-            None,
-            None,
-            True,
-            18003,
-            False,
-            "--dev puts the API one above"
-        ),
-        (
-            "file",
-            app_overlay,
-            None,
-            None,
-            None,
-            8100,
-            True,
-            "an app's [serve] overlay wins"
-        ),
-        (
-            "file",
-            cli + pinned,
-            "18003",
-            18002,
-            None,
-            18002,
-            True,
-            "a typed --port equal to jac.toml still beats the env"
-        ),
-        (
-            "fleet",
-            fleet + pinned,
-            None,
-            None,
-            None,
-            18002,
-            True,
-            "a fleet gateway takes it too"
-        ),
-        (
-            "bundle",
-            service + pinned,
-            "18003",
-            None,
-            None,
-            18003,
-            True,
-            "a .jab's toml port does not outrank the env"
-        )
+        ("file", cli, None, None, None, 8000, False),
+        ("file", cli + pinned, None, None, None, 18002, True),
+        ("file", cli + pinned, "18003", None, None, 18003, True),
+        ("file", cli + pinned, "18003", 18004, None, 18004, True),
+        ("file", cli + pinned, "18003", 18002, None, 18002, True),
+        ("file", service + pinned, "18003", None, None, 18003, True),
+        ("file", cli + pinned, None, None, True, 18003, False),
+        ("file", app_overlay, None, None, None, 8100, True),
+        ("fleet", fleet + pinned, None, None, None, 18002, True),
+        ("bundle", service + pinned, "18003", None, None, 18003, True)
     ];
     seen: list[dict[str, any]] = [];
     def stop_at_settings(
@@ -260,7 +160,8 @@ test "a served file binds --port, then JAC_SERVE_PORT, then [serve] port, then 8
     def sealed_service(image: any) -> dict[str, any] {
         return {"kind": "service", "entry": {"path": "main.jac"}};
     }
-    for (via, toml, env_port, typed, dev, want_port, want_strict, why) in rows {
+    for row in rows {
+        (via, toml, env_port, typed, dev, want_port, want_strict) = row;
         d = _mk_project(toml, "main.jac");
         if via == "fleet" {
             Path(d, "orders.jac").write_text("with entry { print(\"ok\"); }");
@@ -285,10 +186,10 @@ test "a served file binds --port, then JAC_SERVE_PORT, then [serve] port, then 8
             }
         }
         assert rc == (0 if via == "fleet" else 1) and len(seen) == 1 , (
-            f"{why}: never chose a port"
+            f"{row}: never chose a port"
         );
         got = (seen[0].get("port"), seen[0].get("strict_port"));
-        assert got == (want_port, want_strict) , f"{why}: bound {got}";
+        assert got == (want_port, want_strict) , f"{row}: bound {got}";
     }
     _cleanup();
 }
