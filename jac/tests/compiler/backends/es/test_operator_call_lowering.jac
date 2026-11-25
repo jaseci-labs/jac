@@ -245,3 +245,28 @@ console.log(JSON.stringify(out));
             "io"
         ] , js;
 }
+
+glob NUMBER_FIRST_SRC = """
+def times_list(n: int, xs: list[int]) -> list[int] { return n * xs; }
+def times_str(n: int, s: str) -> str { return n * s; }
+def radix_texts(n: int) -> list[str] { return [bin(n), hex(n), oct(n)]; }
+""";
+
+test "a number times a sequence repeats it and bin hex oct keep the sign first" {
+    js = compile_client(NUMBER_FIRST_SRC);
+    if not shutil.which("node") {
+        testskip("node not on PATH");
+    }
+    probe = """
+console.log(JSON.stringify([
+    times_list(2, [1, 2]), times_str(3, "ab"), radix_texts(-255), radix_texts(10)
+]));
+""";
+    assert run_probe(js, probe)
+        == [
+            [1, 2, 1, 2],
+            "ababab",
+            ["-0b11111111", "-0xff", "-0o377"],
+            ["0b1010", "0xa", "0o12"]
+        ] , js;
+}

@@ -1394,6 +1394,10 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
       return { __jacUnsafeHtml: String(html == null ? "" : html) };
     },
     hash(obj) { return _jac.builtin.id(obj); },
+    radix(x, base, prefix) {
+      const n = typeof x === "boolean" ? Number(x) : x;
+      return n < 0 ? "-" + prefix + (-n).toString(base) : prefix + n.toString(base);
+    },
     repr(obj) { return _jac.fw.stringify(obj); },
     pow(base, exp, mod) {
       let result = Math.pow(base, exp);
