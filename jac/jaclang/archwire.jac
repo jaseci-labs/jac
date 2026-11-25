@@ -9297,6 +9297,7 @@ graph import compiler {
             get_generator_yield_type,
             is_generator_family_type
         },
+        tests.test_property_write_kind { PropertyWriteKind },
     ]
     types.type_utils --> [
         backends.native.na_ir_gen_pass.NaIRGenPass._codegen_call {
