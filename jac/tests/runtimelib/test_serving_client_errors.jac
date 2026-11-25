@@ -519,14 +519,17 @@ def _app -> ServingApp {
 }
 
 
-async def _shelf_after(
+async def _shelves_after(
     port: int, method: str, path: str, mode: str
-) -> tuple[list[int], int] {
+) -> tuple[list[int], list[list[int]]] {
     statuses: list[int] = [];
-    for _ in range(2) {
+    seen: list[any] = [];
+    shelves: list[list[int]] = [];
+    for i in range(2) {
         resp: any = await arequest(
             method,
             f"http://127.0.0.1:{port}{path}",
+            headers={"Connection": "close"} if mode == "close" and i == 1 else None,
             timeout=5.0,
             stream=mode in ("stream", "partial"),
             keep_alive=mode != "off"
@@ -540,36 +543,43 @@ async def _shelf_after(
             await resp.aclose();
         }
         statuses.append(resp.status_code);
+        bucket = _idle_pool().get(("http", "127.0.0.1", port), []);
+        seen.extend(
+            conn
+            for conn in bucket
+            if all(conn is not s for s in seen)
+        );
+        shelves.append([[s is conn for s in seen].index(True) for conn in bucket]);
     }
-    shelf = _idle_pool().pop(("http", "127.0.0.1", port), []);
-    for conn in shelf {
+    for conn in seen {
         conn.writer.close();
     }
-    return (statuses, len(shelf));
+    return (statuses, shelves);
 }
 
 
 test "the client reuses a connection only after a complete keep-alive reply" {
-    cases: list[tuple[str, str, str, str, int, int]] = [
-        ("body read in full", "GET", "/ping", "body", 0, 1),
-        ("HEAD reply", "HEAD", "/ping", "body", 0, 1),
-        ("stream read to the end", "GET", "/ping", "stream", 0, 1),
-        ("stream closed early", "GET", "/large", "partial", 0, 0),
-        ("server closes at its budget", "GET", "/ping", "body", 2, 0),
-        ("keep-alive not requested", "GET", "/ping", "off", 0, 0)
+    cases: list[tuple[str, str, str, str, int, list[list[int]]]] = [
+        ("body read in full", "GET", "/ping", "body", 0, [[0], [0]]),
+        ("HEAD reply", "HEAD", "/ping", "body", 0, [[0], [0]]),
+        ("stream read to the end", "GET", "/ping", "stream", 0, [[0], [0]]),
+        ("stream closed early", "GET", "/large", "partial", 0, [[], []]),
+        ("server closes at its budget", "GET", "/ping", "body", 2, [[0], []]),
+        ("caller asks to close", "GET", "/ping", "close", 0, [[0], [0]]),
+        ("keep-alive not requested", "GET", "/ping", "off", 0, [[], []])
     ];
     failures: list[str] = [];
-    for (name, method, path, mode, budget, kept) in cases {
+    for (name, method, path, mode, budget, shelves) in cases {
         server = ServingServer(
             app=_app(), host="127.0.0.1", port=0, request_budget=budget
         );
         stop = server.serve_background();
         try {
             outcome: any = asyncio.run(
-                _shelf_after(server.bound_port, method, path, mode)
+                _shelves_after(server.bound_port, method, path, mode)
             );
-            if outcome != ([200, 200], kept) {
-                failures.append(f"{name}: got {outcome!r}, expected {kept} kept");
+            if outcome != ([200, 200], shelves) {
+                failures.append(f"{name}: got {outcome!r}, expected {shelves!r}");
             }
         } finally {
             try {
