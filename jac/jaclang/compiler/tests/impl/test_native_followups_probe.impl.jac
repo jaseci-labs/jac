@@ -5,28 +5,26 @@ impl clip(text: str, limit: int = 600) -> str {
 impl probe_fixture(fixture: str, rows: list[tuple[str, str, str]]) -> list[str] {
     lines: list[str] = [];
     try {
-        (eng, ir) = compile_native(fixture);
+        js_code = compile_fixture_to_js(fixture);
     } except Exception as exc {
-        lines.append(f"  COMPILE FAILED: {clip(str(exc), 3000)}");
-        for err in compile_native_errors(fixture) {
-            lines.append(f"  compile error: {clip(err, 1500)}");
-        }
+        lines.append(f"  JS COMPILE FAILED: {clip(str(exc), 3000)}");
         return lines;
     }
     for (label, py_fn, na_fn) in rows {
+        cl_fn = na_fn[:-3] + "_cl";
         py = run_py_fixture(fixture[:-4], py_fn);
         try {
-            res = run_native_function(eng, na_fn, ir);
+            res = run_js_function(js_code, cl_fn);
         } except Exception as exc {
             lines.append(
-                f"  [{label}] RUN ERROR {type(exc).__name__}: {clip(str(exc))}"
+                f"  [{label}] JS RUN ERROR {type(exc).__name__}: {clip(str(exc), 1500)}"
             );
             continue;
         }
         missing = sorted(set(py.keys()) - set(res.keys()));
         common = set(py.keys()) & set(res.keys());
         lines.append(
-            f"  [{label}] py={len(py)} na={len(res)} common={len(common)} missing={len(
+            f"  [{label}] py={len(py)} js={len(res)} common={len(common)} missing={len(
                 missing
             )}"
         );
