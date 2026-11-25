@@ -8,6 +8,8 @@ name: CI (sealed)
 # (ci.yml); these lanes run:
 #   - every 6 hours on main (schedule),
 #   - on demand (Actions > CI (sealed) > Run workflow),
+#   - in the daily release rehearsal (release-rehearsal.yml calls this
+#     workflow, so a failure here keeps main's `release-rehearsal` check red),
 #   - on a pull request carrying the `ci:sealed` label: ci.yml calls this
 #     workflow, so its result gates that PR's Everything Passed.
 
