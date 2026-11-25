@@ -58,3 +58,20 @@ test "ingest grows one version labelled after the running jac then settles" {
     assert len(order) == len(b.pages);
     assert [order[0]->:NextPage:->];
 }
+
+test "a sync tick holds off the next one only once its writes commit" {
+    import asyncio;
+    import from jaclang.runtime.runtime { JacRuntime }
+    ctx = JacRuntime.get_context();
+    SYNC_STATE.clear();
+    asyncio.run(docs_sync_tick());
+    assert "next_at" not in SYNC_STATE;
+    ctx.mem.abort();
+    ctx.pending_effects.clear();
+    asyncio.run(docs_sync_tick());
+    assert "next_at" not in SYNC_STATE , (
+        "an attempt that was rolled back held off the re-run that redoes its writes"
+    );
+    commit();
+    assert SYNC_STATE["next_at"] > time.monotonic();
+}
