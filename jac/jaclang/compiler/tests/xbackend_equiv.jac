@@ -525,54 +525,43 @@ def run_with_both(
     allow_missing: (list[any] | None) = None,
     client_modules: bool = False
 ) {
-    # `require` names backends ("cl"/"na") that must actually participate: if a
-    # required backend fails to compile/run or shares no comparable keys with
-    # the py reference, that is a hard failure rather than a silent skip. This
-    # turns "support landed" into an enforced regression guard.
     reqd: list[any] = require if require is not None else [];
+    if not reqd {
+        raise AssertionError(
+            f"[{fixture}] run_with_both needs require=['cl'] and/or ['na']: "
+            "a backend that is not required is not compared"
+        );
+    }
     stem = fixture[:-4] if fixture.endswith(".jac") else fixture;
     py_result = run_py_fixture(stem, py_fn);
     label = fixture;
-    cl_keys: int = 0;
-    try {
+    if "cl" in reqd {
         if client_modules {
             cl_result = run_js_module_fixture(fixture, cl_fn);
         } else {
-            js_code = compile_fixture_to_js(fixture);
-            cl_result = run_js_function(js_code, cl_fn);
+            cl_result = run_js_function(compile_fixture_to_js(fixture), cl_fn);
         }
-        cl_keys = len(set(py_result.keys()) & set(cl_result.keys()));
-        if strict_keys and "cl" in reqd {
+        if not (set(py_result.keys()) & set(cl_result.keys())) {
+            raise AssertionError(
+                f"[{label}] cl backend was required but produced no comparable data"
+            );
+        }
+        if strict_keys {
             assert_full_parity(py_result, cl_result, f"{label} [ES]", allow_missing);
         }
         compare_results(py_result, cl_result, f"{label} [ES]", tolerance);
-    } except Exception {
-        if "cl" in reqd {
-            raise;
-        }
     }
-    if ("cl" in reqd) and (cl_keys == 0) {
-        raise AssertionError(
-            f"[{label}] cl backend was required but produced no comparable data"
-        );
-    }
-    na_keys: int = 0;
-    try {
+    if "na" in reqd {
         (eng, na_ir) = compile_native(fixture);
         na_result = run_native_function(eng, na_fn, na_ir);
-        na_keys = len(set(py_result.keys()) & set(na_result.keys()));
-        if strict_keys and "na" in reqd {
+        if not (set(py_result.keys()) & set(na_result.keys())) {
+            raise AssertionError(
+                f"[{label}] na backend was required but produced no comparable data"
+            );
+        }
+        if strict_keys {
             assert_full_parity(py_result, na_result, f"{label} [NA]", allow_missing);
         }
         compare_results(py_result, na_result, f"{label} [NA]", tolerance);
-    } except Exception {
-        if "na" in reqd {
-            raise;
-        }
-    }
-    if ("na" in reqd) and (na_keys == 0) {
-        raise AssertionError(
-            f"[{label}] na backend was required but produced no comparable data"
-        );
     }
 }

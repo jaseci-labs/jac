@@ -75,7 +75,7 @@ def _call_na_int(eng: object, name: str) -> int {
 }
 
 
-test "urllib.request.urlopen GET over the socket transport (sv<->na congruent)" {
+test "urllib.request.urlopen GET and redirect over the socket transport (sv<->na)" {
     (srv, port) = _start_server();
     os.environ["JAC_URLLIB_TEST_PORT"] = str(port);
     try {
@@ -85,38 +85,24 @@ test "urllib.request.urlopen GET over the socket transport (sv<->na congruent)" 
         assert py["body"] == "hello world" , py;
         assert py["body_length"] == 11 , py;
         assert py["content_type"] == "text/plain; charset=utf-8" , py;
+        redirect = run_py_fixture("prim_urllib_host", "urllib_redirect_py");
+        assert redirect["status"] == 200 , redirect;
+        assert redirect["body"] == "hello world" , redirect;
+        assert redirect["body_length"] == 11 , redirect;
 
-        # Native socket transport: same status and body length, parsed from the
-        # real HTTP exchange against the loopback server.
-        # Rebuild dependencies so JIT shared-library loading is exercised even
-        # when earlier tests have populated the native IR cache.
+        # Native socket transport, parsed from the real HTTP exchange against
+        # the loopback server. Rebuild dependencies so JIT shared-library
+        # loading is exercised even when the native IR cache is warm.
         (eng, _) = compile_native("prim_urllib.jac", no_ir_cache=True);
         assert _call_na_int(eng, "urlopen_status_na") == py["status"] , "status";
         assert _call_na_int(eng, "urlopen_body_length_na") == py["body_length"] , (
             "body_length"
         );
-    } finally {
-        srv.shutdown();
-        os.environ.pop("JAC_URLLIB_TEST_PORT", None);
-    }
-}
-
-
-test "urllib.request.urlopen follows redirects over the socket transport (sv<->na)" {
-    (srv, port) = _start_server();
-    os.environ["JAC_URLLIB_TEST_PORT"] = str(port);
-    try {
-        py = run_py_fixture("prim_urllib_host", "urllib_redirect_py");
-        assert py["status"] == 200 , py;
-        assert py["body"] == "hello world" , py;
-        assert py["body_length"] == 11 , py;
-
-        (eng, _) = compile_native("prim_urllib.jac");
-        assert _call_na_int(eng, "urlopen_redirect_status_na") == py["status"] , (
+        assert _call_na_int(eng, "urlopen_redirect_status_na") == redirect["status"] , (
             "redirect status"
         );
         assert _call_na_int(eng, "urlopen_redirect_body_length_na")
-            == (py["body_length"]) , "redirect body_length";
+            == redirect["body_length"] , "redirect body_length";
     } finally {
         srv.shutdown();
         os.environ.pop("JAC_URLLIB_TEST_PORT", None);

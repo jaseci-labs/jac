@@ -3543,6 +3543,9 @@ graph import {
     testing.test ++> [
         compiler.tests.test_pipeline_products
             | compiler.tests.test_prim_equivalence
+            | compiler.tests.test_prim_equivalence_2
+            | compiler.tests.test_prim_equivalence_3
+            | compiler.tests.test_prim_equivalence_4
             | scale.tests.deploy.test_k8s_utils { parametrize },
         runtime.runtime.JacTest.jac_test { JacTestCheck },
     ]
@@ -9294,7 +9297,6 @@ graph import compiler {
             get_generator_yield_type,
             is_generator_family_type
         },
-        tests.test_property_write_kind { PropertyWriteKind },
     ]
     types.type_utils --> [
         backends.native.na_ir_gen_pass.NaIRGenPass._codegen_call {
@@ -11165,7 +11167,12 @@ graph import compiler.placement {
 }
 
 graph import compiler.tests {
+    prim_equiv_cases ++> test_prim_equivalence
+        | test_prim_equivalence_2
+        | test_prim_equivalence_3
+        | test_prim_equivalence_4 { EQUIV_CASES, equiv_case }
     xbackend_equiv ++> [
+        prim_equiv_cases | test_shared_types_equivalence { run_with_both },
         test_fixed_width_equivalence {
             call_py_fixture,
             compile_fixture_to_js,
@@ -11201,7 +11208,6 @@ graph import compiler.tests {
             run_py_fixture,
             run_with_both
         },
-        test_shared_types_equivalence { run_with_both },
         test_socket_equivalence | test_ssl_equivalence | test_urllib_equivalence {
             compile_native,
             get_func,
