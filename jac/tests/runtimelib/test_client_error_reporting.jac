@@ -12,6 +12,7 @@ import from contextlib { AbstractContextManager }
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from jaclang.testing.testing { JacTestClient }
+import from .react_jsdom_harness { write_runtime_core }
 
 def _as_any(v: any) -> any {
     return v;
@@ -192,36 +193,6 @@ def run_error_budget_harness(mode: str, targets: list[Path]) -> dict[str, any] {
     );
     assert result.returncode == 0 , f"harness failed:\n{result.stdout}\n{result.stderr}";
     return json.loads(result.stdout.strip().splitlines()[-1]);
-}
-
-"""Compile one runtime core into `work` beside the modules it imports, with its
-npm imports stubbed, and return the path node should load."""
-def write_runtime_core(work: Path, core_name: str) -> Path {
-    import from jaclang.client.runtime_source { resolve_client_runtime_cl_path }
-    import from .react_jsdom_harness {
-        compile_react,
-        wire_jac_runtime,
-        write_runtime_support
-    }
-    runtime_path = resolve_client_runtime_cl_path("react");
-    write_runtime_support(work, runtime_path);
-    js = wire_jac_runtime(
-        compile_react(str(Path(runtime_path).parent / f"{core_name}.jac"))
-    );
-    for npm_module in ["react", "react-hook-form", "@hookform/resolvers/zod"] {
-        js = js.replace(f'"{npm_module}"', '"./npm_stub.js"');
-    }
-    (work / "jac_runtime.js").write_text(
-        "export function __jacJsx() { return null; }\n", encoding="utf-8"
-    );
-    (work / "npm_stub.js").write_text(
-        "export const useForm = () => null;\nexport const zodResolver = () => null;\n",
-        encoding="utf-8"
-    );
-    (work / "package.json").write_text('{"type": "module"}', encoding="utf-8");
-    core = work / f"{core_name}.js";
-    core.write_text(js, encoding="utf-8");
-    return core;
 }
 
 """Write the early error handler a served page inlines to `work` and return its path."""
