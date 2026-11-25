@@ -46,8 +46,6 @@ def _serve_flag_spelling -> dict[str, str];
 
 def _flag_list(names: list[str]) -> str;
 
-def _port_is_explicit(port: (int | None), cfg: any) -> bool;
-
 def _serve_overrides(
     port: (int | None),
     dev: (bool | None),
@@ -57,7 +55,6 @@ def _serve_overrides(
     host: (str | None),
     platform: (str | None),
     fleet: bool,
-    cfg: any,
     workers: (str | None) = None,
     tunnel: bool = False
 ) -> dict[str, any];
@@ -248,20 +245,9 @@ impl run(
     if rc {
         return rc;
     }
-    eff = _effective_config(cfg, app);
 
     over = _serve_overrides(
-        port,
-        dev,
-        api_port,
-        no_client,
-        faux,
-        host,
-        platform,
-        fleet,
-        eff,
-        workers,
-        tunnel
+        port, dev, api_port, no_client, faux, host, platform, fleet, workers, tunnel
     );
     entry_flags = _entry_flags_used(entry_name, nd, root_id, debug_mode);
     kind_serves = plan is not None and plan.action == "serve";
@@ -442,7 +428,9 @@ impl serve(
     }
 
     mark_scale_runtime();
-    fleet_rc = _serve_fleet(cfg, served, filename, port, fleet, dev, no_client);
+    fleet_rc = _serve_fleet(
+        cfg, served, filename, bind_port if port_pinned else 0, fleet, dev, no_client
+    );
     if fleet_rc is not None {
         return fleet_rc;
     }
@@ -1127,17 +1115,6 @@ impl _flag_list(names: list[str]) -> str {
     return ", ".join(sorted(names));
 }
 
-impl _port_is_explicit(port: (int | None), cfg: any) -> bool {
-    if port is None {
-        return False;
-    }
-    if cfg is None {
-        return True;
-    }
-    raw = getattr(cfg, "_raw_data", {}).get("serve", {});
-    return not (isinstance(raw, dict) and raw.get("port") == port);
-}
-
 impl _serve_overrides(
     port: (int | None),
     dev: (bool | None),
@@ -1147,12 +1124,11 @@ impl _serve_overrides(
     host: (str | None),
     platform: (str | None),
     fleet: bool,
-    cfg: any,
     workers: (str | None) = None,
     tunnel: bool = False
 ) -> dict[str, any] {
     over: dict[str, any] = {};
-    if _port_is_explicit(port, cfg) {
+    if port is not None {
         over["port"] = port;
     }
     if dev is not None {

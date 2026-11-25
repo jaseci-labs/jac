@@ -102,8 +102,7 @@ comptime SPEC_RUN: CommandSpec = CommandSpec(
                      "must be free: it is a contract with whatever sits in front "
                      "of it, so the server fails rather than moving to another port."
                  ),
-                 short="p",
-                 config_key="serve.port"
+                 short="p"
              ),
              Arg.create(
                  "dev",

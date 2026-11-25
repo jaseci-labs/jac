@@ -133,6 +133,7 @@ test "a served file binds --port, then JAC_SERVE_PORT, then [serve] port, then 8
     service = "kind = \"service\"\nentry-point = \"main\"\n";
     pinned = "\n[serve]\nport = 18002\n";
     app_overlay = "\n[apps.api]\nkind = \"service\"\nentry-point = \"main\"\n\n[apps.api.serve]\nport = 8100\n\n[serve]\nport = 8090\n";
+    fleet = "\n[apps.api]\nkind = \"service\"\nentry-point = \"main\"\n\n[apps.orders]\nkind = \"service\"\nentry-point = \"orders\"\n\n[scale.gateway]\ncolocate = false\n";
     rows = [
         (
             cli,
@@ -165,7 +166,17 @@ test "a served file binds --port, then JAC_SERVE_PORT, then [serve] port, then 8
             "a service kind's toml port does not outrank the env"
         ),
         (cli + pinned, None, None, True, 18003, False, "--dev puts the API one above"),
-        (app_overlay, None, None, None, 8100, True, "an app's [serve] overlay wins")
+        (app_overlay, None, None, None, 8100, True, "an app's [serve] overlay wins"),
+        (
+            cli + pinned,
+            "18003",
+            18002,
+            None,
+            18002,
+            True,
+            "a typed --port equal to jac.toml still beats the env"
+        ),
+        (fleet + pinned, None, None, None, 18002, True, "a fleet gateway takes it too")
     ];
     seen: list[dict[str, any]] = [];
     def stop_at_settings(
@@ -174,15 +185,22 @@ test "a served file binds --port, then JAC_SERVE_PORT, then [serve] port, then 8
         seen.append(dict(overrides or {}));
         raise ServeConfigError("stopped before binding");
     }
+    def stop_at_fleet(*args: any, port: int = 0, **kwargs: any) -> int {
+        seen.append({"port": port, "strict_port": bool(port)});
+        return 0;
+    }
     for (toml, env_port, typed, dev, want_port, want_strict, why) in rows {
         d = _mk_project(toml, "main.jac");
+        Path(d, "orders.jac").write_text("with entry { print(\"ok\"); }");
         seen.clear();
         with patch.dict(os.environ) {
             os.environ.pop("JAC_SERVE_PORT", None);
             if env_port {
                 os.environ["JAC_SERVE_PORT"] = str(env_port);
             }
-            with patch.object(ServeSettings, "load", stop_at_settings) {
+            with patch.object(ServeSettings, "load", stop_at_settings), patch(
+                "jaclang.scale.plugin.scale_local_serve", stop_at_fleet
+            ) {
                 rc = execution.run(
                     target=os.path.join(d, "main.jac"),
                     serve_mode=True,
@@ -191,7 +209,7 @@ test "a served file binds --port, then JAC_SERVE_PORT, then [serve] port, then 8
                 );
             }
         }
-        assert rc == 1 and len(seen) == 1 , f"{why}: never reached the settings";
+        assert rc in (0, 1) and len(seen) == 1 , f"{why}: never chose a port";
         got = (seen[0].get("port"), seen[0].get("strict_port"));
         assert got == (want_port, want_strict) , f"{why}: bound {got}";
     }
@@ -643,7 +661,7 @@ test "serve flags are recognised only when they were actually typed" {
     assert over == {"fleet": True};
     # --tunnel is a plain switch too.
     over = execution._serve_overrides(
-        None, None, None, None, None, None, None, False, None, None, True
+        None, None, None, None, None, None, None, False, None, True
     );
     assert over == {"tunnel": True};
 }
@@ -679,21 +697,6 @@ test "--tunnel serves only a mobile app bound for a device" {
     assert not execution._serves_mobile_device(cfg, cfg.app("site"), "");
     assert not execution._serves_mobile_device(cfg, None, "");
     _cleanup();
-}
-
-test "a [serve] port from jac.toml is not mistaken for a typed --port" {
-    d = _mk_project(
-        "kind = \"cli\"\nentry-point = \"main\"\n\n[serve]\nport = 3000\n", "main.jac"
-    );
-    cfg = JacConfig.discover(start_path=Path(d));
-    assert cfg is not None;
-    # Bridged from config: not an override, so it must not force the serve path
-    # (and must not trip the "serve flag on a non-serving kind" error).
-    assert not execution._port_is_explicit(3000, cfg);
-    assert execution._port_is_explicit(9999, cfg);
-    # With no config at all, any port is the user's own.
-    assert execution._port_is_explicit(3000, None);
-    assert not execution._port_is_explicit(None, None);
 }
 
 test "entry-only flags are reported by their CLI spelling" {

@@ -10,7 +10,6 @@ import from jaclang.cli.manifest { get_command_meta }
 glob _EXPECTED_CONFIG_KEYS: list[tuple[str, str, str]] = [
          ("run", "cache", "run.cache"),
          ("run", "main", "run.main"),
-         ("run", "port", "serve.port"),
          ("test", "verbose", "test.verbose"),
 
      ];
