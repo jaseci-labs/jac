@@ -5,7 +5,6 @@ class JacProgram {
     has hub: ModuleHub,
         deps: DepGraph,
         diags: DiagLedger,
-        scratch: BuildScratch,
         analysis: AnalysisCaches,
         options: CompileOptions,
         mod: uni.ProgramModule,
@@ -21,7 +20,8 @@ class JacProgram {
         context_root: JacProgram | None,
         context_key: str,
         contexts: dict[str, JacProgram],
-        internal: bool;
+        internal: bool,
+        compile_depth: int;
 
     def init(self: JacProgram, main_mod: (uni.ProgramModule | None) = None) -> None;
     def _get_compiler(self: JacProgram) -> JacCompiler;
@@ -40,8 +40,11 @@ class JacProgram {
     def install_module(self: JacProgram, resolved_path: str, mod: uni.Module) -> None;
     def is_hub_entry_fresh(self: JacProgram, resolved_path: str) -> bool;
     def transitive_dependents(self: JacProgram, target_path: str) -> set[str];
+    def sibling_contexts(self: JacProgram) -> list[JacProgram];
     def invalidate_module(self: JacProgram, resolved_path: str) -> None;
+    def invalidate_own_module(self: JacProgram, resolved_path: str) -> None;
     def release_module(self: JacProgram, resolved_path: str) -> None;
+    def release_own_module(self: JacProgram, resolved_path: str) -> None;
     def load_dependency_module(
         self: JacProgram,
         source_path: str,

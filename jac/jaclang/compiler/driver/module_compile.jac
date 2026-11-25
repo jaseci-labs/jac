@@ -1,12 +1,14 @@
 import os;
 
-def session_of(task: ModuleAnalysis) -> SessionHooks;
+def compiler_of(task: ModuleAnalysis) -> JacCompiler;
+
+def assemble_python(program: JacProgram, module: uni.Module);
+
+def assemble_native(program: JacProgram, module: uni.Module, checking: bool);
 
 def admits_native_checks(task: ModuleAnalysis) -> bool;
 
 def run_native_checks(task: ModuleAnalysis);
-
-def admits_client_dependencies(task: ModuleAnalysis) -> bool;
 
 def run_client_dependencies(task: ModuleAnalysis);
 
@@ -30,7 +32,7 @@ glob CODEGEN_PLAN: tuple[PlanStep, ...] = (
          ),
          PlanStep(
              name="CLIENT_DEPENDENCIES",
-             admit=admits_client_dependencies,
+             admit=admits_codegen,
              run=run_client_dependencies
          ),
          PlanStep(name="INTERFACE", admit=admits_interface, run=run_interface),
@@ -38,7 +40,7 @@ glob CODEGEN_PLAN: tuple[PlanStep, ...] = (
      );
 
 def compile_module(
-    session: SessionHooks,
+    compiler: JacCompiler,
     program: JacProgram,
     path: str,
     options: CompileOptions,
