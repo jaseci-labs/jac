@@ -708,7 +708,7 @@ Scale can deploy a full observability stack (Prometheus + Grafana + kube-state-m
 | **Grafana** | Dashboard UI - served via NGINX Ingress at `/grafana` (NodePort locally, NLB on AWS) |
 | **kube-state-metrics** | K8s object state: pod counts, replica health, restart counts |
 | **node-exporter** | Host-level metrics: CPU, memory, disk, network per node |
-| **Loki** *(optional)* | Log store - receives logs from Alloy (ClusterIP, ephemeral storage) |
+| **Loki** *(optional)* | Log store - receives logs from Alloy (ClusterIP; data is ephemeral unless `storage_enabled` is set) |
 | **Tempo** *(optional)* | Trace store - receives OTLP traces from Alloy, added to Grafana as a datasource |
 | **Grafana Alloy** *(optional)* | DaemonSet that tails `/var/log/pods` on every node and ships to Loki, with an OTLP lane to Tempo when tracing is on (replaces Promtail, which went EOL on 2026-03-02). Deployed when `loki_enabled` or `tracing_enabled` is set |
 
@@ -719,6 +719,12 @@ Scale can deploy a full observability stack (Prometheus + Grafana + kube-state-m
 | `enabled` | `false` | Deploy the monitoring stack and expose the app's `/metrics` endpoint |
 | `k8s_metrics_enabled` | `true` | Include kube-state-metrics and node-exporter exporters |
 | `prometheus_admin_password` | `Adminpassword123` | Grafana `admin` login password |
+| `storage_enabled` | `false` | Keep Prometheus, Loki and Tempo data on PersistentVolumeClaims. See [Monitoring data storage](#monitoring-data-storage) |
+| `storage_class` | `""` | StorageClass for those claims. Empty uses the cluster's default class |
+| `prometheus_storage` | `10Gi` | Size of the Prometheus claim |
+| `loki_storage` | `10Gi` | Size of the Loki claim |
+| `tempo_storage` | `5Gi` | Size of the Tempo claim |
+| `loki_retention` | `168h` | How long Loki keeps logs when `storage_enabled` is set |
 
 **Defaults (`[scale.kubernetes]`):**
 
@@ -750,6 +756,37 @@ After deployment, access:
 
 On AWS clusters, the NGINX Ingress controller is exposed via a Network Load Balancer (NLB). Grafana is accessible at `<nlb-url>/grafana`.
 
+#### Monitoring data storage
+
+By default Prometheus, Loki and Tempo each keep their data on an `emptyDir`, which lives only as long as the pod. A node drain, a lost node or a rollout replaces the pod, and the new one starts with no history.
+
+Set `storage_enabled` to keep the data on PersistentVolumeClaims instead:
+
+```toml
+[scale.monitoring]
+enabled = true
+storage_enabled = true
+storage_class = ""           # empty: the cluster's default StorageClass
+prometheus_storage = "30Gi"
+loki_storage = "20Gi"
+tempo_storage = "5Gi"
+loki_retention = "168h"
+```
+
+With it on, each of the three components gets:
+
+- a `ReadWriteOnce` claim named `<app>-prometheus-data`, `<app>-loki-data` or `<app>-tempo-data`
+- a `Recreate` rollout, because the volume attaches to one node at a time. Every later rollout of that component has a few seconds with no pod
+- a limit that fits the volume: Prometheus is capped at 80% of `prometheus_storage` and keeps 15 days at most, Loki keeps `loki_retention`, Tempo keeps 48 hours
+
+Things to know before turning it on:
+
+- **The switch itself replaces each pod once.** Whatever is on the `emptyDir` at that moment is lost one last time.
+- **Use a block-storage class.** Leave `storage_class` empty for the cluster default, or name a `ReadWriteOnce` class such as `gp3`. Do not reuse the `ReadWriteMany` class set as `bundle_storage_class`: Prometheus does not support NFS-style file systems. The deploy refuses a class the cluster does not have, and an empty value on a cluster with no default class.
+- **Size Loki for its busiest week.** Loki and Tempo drop data by age only, so a volume that fills stays full until it is grown. Sizes are whole-number quantities of at least `1Gi`, and `loki_retention` is hours, days or weeks of at least `24h` (`168h`, `7d`, `1w`).
+- **Sizes can be raised, not lowered.** A larger value grows the claim on the next deploy. A smaller one is ignored with a warning. `storage_class` cannot be changed on a claim that exists.
+- **Turning it off leaves the claims in place.** The pods go back to `emptyDir`, and the claims keep their data until `jac scale destroy` deletes them, either in full or with `--component monitoring`.
+
 **Prometheus scrape targets:**
 
 - Jaseci application `/metrics` endpoint (authenticated with HTTP basic auth: `[scale.admin] username` + `prometheus_admin_password`, mounted from a Secret)
@@ -761,7 +798,7 @@ On AWS clusters, the NGINX Ingress controller is exposed via a Network Load Bala
 
 When enabled, two additional components are deployed:
 
-- **Loki** - single-process log store (port 3100, ClusterIP). Uses filesystem/TSDB storage backed by an `emptyDir` volume; logs are ephemeral and reset on pod restart. Suitable for dev and staging environments.
+- **Loki** - single-process log store (port 3100, ClusterIP). Uses filesystem/TSDB storage on an `emptyDir` volume by default, so logs reset whenever the pod is replaced. Set `[scale.monitoring] storage_enabled = true` to keep them on a volume (see [Monitoring data storage](#monitoring-data-storage)).
 - **Grafana Alloy** - DaemonSet deployed on every node (tolerates `NoSchedule` taints). Tails `/var/log/pods` for the pods in the app namespace only, labels each stream with `namespace`, `pod`, and `container`, and pushes to Loki via Kubernetes service discovery. Configured in River syntax. (Alloy is the OpenTelemetry-compatible successor to Promtail, which went EOL on 2026-03-02.)
 
 A **Pod Logs** dashboard is automatically added to Grafana with two panels: log volume (lines/min by namespace/pod) and a live log viewer.
@@ -1347,7 +1384,7 @@ enabled = true
 
 When enabled, `jac scale deploy` deploys:
 
-- **Loki** -- single-process log store (port 3100, ClusterIP). Uses filesystem/TSDB storage backed by `emptyDir` (logs are ephemeral and reset on pod restart; suitable for dev and staging).
+- **Loki** -- single-process log store (port 3100, ClusterIP). Uses filesystem/TSDB storage on `emptyDir` by default, so logs reset whenever the pod is replaced. `[scale.monitoring] storage_enabled = true` keeps them on a volume (see [Monitoring data storage](#monitoring-data-storage)).
 - **Grafana Alloy** -- DaemonSet on every node (tolerates `NoSchedule`). Tails `/var/log/pods` for the pods in the app namespace only, labels each stream with `namespace`, `pod`, and `container`, and pushes to Loki via Kubernetes service discovery. River-syntax config; supersedes Promtail (EOL 2026-03-02).
 - **Prometheus + Grafana** -- the full monitoring stack comes along because the Pod Logs dashboard view lives inside Grafana. Equivalent to setting `[scale.monitoring] enabled = true` plus `[scale.kubernetes] loki_enabled = true` on the monolith target.
 
@@ -1359,7 +1396,7 @@ A **Pod Logs** dashboard is added to Grafana automatically, with two panels: log
 | Alloy | DaemonSet | Per node; reads host `/var/log/pods` (read-only) |
 | Grafana | Deployment + ClusterIP Service | Cluster-internal in fleet mode (the `/grafana` ingress path is wired by the single-app target only); reach it with `kubectl port-forward svc/<app>-grafana-service 3000:3000` |
 
-> **Storage caveat.** Loki uses `emptyDir` in v0. A Loki pod restart drops in-flight chunks. Persistent storage modes (PVC, S3-compatible object storage) are planned.
+> **Storage caveat.** Loki uses `emptyDir` unless `[scale.monitoring] storage_enabled` is set, and a replaced Loki pod then starts empty. S3-compatible object storage is planned.
 
 <!-- -->
 
