@@ -13447,7 +13447,8 @@ graph import scale {
         sdk.client { AutoscalerRuntimeStatus },
         tests.deploy.test_deployment_overlay { Autoscaler, AutoscalerSpec },
         tests.deploy.test_factories { AutoscalerSpec, Trigger },
-        tests.deploy.test_http_activation_microservices {
+        tests.deploy.test_http_activation_config
+            | tests.deploy.test_http_activation_microservices {
             AutoscalerSpec,
             Trigger,
             TriggerAuth
@@ -14733,7 +14734,9 @@ graph import scale.deploy.autoscale {
         },
         keda_autoscaler { HTTPActivationSpec, HTTPRoutingRule },
     ]
-    keda_autoscaler ++> http_activation_config { KEDAAutoscaler }
+    keda_autoscaler ++> hpa_autoscaler.HPAAutoscaler.apply | http_activation_config {
+        KEDAAutoscaler
+    }
     keda_autoscaler --> factory.AutoscalerFactory.create { KEDAAutoscaler }
     keda_capabilities ++> keda_autoscaler {
         KEDACapabilities,
