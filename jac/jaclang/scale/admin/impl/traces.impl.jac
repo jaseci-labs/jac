@@ -275,7 +275,9 @@ impl _tempo_request(
         headers["Accept"] = "application/json";
     }
     try {
-        resp = await arequest("GET", url, headers=headers, params=params, timeout=8.0);
+        resp = await arequest(
+            "GET", url, headers=headers, params=params, timeout=8.0, keep_alive=True
+        );
     } except ClientConnectionError as e {
         raise ConnectionError(f"Tempo unreachable: {e}");
     }

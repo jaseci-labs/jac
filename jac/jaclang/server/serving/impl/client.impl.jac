@@ -26,6 +26,7 @@ impl ClientResponse.aiter_raw -> AsyncIterator[bytes] {
         return;
     }
     if self.bodiless {
+        self._drained = True;
         return;
     }
     if self.chunked {
@@ -60,6 +61,7 @@ impl ClientResponse.aiter_raw -> AsyncIterator[bytes] {
                 remaining -= len(block);
                 yield block;
             }
+            self._drained = remaining == 0;
         } else {
             while True {
                 block: bytes = await self.reader.read(65536);
@@ -87,10 +89,54 @@ impl ClientResponse.aiter_lines -> AsyncIterator[bytes] {
 }
 
 impl ClientResponse.aclose {
-    if self.writer is not None {
+    (conn, writer) = (self._conn, self.writer);
+    self._conn = None;
+    self.reader = None;
+    self.writer = None;
+    if conn is not None and self.reusable and self._drained {
+        _release(conn);
+    } elif writer is not None {
         try {
-            self.writer.close();
+            writer.close();
         } except Exception {}
+    }
+}
+
+impl _idle_pool -> dict[tuple[str, str, int], list[_PooledConn]] {
+    loop: any = asyncio.get_running_loop();
+    if not hasattr(loop, '_jac_idle_conns') {
+        loop._jac_idle_conns = {};
+    }
+    return loop._jac_idle_conns;
+}
+
+impl _usable(conn: _PooledConn, now: float) -> bool {
+    return not conn.writer.is_closing()
+        and not conn.reader.at_eof()
+        and len(conn.reader._buffer) == 0
+        and now - conn.idle_since < IDLE_TIMEOUT
+        and now - conn.opened < MAX_CONNECTION_AGE;
+}
+
+impl _take_idle(origin: tuple[str, str, int]) -> (_PooledConn | None) {
+    bucket = _idle_pool().get(origin, []);
+    while bucket {
+        conn = bucket.pop();
+        if _usable(conn, time.monotonic()) {
+            return conn;
+        }
+        conn.writer.close();
+    }
+    return None;
+}
+
+impl _release(conn: _PooledConn) {
+    conn.idle_since = time.monotonic();
+    bucket = _idle_pool().setdefault(conn.origin, []);
+    if _usable(conn, conn.idle_since) and len(bucket) < MAX_IDLE_PER_ORIGIN {
+        bucket.append(conn);
+    } else {
+        conn.writer.close();
     }
 }
 
@@ -130,7 +176,14 @@ impl _open_stream(
     }
 }
 
-impl _read_response_head(reader: any, timeout: float) -> tuple[int, str, Headers] {
+impl _connect(origin: tuple[str, str, int], timeout: float) -> _PooledConn {
+    (reader, writer) = await _open_stream(origin[0], origin[1], origin[2], timeout);
+    return _PooledConn(
+        origin=origin, reader=reader, writer=writer, opened=time.monotonic()
+    );
+}
+
+impl _read_response_head(reader: any, timeout: float) -> tuple[str, int, str, Headers] {
     while True {
         try {
             status_line: bytes = await asyncio.wait_for(
@@ -165,7 +218,7 @@ impl _read_response_head(reader: any, timeout: float) -> tuple[int, str, Headers
             }
         }
         if status == 101 or status < 100 or status >= 200 {
-            return (status, reason, headers);
+            return (parts[0], status, reason, headers);
         }
     }
 }
@@ -178,7 +231,8 @@ impl arequest(
     data: (bytes | str | None) = None,
     timeout: float = DEFAULT_TIMEOUT,
     stream: bool = False,
-    params: (dict[str, any] | None) = None
+    params: (dict[str, any] | None) = None,
+    keep_alive: bool = False
 ) -> ClientResponse {
     if params {
         sep = '&' if '?' in url else '?';
@@ -203,7 +257,10 @@ impl arequest(
     } elif data is not None {
         body = data if isinstance(data, bytes) else str(data).encode('utf-8');
     }
-    (reader, writer) = await _open_stream(scheme, host, port, timeout);
+    origin = (scheme, host, port);
+    idle = _take_idle(origin) if keep_alive else None;
+    conn: _PooledConn = idle if idle is not None else await _connect(origin, timeout);
+    (reader, writer) = (conn.reader, conn.writer);
     lines = [f"{method.upper()} {path} HTTP/1.1"];
     if 'host' not in seen {
         default_port = 443 if scheme == 'https' else 80;
@@ -211,7 +268,9 @@ impl arequest(
         lines.append(f"Host: {host_value}");
     }
     lines.append(f"Content-Length: {len(body)}");
-    lines.append('Connection: close');
+    if not keep_alive {
+        lines.append('Connection: close');
+    }
     for (name, value) in header_list {
         lines.append(f"{name}: {value}");
     }
@@ -219,7 +278,9 @@ impl arequest(
     try {
         writer.write(blob + body);
         await writer.drain();
-        (status, reason, resp_headers) = await _read_response_head(reader, timeout);
+        (version, status, reason, resp_headers) = await _read_response_head(
+            reader, timeout
+        );
     } except ClientRequestSent {
         try {
             writer.close();
@@ -233,12 +294,15 @@ impl arequest(
     }
     transfer = (resp_headers.get('Transfer-Encoding') or '').lower();
     chunked = 'chunked' in transfer;
+    closing = any('close' in v.lower() for v in resp_headers.getlist('Connection'));
     response = ClientResponse(
         status_code=status,
         reason=reason,
         headers=resp_headers,
         chunked=chunked,
-        bodiless=method.upper() == 'HEAD' or status in (204, 304)
+        bodiless=method.upper() == 'HEAD' or status in (204, 304),
+        reusable=keep_alive and version == 'HTTP/1.1' and not closing,
+        _conn=conn
     );
     if stream {
         response.reader = reader;
@@ -247,6 +311,7 @@ impl arequest(
     }
     collected: list[bytes] = [];
     response.reader = reader;
+    response.writer = writer;
     try {
         async for block in response.aiter_raw() {
             collected.append(block);
@@ -257,11 +322,8 @@ impl arequest(
         } except Exception {}
         raise ClientRequestSent(detail=f"connection lost mid-body: {e!r}");
     }
-    response.reader = None;
     response.body = b''.join(collected);
-    try {
-        writer.close();
-    } except Exception {}
+    await response.aclose();
     return response;
 }
 
@@ -291,7 +353,7 @@ impl aws_connect(
     }
     writer.write(('\r\n'.join(lines) + '\r\n\r\n').encode('latin-1'));
     await writer.drain();
-    (status, reason, resp_headers) = await _read_response_head(reader, timeout);
+    (_, status, reason, resp_headers) = await _read_response_head(reader, timeout);
     if status != 101 {
         try {
             writer.close();

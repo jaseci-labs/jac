@@ -13,7 +13,12 @@ impl raw_forward(
 ) -> tuple[int, dict[str, str], bytes] | None {
     try {
         resp = await arequest(
-            method, url, headers=headers, data=body, timeout=float(timeout)
+            method,
+            url,
+            headers=headers,
+            data=body,
+            timeout=float(timeout),
+            keep_alive=True
         );
     } except (ClientConnectionError, OSError) as e {
         _logger.error(f"HTTP forward error: {type(e).__name__}: {e}");
@@ -27,7 +32,13 @@ impl stream_forward(
 ) -> ForwardResult | None {
     try {
         resp = await arequest(
-            method, url, headers=headers, data=body, timeout=float(timeout), stream=True
+            method,
+            url,
+            headers=headers,
+            data=body,
+            timeout=float(timeout),
+            stream=True,
+            keep_alive=True
         );
     } except (ClientReadTimeout, ClientRequestNotSent) {
         raise;

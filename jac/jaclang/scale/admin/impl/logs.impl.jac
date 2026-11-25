@@ -446,7 +446,9 @@ impl _loki_request(path: str, params: dict[str, str]) -> dict[str, any] {
     base = _loki_base_url();
     url = f"{base}{path}";
     try {
-        response = await arequest("GET", url, params=params, timeout=8.0);
+        response = await arequest(
+            "GET", url, params=params, timeout=8.0, keep_alive=True
+        );
     } except ClientConnectionError as e {
         raise ConnectionError(f"Loki request failed at {url}: {e}");
     }
