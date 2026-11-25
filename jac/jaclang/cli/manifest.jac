@@ -1,5 +1,3 @@
-comptime import from jaclang.cli.commands.arch { SPEC_ARCH }
-
 comptime VERB_BUDGET: int = 28,
      TOMBSTONED_VERBS: dict[str, str] = {
          "add": "jac install <pkg>",
