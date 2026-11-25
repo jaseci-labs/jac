@@ -127,8 +127,7 @@ test "a served file binds --port, then JAC_SERVE_PORT, then [serve] port, then 8
     p = _plan(
         "kind = \"service\"\nentry-point = \"api\"\n\n[serve]\nport = 3000\n", "api.jac"
     );
-    assert p.flags.get("port") == 3000;
-    assert "--port 3000" in p.command_line();
+    assert "port" not in p.flags and "--port" not in p.command_line();
     cli = "kind = \"cli\"\nentry-point = \"main\"\n";
     service = "kind = \"service\"\nentry-point = \"main\"\n";
     pinned = "\n[serve]\nport = 18002\n";
@@ -412,12 +411,10 @@ test "a plan carries the spec it was planned from" {
 }
 
 test "planning never mutates the shared spec's flags" {
-    p = _plan(
-        "kind = \"service\"\nentry-point = \"api\"\n\n[serve]\nport = 3000\n", "api.jac"
-    );
-    assert p.flags.get("port") == 3000;
-    # The port landed on the plan, not on the table entry every project shares.
-    assert "port" not in KIND_SPECS["service"].flags;
+    p = _plan("kind = \"native-binary\"\nentry-point = \"main\"\n", "main.jac");
+    assert "output" in p.flags;
+    # The output landed on the plan, not on the table entry every project shares.
+    assert "output" not in KIND_SPECS["native-binary"].flags;
 }
 
 # ---------------------------------------------------------------------------

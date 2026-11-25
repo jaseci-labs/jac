@@ -1178,11 +1178,13 @@ impl _kind_serve_flags(
     if not kind_serves or plan is None {
         return {};
     }
-    derived = {"port"} if serve_mode is not True else {"port", "dev"};
+    if serve_mode is not True {
+        return dict(plan.flags);
+    }
     return {
         k: v
         for (k, v) in plan.flags.items()
-        if k not in derived
+        if k != "dev"
     };
 }
 
