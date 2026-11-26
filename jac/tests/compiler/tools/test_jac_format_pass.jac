@@ -7,7 +7,7 @@ AST preservation, micro suite round-trip, and regression tests.
 import ast as ast3;
 import os;
 import from difflib { unified_diff }
-import from tests.support { JAC_ROOT }
+import from tests.support { JAC_ROOT, run_cases }
 import jaclang;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.project.source { add_line_numbers }
@@ -89,8 +89,68 @@ def micro_suite_test(filename: str, auto_lint: bool = False) {
     }
 }
 
-test "simple walk fmt" {
-    compare_files(os.path.join(FIXTURES, "simple_walk_fmt.jac"));
+test "simple walk fmt, and related cases" {
+    def check_simple_walk_fmt {
+        compare_files(os.path.join(FIXTURES, "simple_walk_fmt.jac"));
+    }
+
+    def check_tagbreak {
+        compare_files(os.path.join(FIXTURES, "tagbreak.jac"));
+    }
+
+    def check_connect_op_compact_fmt {
+        # Typed connect operators (`+>:E:+>`, `<+:E:<+`, `+>:E:w=5:+>`) format
+        # compactly, matching the traversal edge-op (`->:E:->`) and disconnect
+        # (`del ->:E:->`) forms; no spaces are inserted around the inner colons.
+        compare_files(os.path.join(FIXTURES, "connect_op_fmt.jac"));
+    }
+
+    def check_has_fmt {
+        compare_files(os.path.join(FIXTURES, "has_frmt.jac"));
+    }
+
+    def check_import_fmt {
+        compare_files(os.path.join(FIXTURES, "import_fmt.jac"));
+    }
+
+    def check_archetype {
+        compare_files(os.path.join(FIXTURES, "archetype_frmt.jac"));
+    }
+
+    def check_lambda_whitespace_fmt {
+        compare_files(os.path.join(FIXTURES, "lambda_whitespace_fmt.jac"));
+    }
+
+    def check_implicit_return_fmt {
+        compare_files(os.path.join(FIXTURES, "implicit_return_fmt.jac"));
+    }
+
+    def check_forever_fmt {
+        compare_files(os.path.join(FIXTURES, "forever_fmt.jac"));
+    }
+
+    def check_awaiting_fmt {
+        compare_files(os.path.join(FIXTURES, "awaiting_fmt.jac"));
+    }
+
+    def check_awaiting_jsx_fmt {
+        compare_files(os.path.join(FIXTURES, "awaiting_jsx_fmt.jac"));
+    }
+    run_cases(
+        [
+            ("simple walk fmt", check_simple_walk_fmt),
+            ("tagbreak", check_tagbreak),
+            ("connect op compact fmt", check_connect_op_compact_fmt),
+            ("has fmt", check_has_fmt),
+            ("import fmt", check_import_fmt),
+            ("archetype", check_archetype),
+            ("lambda whitespace fmt", check_lambda_whitespace_fmt),
+            ("implicit return fmt", check_implicit_return_fmt),
+            ("forever fmt", check_forever_fmt),
+            ("awaiting fmt", check_awaiting_fmt),
+            ("awaiting jsx fmt", check_awaiting_jsx_fmt)
+        ]
+    );
 }
 
 test "visit insertion position compact fmt" {
@@ -110,9 +170,6 @@ test "visit insertion position compact fmt" {
         == formatted;
 }
 
-test "tagbreak" {
-    compare_files(os.path.join(FIXTURES, "tagbreak.jac"));
-}
 
 test "graph filter membership keeps keyword spacing" {
     source = 'node Item { has name: str; }\n\nwith entry {\n'
@@ -127,36 +184,6 @@ test "graph filter membership keeps keyword spacing" {
     assert second == formatted , repr(formatted) + "\n" + repr(second);
 }
 
-test "connect op compact fmt" {
-    # Typed connect operators (`+>:E:+>`, `<+:E:<+`, `+>:E:w=5:+>`) format
-    # compactly, matching the traversal edge-op (`->:E:->`) and disconnect
-    # (`del ->:E:->`) forms; no spaces are inserted around the inner colons.
-    compare_files(os.path.join(FIXTURES, "connect_op_fmt.jac"));
-}
-
-test "has fmt" {
-    compare_files(os.path.join(FIXTURES, "has_frmt.jac"));
-}
-
-test "import fmt" {
-    compare_files(os.path.join(FIXTURES, "import_fmt.jac"));
-}
-
-test "archetype" {
-    compare_files(os.path.join(FIXTURES, "archetype_frmt.jac"));
-}
-
-test "lambda whitespace fmt" {
-    compare_files(os.path.join(FIXTURES, "lambda_whitespace_fmt.jac"));
-}
-
-test "implicit return fmt" {
-    compare_files(os.path.join(FIXTURES, "implicit_return_fmt.jac"));
-}
-
-test "forever fmt" {
-    compare_files(os.path.join(FIXTURES, "forever_fmt.jac"));
-}
 
 test "forever keyword preserved not rewritten" {
     path = os.path.join(FIXTURES, "forever_fmt.jac");
@@ -166,13 +193,6 @@ test "forever keyword preserved not rewritten" {
     assert "while" not in formatted;
 }
 
-test "awaiting fmt" {
-    compare_files(os.path.join(FIXTURES, "awaiting_fmt.jac"));
-}
-
-test "awaiting jsx fmt" {
-    compare_files(os.path.join(FIXTURES, "awaiting_jsx_fmt.jac"));
-}
 
 test "fstring comment not injected" {
     path = os.path.join(FIXTURES, "fstring_comment.jac");
@@ -829,19 +849,77 @@ test "genai ability bare name preserves by and semicolon" {
     assert formatted == prog2.mod.main.gen.jac , "genai bare-name formatting is not idempotent";
 }
 
-"""Regression: formatter must preserve `by <name>()` (genai ability with
-empty parentheses) — both `by` and `()` must survive the format pass."""
-test "genai ability empty parens preserves by and parens" {
-    source = "def get_emoji(input: str) -> str by llm();\n";
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
-    assert "by llm()" in formatted , (
-        f"expected `by llm()` in formatted output, got:\n{repr(formatted)}"
+test "genai ability empty parens preserves by and parens, and related cases" {
+    # Regression: formatter must preserve `by <name>()` (genai ability with
+    # empty parentheses) — both `by` and `()` must survive the format pass.
+    def check_genai_ability_empty_parens_preserves_by_and_pare {
+        source = "def get_emoji(input: str) -> str by llm();\n";
+        prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+        assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+        formatted = prog.mod.main.gen.jac;
+        assert "by llm()" in formatted , (
+            f"expected `by llm()` in formatted output, got:\n{repr(formatted)}"
+        );
+        # Idempotency
+        prog2 = JacProgram.jac_str_formatter(
+            source_str=formatted, file_path="<test>.jac"
+        );
+        assert formatted == prog2.mod.main.gen.jac , "genai empty-parens formatting is not idempotent";
+    }
+
+    # Regression: set literals must space after commas like lists, tuples, and
+    # dicts. `exit_set_val` blindly concatenated its kids, so `{1,2,3}` round-tripped
+    # crammed while `[1,2,3]`/`(1,2,3)`/`{1: 2,3: 4}` all gained the comma space.
+    def check_set_literal_spaces_after_commas_like_other_colle {
+        source = "glob a = {1,2,3};\n";
+        prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+        assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+        formatted = prog.mod.main.gen.jac;
+        assert "{1, 2, 3}" in formatted , (
+            f"set literal must space after commas like lists/dicts, got:\n{repr(
+                formatted
+            )}"
+        );
+        # Idempotency
+        prog2 = JacProgram.jac_str_formatter(
+            source_str=formatted, file_path="<test>.jac"
+        );
+        assert formatted == prog2.mod.main.gen.jac , "set comma spacing is not idempotent";
+    }
+
+    # Regression: assign comprehensions must space after commas the same way
+    # filter comprehensions do. `exit_assign_compr` stripped every space, so
+    # `(=foo=1,bar=2)` round-tripped crammed while `(?foo>1,bar<2)` got the space.
+    def check_assign_comprehension_spaces_after_commas_like_fi {
+        source = "with entry { x = (a)(=foo=1,bar=2); }\n";
+        prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+        assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+        formatted = prog.mod.main.gen.jac;
+        assert "=foo=1, bar=2" in formatted , (
+            f"assign comprehension must space after commas, got:\n{repr(formatted)}"
+        );
+        # Idempotency
+        prog2 = JacProgram.jac_str_formatter(
+            source_str=formatted, file_path="<test>.jac"
+        );
+        assert formatted == prog2.mod.main.gen.jac , "assign-compr spacing is not idempotent";
+    }
+    run_cases(
+        [
+            (
+                "genai ability empty parens preserves by and parens",
+                check_genai_ability_empty_parens_preserves_by_and_pare
+            ),
+            (
+                "set literal spaces after commas like other collections",
+                check_set_literal_spaces_after_commas_like_other_colle
+            ),
+            (
+                "assign comprehension spaces after commas like filter comprehension",
+                check_assign_comprehension_spaces_after_commas_like_fi
+            )
+        ]
     );
-    # Idempotency
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , "genai empty-parens formatting is not idempotent";
 }
 
 """Regression: formatter must preserve `by <name>(kwargs)` (genai ability
@@ -865,21 +943,6 @@ test "genai ability with kwargs preserves by and arguments" {
     assert formatted == prog2.mod.main.gen.jac , "genai kwargs formatting is not idempotent";
 }
 
-"""Regression: set literals must space after commas like lists, tuples, and
-dicts. `exit_set_val` blindly concatenated its kids, so `{1,2,3}` round-tripped
-crammed while `[1,2,3]`/`(1,2,3)`/`{1: 2,3: 4}` all gained the comma space."""
-test "set literal spaces after commas like other collections" {
-    source = "glob a = {1,2,3};\n";
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
-    assert "{1, 2, 3}" in formatted , (
-        f"set literal must space after commas like lists/dicts, got:\n{repr(formatted)}"
-    );
-    # Idempotency
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , "set comma spacing is not idempotent";
-}
 
 """Regression: a set literal wider than the print width must break one element
 per line, exactly like a list. `exit_set_val` had no broken layout at all, so
@@ -905,21 +968,6 @@ test "long set literal wraps one element per line like a list" {
     assert formatted == prog2.mod.main.gen.jac , "long set wrapping is not idempotent";
 }
 
-"""Regression: assign comprehensions must space after commas the same way
-filter comprehensions do. `exit_assign_compr` stripped every space, so
-`(=foo=1,bar=2)` round-tripped crammed while `(?foo>1,bar<2)` got the space."""
-test "assign comprehension spaces after commas like filter comprehension" {
-    source = "with entry { x = (a)(=foo=1,bar=2); }\n";
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
-    assert "=foo=1, bar=2" in formatted , (
-        f"assign comprehension must space after commas, got:\n{repr(formatted)}"
-    );
-    # Idempotency
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , "assign-compr spacing is not idempotent";
-}
 
 """Regression: enum base-type declarations must space like type annotations
 and base-class lists. `exit_enum` sent the typed-base colon (`enum X: int`)

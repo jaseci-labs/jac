@@ -4,7 +4,7 @@ import contextlib;
 import os;
 import shutil;
 import tempfile;
-import from tests.support { JAC_ROOT }
+import from tests.support { JAC_ROOT, run_cases }
 import jaclang;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
@@ -84,64 +84,328 @@ test "auto lint no lint flag" {
     assert "glob int_val" not in formatted;
 }
 
-test "auto lint mixed extraction" {
-    input_path = auto_lint_fixture_path("mixed_extraction.jac");
+test "auto lint mixed extraction, and related cases" {
+    def check_auto_lint_mixed_extraction {
+        input_path = auto_lint_fixture_path("mixed_extraction.jac");
 
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
 
-    # Extractable assignments should become globs
-    assert "glob x = 5;" in formatted;
-    assert "glob y = 10;" in formatted;
+        # Extractable assignments should become globs
+        assert "glob x = 5;" in formatted;
+        assert "glob y = 10;" in formatted;
 
-    # Non-extractable statement should stay in with entry
-    assert "with entry" in formatted;
-    assert "print(" in formatted;
+        # Non-extractable statement should stay in with entry
+        assert "with entry" in formatted;
+        assert "print(" in formatted;
+    }
+
+    def check_auto_lint_all_assignments_extracted {
+        input_path = auto_lint_fixture_path("non_extractable.jac");
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+
+        # All assignments should become globs (even function calls, attr access, etc.)
+        # Note: consecutive globs with same modifiers are now combined
+        assert "result = some_function()" in formatted;
+        assert "value = obj.attr" in formatted;
+        assert "item = arr[0]" in formatted;
+
+        # The unnamed with entry block should be removed (all assignments extracted)
+        # Only named entry block should remain
+        assert "with entry:__main__" in formatted
+            or "with entry :__main__" in formatted;
+    }
+
+    def check_auto_lint_named_entry_not_modified {
+        input_path = auto_lint_fixture_path("non_extractable.jac");
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+
+        # Named entry block should be preserved
+        assert "with entry:__main__" in formatted
+            or "with entry :__main__" in formatted;
+
+        # Assignment inside named entry should NOT become glob
+        assert "glob named_x" not in formatted;
+    }
+
+    def check_auto_lint_existing_globs_preserved {
+        input_path = auto_lint_fixture_path("non_extractable.jac");
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+
+        # Should preserve existing glob declarations
+        # Note: consecutive globs with same modifiers are now combined
+        # Format is now multiline with all assignments indented
+        assert "glob existing_x = 5,\n     existing_y = " in formatted;
+        assert "existing_y = " in formatted;
+        assert "existing_z = " in formatted;
+    }
+
+    def check_auto_lint_entry_reassignment_of_existing_glob_no {
+        input_path = auto_lint_fixture_path("entry_reassigns_glob.jac");
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+
+        # `config` is already a module-level glob; the entry assignment is a
+        # reassignment and must not become a second `glob config` declaration.
+        assert "with entry" in formatted;
+        assert "config = 2;" in formatted;
+
+        # `fresh` is bound exactly once and is still extracted to its own glob.
+        assert "glob fresh = 10;" in formatted;
+    }
+
+    # ── TestCombineConsecutiveGlob ───────────────────────────────────────────
+    def check_combine_glob_consecutive {
+        input_path = auto_lint_fixture_path("consecutive_glob.jac");
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+
+        # Consecutive glob statements should be combined into one
+        # The three separate glob statements become one with commas
+        # Format is now multiline with all assignments indented
+        assert "glob x = 1,\n     y = 2,\n     z = 3;" in formatted;
+
+        # Public glob statements should be combined separately
+        assert "glob:pub a = 10,\n     b = 20;" in formatted;
+
+        # Protected glob statements should be combined separately
+        assert "glob:protect c = 100,\n     d = 200,\n     e = 300;" in formatted;
+
+        # Mixed modifiers should NOT be combined together
+        # Each should be its own statement
+        assert "glob m1 = 1;" in formatted;
+        assert "glob:pub m2 = 2;" in formatted;
+        assert "glob:protect m3 = 3;" in formatted;
+
+        # Non-consecutive globs should NOT be combined
+        assert "glob before = 0;" in formatted;
+        assert "glob after = 99;" in formatted;
+    }
+
+    # ── TestStaticmethodConversion ───────────────────────────────────────────
+    def check_staticmethod_to_static {
+        input_path = auto_lint_fixture_path("staticmethod_decorator.jac");
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+
+        # Should use static keyword instead of @staticmethod decorator
+        assert "static def add" in formatted;
+        assert "static def multiply" in formatted;
+
+        # Should NOT have @staticmethod decorator in code (may be in docstring)
+        # Count occurrences - should only appear in the docstring
+        assert formatted.count("@staticmethod") == 1 , "Only in docstring";
+        assert "@staticmethod\n" not in formatted;
+
+        # Instance method should remain unchanged
+        assert "def instance_method" in formatted;
+        assert "static def instance_method" not in formatted;
+    }
+
+    def check_staticmethod_already_static_not_modified {
+        input_path = auto_lint_fixture_path("staticmethod_decorator.jac");
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+
+        # Should still have static keyword
+        assert "static def already_static" in formatted;
+    }
+
+    def check_staticmethod_multiple_decorators_preserved {
+        input_path = auto_lint_fixture_path("staticmethod_decorator.jac");
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+
+        # Other decorators should be preserved
+        assert "@some_decorator" in formatted;
+
+        # Should be static now
+        assert "static def decorated_static" in formatted;
+    }
+
+    # ── TestRemoveEmptyParens ────────────────────────────────────────────────
+    def check_empty_parens_removed {
+        input_path = auto_lint_fixture_path("empty_parens.jac");
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+
+        # Functions with no params should have parens removed
+        assert "def no_params {" in formatted;
+        assert "def no_params()" not in formatted;
+
+        # Functions with params should keep parens
+        assert "def with_params(x: int)" in formatted;
+
+        # Functions with no params but return type should have parens removed
+        assert "def no_params_with_return -> int" in formatted;
+        assert "def no_params_with_return()" not in formatted;
+
+        # Functions with params and return type should keep parens
+        assert "def with_params_and_return(" in formatted;
+        assert "x: int" in formatted;
+    }
+
+    def check_empty_parens_method_preserved_when_has_self {
+        input_path = auto_lint_fixture_path("empty_parens.jac");
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+
+        # Methods with self should keep parens
+        assert "def method_with_self(self: MyClass)" in formatted;
+
+        # Methods with self and other params should keep parens
+        assert "def method_with_params(self: MyClass, a: int, b: int) -> int"
+            in formatted;
+    }
+
+    def check_empty_parens_obj_method_removed {
+        input_path = auto_lint_fixture_path("empty_parens.jac");
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+
+        # obj methods with no params should have parens removed
+        assert "def reset {" in formatted;
+        assert "def reset()" not in formatted;
+
+        # obj methods with params should keep parens
+        assert "def increment(amount: int)" in formatted;
+
+        # obj methods with no params but return type should have parens removed
+        assert "def get_count -> int" in formatted;
+        assert "def get_count()" not in formatted;
+    }
+
+    def check_empty_parens_impl_removed {
+        input_path = auto_lint_fixture_path("empty_parens.jac");
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+
+        # Impl with no params but return type - parens should be removed
+        assert "impl Calculator.compute -> int" in formatted;
+        assert "impl Calculator.compute()" not in formatted;
+
+        # Impl with params - parens should stay
+        assert "impl Calculator.process(x: int)" in formatted;
+
+        # Impl with no params and no return type - parens should be removed
+        # Note: formatter may or may not add space before {
+        assert "impl Calculator.run{" in formatted
+            or "impl Calculator.run {" in formatted;
+        assert "impl Calculator.run()" not in formatted;
+    }
+
+    # ── TestW3037UnnecessaryNoneReturn ───────────────────────────────────────
+    def check_w3037_auto_fix_removes_unnecessary_none_from_abi {
+        input_path = auto_lint_fixture_path("unnecessary_none_return.jac");
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+
+        # Functions without return should have -> None removed
+        assert "def no_return_with_none {" in formatted;
+        assert "def with_params(x: int, y: str) {" in formatted;
+
+        # Methods without return should have -> None removed
+        assert "def method(self: Foo) {" in formatted;
+
+        # Functions WITH a return statement should keep -> None
+        assert "def has_return_with_none -> None" in formatted;
+
+        # Functions with non-None return type should be untouched
+        assert "def no_return_with_type -> int" in formatted;
+    }
+
+    def check_w3037_auto_fix_removes_unnecessary_none_from_lam {
+        input_path = auto_lint_fixture_path("unnecessary_none_return.jac");
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+
+        # Lambda with typed param: -> None removed, param kept
+        assert "lambda (e: str) {" in formatted;
+        assert "lambda (x: int" in formatted and "y: int) {" in formatted;
+
+        # Lambda with no params: -> None removed
+        assert "lambda {" in formatted;
+    }
+
+    def check_w3038_does_not_remove_import_when_usestate_call {
+        input_path = auto_lint_fixture_path("usestate_calls_remain.jac");
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+
+        # non-destructure useState left untouched
+        assert "useState(" in formatted;
+
+        # import must stay since useState is still referenced
+        assert "import from \"react\"" in formatted;
+        assert "useState" in formatted;
+    }
+    run_cases(
+        [
+            ("auto lint mixed extraction", check_auto_lint_mixed_extraction),
+            (
+                "auto lint all assignments extracted",
+                check_auto_lint_all_assignments_extracted
+            ),
+            (
+                "auto lint named entry not modified",
+                check_auto_lint_named_entry_not_modified
+            ),
+            (
+                "auto lint existing globs preserved",
+                check_auto_lint_existing_globs_preserved
+            ),
+            (
+                "auto lint entry reassignment of existing glob not globalized",
+                check_auto_lint_entry_reassignment_of_existing_glob_no
+            ),
+            ("combine glob consecutive", check_combine_glob_consecutive),
+            ("staticmethod to static", check_staticmethod_to_static),
+            (
+                "staticmethod already static not modified",
+                check_staticmethod_already_static_not_modified
+            ),
+            (
+                "staticmethod multiple decorators preserved",
+                check_staticmethod_multiple_decorators_preserved
+            ),
+            ("empty parens removed", check_empty_parens_removed),
+            (
+                "empty parens method preserved when has self",
+                check_empty_parens_method_preserved_when_has_self
+            ),
+            ("empty parens obj method removed", check_empty_parens_obj_method_removed),
+            ("empty parens impl removed", check_empty_parens_impl_removed),
+            (
+                "W3037 auto-fix removes unnecessary -> None from abilities",
+                check_w3037_auto_fix_removes_unnecessary_none_from_abi
+            ),
+            (
+                "W3037 auto-fix removes unnecessary -> None from lambdas",
+                check_w3037_auto_fix_removes_unnecessary_none_from_lam
+            ),
+            (
+                "W3038 does not remove import when useState call is not a destructure assignment",
+                check_w3038_does_not_remove_import_when_usestate_call
+            )
+        ]
+    );
 }
 
-test "auto lint all assignments extracted" {
-    input_path = auto_lint_fixture_path("non_extractable.jac");
-
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # All assignments should become globs (even function calls, attr access, etc.)
-    # Note: consecutive globs with same modifiers are now combined
-    assert "result = some_function()" in formatted;
-    assert "value = obj.attr" in formatted;
-    assert "item = arr[0]" in formatted;
-
-    # The unnamed with entry block should be removed (all assignments extracted)
-    # Only named entry block should remain
-    assert "with entry:__main__" in formatted or "with entry :__main__" in formatted;
-}
-
-test "auto lint named entry not modified" {
-    input_path = auto_lint_fixture_path("non_extractable.jac");
-
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # Named entry block should be preserved
-    assert "with entry:__main__" in formatted or "with entry :__main__" in formatted;
-
-    # Assignment inside named entry should NOT become glob
-    assert "glob named_x" not in formatted;
-}
-
-test "auto lint existing globs preserved" {
-    input_path = auto_lint_fixture_path("non_extractable.jac");
-
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # Should preserve existing glob declarations
-    # Note: consecutive globs with same modifiers are now combined
-    # Format is now multiline with all assignments indented
-    assert "glob existing_x = 5,\n     existing_y = " in formatted;
-    assert "existing_y = " in formatted;
-    assert "existing_z = " in formatted;
-}
 
 test "auto lint class entry not extracted" {
     input_path = auto_lint_fixture_path("class_entry.jac");
@@ -194,41 +458,89 @@ test "auto lint reassigned entry var not globalized" {
     assert "count = count + 1;" in formatted;
 }
 
-test "auto lint entry reassignment of existing glob not globalized" {
-    input_path = auto_lint_fixture_path("entry_reassigns_glob.jac");
 
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
+test "auto lint init postinit conversion, and related cases" {
+    def check_auto_lint_init_postinit_conversion {
+        input_path = auto_lint_fixture_path("init_conversion.jac");
 
-    # `config` is already a module-level glob; the entry assignment is a
-    # reassignment and must not become a second `glob config` declaration.
-    assert "with entry" in formatted;
-    assert "config = 2;" in formatted;
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
 
-    # `fresh` is bound exactly once and is still extracted to its own glob.
-    assert "glob fresh = 10;" in formatted;
-}
+        # Method definitions converted
+        assert "def __init__" not in formatted;
+        assert "def __post_init__" not in formatted;
+        assert "def init" in formatted;
+        assert "def postinit" in formatted;
 
-test "auto lint init postinit conversion" {
-    input_path = auto_lint_fixture_path("init_conversion.jac");
+        # Regular methods unchanged
+        assert "def greet" in formatted;
 
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
+        # Other __init__ usages preserved (not method definitions)
+        assert "super.__init__" in formatted;
+        assert "Person().__init__" in formatted;
+        assert "__init__ = 5" in formatted;
+        assert "print(__init__)" in formatted;
+    }
 
-    # Method definitions converted
-    assert "def __init__" not in formatted;
-    assert "def __post_init__" not in formatted;
-    assert "def init" in formatted;
-    assert "def postinit" in formatted;
+    # ── TestRemoveUnnecessaryEscape ──────────────────────────────────────────
+    def check_unnecessary_escape_removed {
+        input_path = auto_lint_fixture_path("unnecessary_escape.jac");
 
-    # Regular methods unchanged
-    assert "def greet" in formatted;
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
 
-    # Other __init__ usages preserved (not method definitions)
-    assert "super.__init__" in formatted;
-    assert "Person().__init__" in formatted;
-    assert "__init__ = 5" in formatted;
-    assert "print(__init__)" in formatted;
+        # Regular variable names should NOT have backtick escaping
+        assert "`foo" not in formatted;
+        assert "`bar" not in formatted;
+        assert "`myvar" not in formatted;
+        assert "`count" not in formatted;
+        assert "`data" not in formatted;
+        assert "`name" not in formatted;
+        assert "`value" not in formatted;
+        assert "`item" not in formatted;
+        assert "`result" not in formatted;
+        assert "`input_val" not in formatted;
+        assert "`output_val" not in formatted;
+        assert "`total" not in formatted;
+
+        # But the actual names should still be present (without backtick)
+        assert "foo = 1" in formatted;
+        assert "bar = 2" in formatted;
+        assert "myvar = 3" in formatted;
+
+        # Jac keywords SHOULD still have backtick escaping
+        assert "`node = 10" in formatted;
+        assert "`edge = 20" in formatted;
+        assert "`walker = 30" in formatted;
+    }
+
+    def check_w3042_filter_map_chain_converts_to_filtered_comp {
+        input_path = auto_lint_fixture_path("filter_map_lambda_to_comprehension.jac");
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+
+        # Both .filter() and .map() calls must be gone
+        assert ".map(" not in formatted;
+        assert ".filter(" not in formatted;
+
+        # Should produce a filtered list comprehension with an if clause
+        assert "<li className=\"active\">{item.name}</li>" in formatted;
+        assert "for item in items" in formatted;
+        assert "if item.active" in formatted;
+    }
+    run_cases(
+        [
+            (
+                "auto lint init postinit conversion",
+                check_auto_lint_init_postinit_conversion
+            ),
+            ("unnecessary escape removed", check_unnecessary_escape_removed),
+            (
+                "W3042 filter-map chain converts to filtered comprehension",
+                check_w3042_filter_map_chain_converts_to_filtered_comp
+            )
+        ]
+    );
 }
 
 # ── TestCombineConsecutiveHas ────────────────────────────────────────────
@@ -310,90 +622,59 @@ test "combine has consecutive in ability" {
     assert render_has_count == 1 , f"Expected 1 has statement in render, got {render_has_count}";
 }
 
-# ── TestCombineConsecutiveGlob ───────────────────────────────────────────
-test "combine glob consecutive" {
-    input_path = auto_lint_fixture_path("consecutive_glob.jac");
 
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
+test "combine glob disabled without lint, and related cases" {
+    def check_combine_glob_disabled_without_lint {
+        input_path = auto_lint_fixture_path("consecutive_glob.jac");
 
-    # Consecutive glob statements should be combined into one
-    # The three separate glob statements become one with commas
-    # Format is now multiline with all assignments indented
-    assert "glob x = 1,\n     y = 2,\n     z = 3;" in formatted;
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=False);
+        formatted = prog.mod.main.gen.jac;
 
-    # Public glob statements should be combined separately
-    assert "glob:pub a = 10,\n     b = 20;" in formatted;
+        # Without linting, globs should remain separate
+        assert "glob x = 1;" in formatted;
+        assert "glob y = 2;" in formatted;
+        assert "glob z = 3;" in formatted;
+    }
 
-    # Protected glob statements should be combined separately
-    assert "glob:protect c = 100,\n     d = 200,\n     e = 300;" in formatted;
+    def check_import_semicolons_preserved_without_lint {
+        input_path = auto_lint_fixture_path("import_semicolon.jac");
 
-    # Mixed modifiers should NOT be combined together
-    # Each should be its own statement
-    assert "glob m1 = 1;" in formatted;
-    assert "glob:pub m2 = 2;" in formatted;
-    assert "glob:protect m3 = 3;" in formatted;
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=False);
+        formatted = prog.mod.main.gen.jac;
 
-    # Non-consecutive globs should NOT be combined
-    assert "glob before = 0;" in formatted;
-    assert "glob after = 99;" in formatted;
+        # Without linting, standalone semicolons should remain
+        assert "import from typing" in formatted;
+        assert ";" in formatted;
+    }
+
+    def check_future_annotations_preserved_without_lint {
+        input_path = auto_lint_fixture_path("future_annotations.jac");
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=False);
+        formatted = prog.mod.main.gen.jac;
+
+        # Without linting, __future__ import should remain
+        assert "__future__" in formatted;
+        assert "annotations" in formatted;
+    }
+    run_cases(
+        [
+            (
+                "combine glob disabled without lint",
+                check_combine_glob_disabled_without_lint
+            ),
+            (
+                "import semicolons preserved without lint",
+                check_import_semicolons_preserved_without_lint
+            ),
+            (
+                "future annotations preserved without lint",
+                check_future_annotations_preserved_without_lint
+            )
+        ]
+    );
 }
 
-test "combine glob disabled without lint" {
-    input_path = auto_lint_fixture_path("consecutive_glob.jac");
-
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=False);
-    formatted = prog.mod.main.gen.jac;
-
-    # Without linting, globs should remain separate
-    assert "glob x = 1;" in formatted;
-    assert "glob y = 2;" in formatted;
-    assert "glob z = 3;" in formatted;
-}
-
-# ── TestStaticmethodConversion ───────────────────────────────────────────
-test "staticmethod to static" {
-    input_path = auto_lint_fixture_path("staticmethod_decorator.jac");
-
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # Should use static keyword instead of @staticmethod decorator
-    assert "static def add" in formatted;
-    assert "static def multiply" in formatted;
-
-    # Should NOT have @staticmethod decorator in code (may be in docstring)
-    # Count occurrences - should only appear in the docstring
-    assert formatted.count("@staticmethod") == 1 , "Only in docstring";
-    assert "@staticmethod\n" not in formatted;
-
-    # Instance method should remain unchanged
-    assert "def instance_method" in formatted;
-    assert "static def instance_method" not in formatted;
-}
-
-test "staticmethod already static not modified" {
-    input_path = auto_lint_fixture_path("staticmethod_decorator.jac");
-
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # Should still have static keyword
-    assert "static def already_static" in formatted;
-}
-
-test "staticmethod multiple decorators preserved" {
-    input_path = auto_lint_fixture_path("staticmethod_decorator.jac");
-
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # Other decorators should be preserved
-    assert "@some_decorator" in formatted;
-
-    # Should be static now
-    assert "static def decorated_static" in formatted;
-}
 
 test "staticmethod no lint preserves decorator" {
     input_path = auto_lint_fixture_path("staticmethod_decorator.jac");
@@ -486,60 +767,6 @@ test "format lintfix reports no print" {
     }
 }
 
-# ── TestRemoveUnnecessaryEscape ──────────────────────────────────────────
-test "unnecessary escape removed" {
-    input_path = auto_lint_fixture_path("unnecessary_escape.jac");
-
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # Regular variable names should NOT have backtick escaping
-    assert "`foo" not in formatted;
-    assert "`bar" not in formatted;
-    assert "`myvar" not in formatted;
-    assert "`count" not in formatted;
-    assert "`data" not in formatted;
-    assert "`name" not in formatted;
-    assert "`value" not in formatted;
-    assert "`item" not in formatted;
-    assert "`result" not in formatted;
-    assert "`input_val" not in formatted;
-    assert "`output_val" not in formatted;
-    assert "`total" not in formatted;
-
-    # But the actual names should still be present (without backtick)
-    assert "foo = 1" in formatted;
-    assert "bar = 2" in formatted;
-    assert "myvar = 3" in formatted;
-
-    # Jac keywords SHOULD still have backtick escaping
-    assert "`node = 10" in formatted;
-    assert "`edge = 20" in formatted;
-    assert "`walker = 30" in formatted;
-}
-
-# ── TestRemoveEmptyParens ────────────────────────────────────────────────
-test "empty parens removed" {
-    input_path = auto_lint_fixture_path("empty_parens.jac");
-
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # Functions with no params should have parens removed
-    assert "def no_params {" in formatted;
-    assert "def no_params()" not in formatted;
-
-    # Functions with params should keep parens
-    assert "def with_params(x: int)" in formatted;
-
-    # Functions with no params but return type should have parens removed
-    assert "def no_params_with_return -> int" in formatted;
-    assert "def no_params_with_return()" not in formatted;
-
-    # Functions with params and return type should keep parens
-    assert "def with_params_and_return(" in formatted;
-    assert "x: int" in formatted;
-}
 
 test "paren-less zero-arg def emits no W3005" {
     src = "def already_clean {\n    return;\n}\n\n"
@@ -564,55 +791,6 @@ test "paren-less zero-arg def emits no W3005" {
     }
 }
 
-test "empty parens method preserved when has self" {
-    input_path = auto_lint_fixture_path("empty_parens.jac");
-
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # Methods with self should keep parens
-    assert "def method_with_self(self: MyClass)" in formatted;
-
-    # Methods with self and other params should keep parens
-    assert "def method_with_params(self: MyClass, a: int, b: int) -> int" in formatted;
-}
-
-test "empty parens obj method removed" {
-    input_path = auto_lint_fixture_path("empty_parens.jac");
-
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # obj methods with no params should have parens removed
-    assert "def reset {" in formatted;
-    assert "def reset()" not in formatted;
-
-    # obj methods with params should keep parens
-    assert "def increment(amount: int)" in formatted;
-
-    # obj methods with no params but return type should have parens removed
-    assert "def get_count -> int" in formatted;
-    assert "def get_count()" not in formatted;
-}
-
-test "empty parens impl removed" {
-    input_path = auto_lint_fixture_path("empty_parens.jac");
-
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # Impl with no params but return type - parens should be removed
-    assert "impl Calculator.compute -> int" in formatted;
-    assert "impl Calculator.compute()" not in formatted;
-
-    # Impl with params - parens should stay
-    assert "impl Calculator.process(x: int)" in formatted;
-
-    # Impl with no params and no return type - parens should be removed
-    # Note: formatter may or may not add space before {
-    assert "impl Calculator.run{" in formatted or "impl Calculator.run {" in formatted;
-    assert "impl Calculator.run()" not in formatted;
-}
 
 # ── TestHasattrConversion ────────────────────────────────────────────────
 test "hasattr to null ok" {
@@ -657,16 +835,36 @@ test "hasattr to null ok" {
     assert "hasattr_lookalike(instance" in formatted;
 }
 
-test "hasattr no lint preserves" {
-    input_path = auto_lint_fixture_path("hasattr_conversion.jac");
+test "hasattr no lint preserves, and related cases" {
+    def check_hasattr_no_lint_preserves {
+        input_path = auto_lint_fixture_path("hasattr_conversion.jac");
 
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=False);
-    formatted = prog.mod.main.gen.jac;
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=False);
+        formatted = prog.mod.main.gen.jac;
 
-    # Without linting, hasattr should remain
-    assert "hasattr(instance" in formatted;
-    # No null-safe conversions should happen
-    assert "instance?." not in formatted;
+        # Without linting, hasattr should remain
+        assert "hasattr(instance" in formatted;
+        # No null-safe conversions should happen
+        assert "instance?." not in formatted;
+    }
+
+    def check_getattr_no_lint_preserves {
+        input_path = auto_lint_fixture_path("getattr_conversion.jac");
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=False);
+        formatted = prog.mod.main.gen.jac;
+
+        # Without linting, getattr calls should remain
+        assert "getattr(instance" in formatted;
+        # No null-safe rewrites should happen
+        assert "instance?." not in formatted;
+    }
+    run_cases(
+        [
+            ("hasattr no lint preserves", check_hasattr_no_lint_preserves),
+            ("getattr no lint preserves", check_getattr_no_lint_preserves)
+        ]
+    );
 }
 
 # ── TestGetattrConversion ────────────────────────────────────────────────
@@ -711,17 +909,6 @@ test "getattr to null ok" {
     assert "getattr_lookalike(instance" in formatted;
 }
 
-test "getattr no lint preserves" {
-    input_path = auto_lint_fixture_path("getattr_conversion.jac");
-
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=False);
-    formatted = prog.mod.main.gen.jac;
-
-    # Without linting, getattr calls should remain
-    assert "getattr(instance" in formatted;
-    # No null-safe rewrites should happen
-    assert "instance?." not in formatted;
-}
 
 # ── TestTernaryToOrConversion ────────────────────────────────────────────
 test "ternary to or" {
@@ -927,16 +1114,6 @@ test "import from semicolons removed" {
     assert "def main" in formatted;
 }
 
-test "import semicolons preserved without lint" {
-    input_path = auto_lint_fixture_path("import_semicolon.jac");
-
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=False);
-    formatted = prog.mod.main.gen.jac;
-
-    # Without linting, standalone semicolons should remain
-    assert "import from typing" in formatted;
-    assert ";" in formatted;
-}
 
 # ── TestRemoveRedundantSemis ─────────────────────────────────────────────
 test "redundant semicolons removed from all bodies" {
@@ -1023,272 +1200,366 @@ test "future annotations removed" {
     assert "def main" in formatted;
 }
 
-test "future annotations preserved without lint" {
-    input_path = auto_lint_fixture_path("future_annotations.jac");
 
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=False);
-    formatted = prog.mod.main.gen.jac;
+test "comment glob comments preserved, and related cases" {
+    # ── TestCommentPreservation ──────────────────────────────────────────────
+    def check_comment_glob_comments_preserved {
+        prog = JacProgram.jac_file_formatter(STRESS_TEST_PATH, auto_lint=True);
 
-    # Without linting, __future__ import should remain
-    assert "__future__" in formatted;
-    assert "annotations" in formatted;
-}
+        formatted = prog.mod.main.gen.jac;
 
-# ── TestCommentPreservation ──────────────────────────────────────────────
-test "comment glob comments preserved" {
-    prog = JacProgram.jac_file_formatter(STRESS_TEST_PATH, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # Standalone comments around glob statements should be preserved
-    assert "# Comment before first glob" in formatted;
-    assert "# Comment between glob statements" in formatted;
-    assert "# Comment before third glob" in formatted;
-    # Private glob comment
-    assert "# Inline on private glob" in formatted;
-}
-
-test "comment has comments preserved" {
-    prog = JacProgram.jac_file_formatter(STRESS_TEST_PATH, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # Standalone comments in obj body should be preserved
-    assert "# Comment before first has" in formatted;
-    assert "# Comment between has statements" in formatted;
-    assert "# Comment before third has" in formatted;
-    # Private has inline
-    assert "# Inline on private has" in formatted;
-}
-
-test "comment method and impl comments preserved" {
-    prog = JacProgram.jac_file_formatter(STRESS_TEST_PATH, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # Method declaration comments
-    assert "# Comment before method declaration" in formatted;
-    assert "# Comment before staticmethod" in formatted;
-    assert "# Comment before init" in formatted;
-    # Impl comments
-    assert "# Implementation comments" in formatted;
-    assert "# Comment inside impl body" in formatted;
-    assert "# Inline return comment" in formatted;
-    assert "# Comment on staticmethod impl" in formatted;
-    assert "# Comment inside helper" in formatted;
-}
-
-test "comment enum comments preserved" {
-    prog = JacProgram.jac_file_formatter(STRESS_TEST_PATH, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # Enum comments
-    assert "# Enum with consecutive assignments and comments" in formatted;
-    assert "# Comment before GREEN" in formatted;
-    assert "# Comment before BLUE" in formatted;
-}
-
-test "comment hasattr conversion comments preserved" {
-    prog = JacProgram.jac_file_formatter(STRESS_TEST_PATH, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # Comments around hasattr usage
-    assert "# Test hasattr conversion with comments" in formatted;
-    assert "# Comment before hasattr usage" in formatted;
-    assert "# Comment inside if block" in formatted;
-    assert "# Comment after if" in formatted;
-}
-
-test "comment ternary conversion comments preserved" {
-    prog = JacProgram.jac_file_formatter(STRESS_TEST_PATH, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # Comments around ternary expressions
-    assert "# Test ternary to or simplification with comments" in formatted;
-    assert "# Comment before ternary that should become or" in formatted;
-    assert "# Comment after ternary" in formatted;
-}
-
-test "comment entry block comments preserved" {
-    prog = JacProgram.jac_file_formatter(STRESS_TEST_PATH, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # Entry block comments
-    assert "# Test with entry block transformation" in formatted;
-    assert "# Comment at start of entry" in formatted;
-    assert "# Comment between statements" in formatted;
-    assert "# Comment before print" in formatted;
-}
-
-test "comment escaped name comments preserved" {
-    prog = JacProgram.jac_file_formatter(STRESS_TEST_PATH, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # Comments around escaped names
-    assert "# Test backtick escaped names with comments" in formatted;
-    assert "# Comment before escaped name" in formatted;
-    assert "# Method with escaped param" in formatted;
-}
-
-test "comment nested obj comments preserved" {
-    prog = JacProgram.jac_file_formatter(STRESS_TEST_PATH, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # Nested obj comments
-    assert "# Nested obj with comments" in formatted;
-    assert "# Comment in inner obj has" in formatted;
-}
-
-test "comment no orphaned comments at eof" {
-    prog = JacProgram.jac_file_formatter(STRESS_TEST_PATH, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # Critical check: standalone comments should appear BEFORE the code they precede,
-    # not at the end of the file
-    critical_standalone_comments = [
-        "# Comment before first glob",
-        "# Comment between glob statements",
-        "# Comment before first has",
-        "# Comment between has statements",
-        "# Comment before method declaration",
-        "# Comment inside impl body",
-        "# Test hasattr conversion with comments",
-        "# Comment before hasattr usage"
-    ];
-
-    for comment in critical_standalone_comments {
-        # Find the position of this comment
-        pos = formatted.find(comment);
-        assert pos != -1 , f"Comment not found: {comment}";
-
-        # Check that it's NOT in the last 500 characters (orphan section)
-        assert pos < len(formatted) - 500 , f"Critical standalone comment appears to be orphaned at end: {comment}";
+        # Standalone comments around glob statements should be preserved
+        assert "# Comment before first glob" in formatted;
+        assert "# Comment between glob statements" in formatted;
+        assert "# Comment before third glob" in formatted;
+        # Private glob comment
+        assert "# Inline on private glob" in formatted;
     }
 
-    # Also verify the final legitimate comment is near the end but not orphaned
-    final_comment_pos = formatted.find("# Final comment at end of file");
-    assert final_comment_pos != -1 , "Final comment should be present";
-    # It should be in the last third of the file (normal position)
-    assert final_comment_pos > len(formatted) * 0.5 , "Final comment should be near the end of file, not moved earlier";
-}
+    def check_comment_has_comments_preserved {
+        prog = JacProgram.jac_file_formatter(STRESS_TEST_PATH, auto_lint=True);
 
-test "comment no print error" {
-    input_path = auto_lint_fixture_path("no_print.jac");
+        formatted = prog.mod.main.gen.jac;
 
-    # Enable all rules including no-print
-    config = JacConfig();
-    config.check = CheckConfig(lint=LintConfig(select=["all"]));
-    set_config(config);
-    try {
-        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    } finally {
-        set_config(None);
+        # Standalone comments in obj body should be preserved
+        assert "# Comment before first has" in formatted;
+        assert "# Comment between has statements" in formatted;
+        assert "# Comment before third has" in formatted;
+        # Private has inline
+        assert "# Inline on private has" in formatted;
     }
 
-    # Should have errors for bare print() calls
-    error_msgs = [e.msg for e in prog.errors_had];
-    no_print_errors = [
-        m
-        for m in error_msgs
-        if "[no-print]" in m
-    ];
-    # There are 2 bare print() calls in the fixture
-    assert len(no_print_errors) == 2 , f"Expected 2 no-print errors, got {len(
-        no_print_errors
-    )}: {no_print_errors}";
-}
+    def check_comment_method_and_impl_comments_preserved {
+        prog = JacProgram.jac_file_formatter(STRESS_TEST_PATH, auto_lint=True);
 
-test "comment no print ignores qualified calls" {
-    input_path = auto_lint_fixture_path("no_print.jac");
+        formatted = prog.mod.main.gen.jac;
 
-    # Enable all rules including no-print
-    config = JacConfig();
-    config.check = CheckConfig(lint=LintConfig(select=["all"]));
-    set_config(config);
-    try {
-        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    } finally {
-        set_config(None);
+        # Method declaration comments
+        assert "# Comment before method declaration" in formatted;
+        assert "# Comment before staticmethod" in formatted;
+        assert "# Comment before init" in formatted;
+        # Impl comments
+        assert "# Implementation comments" in formatted;
+        assert "# Comment inside impl body" in formatted;
+        assert "# Inline return comment" in formatted;
+        assert "# Comment on staticmethod impl" in formatted;
+        assert "# Comment inside helper" in formatted;
     }
 
-    # Should NOT flag console.print()
-    error_msgs = [e.msg for e in prog.errors_had];
-    no_print_errors = [
-        m
-        for m in error_msgs
-        if "[no-print]" in m
-    ];
-    # Only the 2 bare print() calls, not the console.print() call
-    assert len(no_print_errors) == 2;
-}
+    def check_comment_enum_comments_preserved {
+        prog = JacProgram.jac_file_formatter(STRESS_TEST_PATH, auto_lint=True);
 
-test "comment no print disabled by default" {
-    input_path = auto_lint_fixture_path("no_print.jac");
+        formatted = prog.mod.main.gen.jac;
 
-    # Explicitly use default config (select=["default"]) to isolate from project jac.toml
-    config = JacConfig();
-    set_config(config);
-    try {
-        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    } finally {
-        set_config(None);
+        # Enum comments
+        assert "# Enum with consecutive assignments and comments" in formatted;
+        assert "# Comment before GREEN" in formatted;
+        assert "# Comment before BLUE" in formatted;
     }
 
-    error_msgs = [e.msg for e in prog.errors_had];
-    no_print_errors = [
-        m
-        for m in error_msgs
-        if "[no-print]" in m
-    ];
-    assert len(no_print_errors) == 0 , f"Expected no no-print errors by default, got: {no_print_errors}";
-}
+    def check_comment_hasattr_conversion_comments_preserved {
+        prog = JacProgram.jac_file_formatter(STRESS_TEST_PATH, auto_lint=True);
 
-# ── Inline Suppression Tests ───────────────────────────────────────────
-test "inline suppress by code" {
-    input_path = auto_lint_fixture_path("inline_suppress.jac");
+        formatted = prog.mod.main.gen.jac;
 
-    config = JacConfig();
-    config.check = CheckConfig(lint=LintConfig(select=["all"]));
-    set_config(config);
-    try {
-        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    } finally {
-        set_config(None);
+        # Comments around hasattr usage
+        assert "# Test hasattr conversion with comments" in formatted;
+        assert "# Comment before hasattr usage" in formatted;
+        assert "# Comment inside if block" in formatted;
+        assert "# Comment after if" in formatted;
     }
 
-    # Line of every surviving no-print error, so we can prove *which* line was
-    # suppressed rather than just counting totals.
-    no_print_lines = [
-        e.loc.first_line
-        for e in prog.errors_had
-        if "[no-print]" in e.msg
-    ];
-    # `# jac:ignore[E3012]` on line 4 suppresses it; line 5 has no comment.
-    assert 4 not in no_print_lines , f"E3012 code suppression on line 4 failed: {no_print_lines}";
-    assert 5 in no_print_lines , f"line 5 should still error: {no_print_lines}";
-}
+    def check_comment_ternary_conversion_comments_preserved {
+        prog = JacProgram.jac_file_formatter(STRESS_TEST_PATH, auto_lint=True);
 
-test "inline suppress by alias" {
-    input_path = auto_lint_fixture_path("inline_suppress.jac");
+        formatted = prog.mod.main.gen.jac;
 
-    config = JacConfig();
-    config.check = CheckConfig(lint=LintConfig(select=["all"]));
-    set_config(config);
-    try {
-        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    } finally {
-        set_config(None);
+        # Comments around ternary expressions
+        assert "# Test ternary to or simplification with comments" in formatted;
+        assert "# Comment before ternary that should become or" in formatted;
+        assert "# Comment after ternary" in formatted;
     }
 
-    # Line of every surviving no-print error, so we can prove the *alias* form
-    # of suppression worked independently of the numeric-code form.
-    no_print_lines = [
-        e.loc.first_line
-        for e in prog.errors_had
-        if "[no-print]" in e.msg
-    ];
-    # `# jac:ignore[no-print]` (kebab alias) on line 9 suppresses it; line 5
-    # has no comment and must still fire.
-    assert 9 not in no_print_lines , f"alias suppression on line 9 failed: {no_print_lines}";
-    assert 5 in no_print_lines , f"line 5 should still error: {no_print_lines}";
+    def check_comment_entry_block_comments_preserved {
+        prog = JacProgram.jac_file_formatter(STRESS_TEST_PATH, auto_lint=True);
+
+        formatted = prog.mod.main.gen.jac;
+
+        # Entry block comments
+        assert "# Test with entry block transformation" in formatted;
+        assert "# Comment at start of entry" in formatted;
+        assert "# Comment between statements" in formatted;
+        assert "# Comment before print" in formatted;
+    }
+
+    def check_comment_escaped_name_comments_preserved {
+        prog = JacProgram.jac_file_formatter(STRESS_TEST_PATH, auto_lint=True);
+
+        formatted = prog.mod.main.gen.jac;
+
+        # Comments around escaped names
+        assert "# Test backtick escaped names with comments" in formatted;
+        assert "# Comment before escaped name" in formatted;
+        assert "# Method with escaped param" in formatted;
+    }
+
+    def check_comment_nested_obj_comments_preserved {
+        prog = JacProgram.jac_file_formatter(STRESS_TEST_PATH, auto_lint=True);
+
+        formatted = prog.mod.main.gen.jac;
+
+        # Nested obj comments
+        assert "# Nested obj with comments" in formatted;
+        assert "# Comment in inner obj has" in formatted;
+    }
+
+    def check_comment_no_orphaned_comments_at_eof {
+        prog = JacProgram.jac_file_formatter(STRESS_TEST_PATH, auto_lint=True);
+
+        formatted = prog.mod.main.gen.jac;
+
+        # Critical check: standalone comments should appear BEFORE the code they precede,
+        # not at the end of the file
+        critical_standalone_comments = [
+            "# Comment before first glob",
+            "# Comment between glob statements",
+            "# Comment before first has",
+            "# Comment between has statements",
+            "# Comment before method declaration",
+            "# Comment inside impl body",
+            "# Test hasattr conversion with comments",
+            "# Comment before hasattr usage"
+        ];
+
+        for comment in critical_standalone_comments {
+            # Find the position of this comment
+            pos = formatted.find(comment);
+            assert pos != -1 , f"Comment not found: {comment}";
+
+            # Check that it's NOT in the last 500 characters (orphan section)
+            assert pos < len(formatted) - 500 , f"Critical standalone comment appears to be orphaned at end: {comment}";
+        }
+
+        # Also verify the final legitimate comment is near the end but not orphaned
+        final_comment_pos = formatted.find("# Final comment at end of file");
+        assert final_comment_pos != -1 , "Final comment should be present";
+        # It should be in the last third of the file (normal position)
+        assert final_comment_pos > len(formatted) * 0.5 , "Final comment should be near the end of file, not moved earlier";
+    }
+    run_cases(
+        [
+            ("comment glob comments preserved", check_comment_glob_comments_preserved),
+            ("comment has comments preserved", check_comment_has_comments_preserved),
+            (
+                "comment method and impl comments preserved",
+                check_comment_method_and_impl_comments_preserved
+            ),
+            ("comment enum comments preserved", check_comment_enum_comments_preserved),
+            (
+                "comment hasattr conversion comments preserved",
+                check_comment_hasattr_conversion_comments_preserved
+            ),
+            (
+                "comment ternary conversion comments preserved",
+                check_comment_ternary_conversion_comments_preserved
+            ),
+            (
+                "comment entry block comments preserved",
+                check_comment_entry_block_comments_preserved
+            ),
+            (
+                "comment escaped name comments preserved",
+                check_comment_escaped_name_comments_preserved
+            ),
+            (
+                "comment nested obj comments preserved",
+                check_comment_nested_obj_comments_preserved
+            ),
+            (
+                "comment no orphaned comments at eof",
+                check_comment_no_orphaned_comments_at_eof
+            )
+        ]
+    );
 }
+
+
+test "comment no print cases" {
+    def check_comment_no_print_error {
+        input_path = auto_lint_fixture_path("no_print.jac");
+
+        # Enable all rules including no-print
+        config = JacConfig();
+        config.check = CheckConfig(lint=LintConfig(select=["all"]));
+        set_config(config);
+        try {
+            prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        } finally {
+            set_config(None);
+        }
+
+        # Should have errors for bare print() calls
+        error_msgs = [e.msg for e in prog.errors_had];
+        no_print_errors = [
+            m
+            for m in error_msgs
+            if "[no-print]" in m
+        ];
+        # There are 2 bare print() calls in the fixture
+        assert len(no_print_errors) == 2 , f"Expected 2 no-print errors, got {len(
+            no_print_errors
+        )}: {no_print_errors}";
+    }
+
+    def check_comment_no_print_disabled_by_default {
+        input_path = auto_lint_fixture_path("no_print.jac");
+
+        # Explicitly use default config (select=["default"]) to isolate from project jac.toml
+        config = JacConfig();
+        set_config(config);
+        try {
+            prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        } finally {
+            set_config(None);
+        }
+
+        error_msgs = [e.msg for e in prog.errors_had];
+        no_print_errors = [
+            m
+            for m in error_msgs
+            if "[no-print]" in m
+        ];
+        assert len(no_print_errors) == 0 , f"Expected no no-print errors by default, got: {no_print_errors}";
+    }
+    run_cases(
+        [
+            ("comment no print error", check_comment_no_print_error),
+            (
+                "comment no print disabled by default",
+                check_comment_no_print_disabled_by_default
+            )
+        ]
+    );
+}
+
+test "comment no print ignores qualified calls, and related cases" {
+    def check_comment_no_print_ignores_qualified_calls {
+        input_path = auto_lint_fixture_path("no_print.jac");
+
+        # Enable all rules including no-print
+        config = JacConfig();
+        config.check = CheckConfig(lint=LintConfig(select=["all"]));
+        set_config(config);
+        try {
+            prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        } finally {
+            set_config(None);
+        }
+
+        # Should NOT flag console.print()
+        error_msgs = [e.msg for e in prog.errors_had];
+        no_print_errors = [
+            m
+            for m in error_msgs
+            if "[no-print]" in m
+        ];
+        # Only the 2 bare print() calls, not the console.print() call
+        assert len(no_print_errors) == 2;
+    }
+
+    def check_inline_suppress_multiple_codes {
+        input_path = auto_lint_fixture_path("inline_suppress.jac");
+
+        config = JacConfig();
+        config.check = CheckConfig(lint=LintConfig(select=["all"]));
+        set_config(config);
+        try {
+            prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        } finally {
+            set_config(None);
+        }
+
+        # Line 10 has # jac:ignore[E3012, W3001] - multiple codes
+        # The E3012 (no-print) should be suppressed on that line
+        error_msgs = [e.msg for e in prog.errors_had];
+        no_print_errors = [
+            m
+            for m in error_msgs
+            if "[no-print]" in m
+        ];
+        # Only line 5 should fire
+        assert len(no_print_errors) == 1;
+    }
+    run_cases(
+        [
+            (
+                "comment no print ignores qualified calls",
+                check_comment_no_print_ignores_qualified_calls
+            ),
+            ("inline suppress multiple codes", check_inline_suppress_multiple_codes)
+        ]
+    );
+}
+
+
+test "inline suppress cases on inline_suppress.jac" {
+    # ── Inline Suppression Tests ───────────────────────────────────────────
+    def check_inline_suppress_by_code {
+        input_path = auto_lint_fixture_path("inline_suppress.jac");
+
+        config = JacConfig();
+        config.check = CheckConfig(lint=LintConfig(select=["all"]));
+        set_config(config);
+        try {
+            prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        } finally {
+            set_config(None);
+        }
+
+        # Line of every surviving no-print error, so we can prove *which* line was
+        # suppressed rather than just counting totals.
+        no_print_lines = [
+            e.loc.first_line
+            for e in prog.errors_had
+            if "[no-print]" in e.msg
+        ];
+        # `# jac:ignore[E3012]` on line 4 suppresses it; line 5 has no comment.
+        assert 4 not in no_print_lines , f"E3012 code suppression on line 4 failed: {no_print_lines}";
+        assert 5 in no_print_lines , f"line 5 should still error: {no_print_lines}";
+    }
+
+    def check_inline_suppress_by_alias {
+        input_path = auto_lint_fixture_path("inline_suppress.jac");
+
+        config = JacConfig();
+        config.check = CheckConfig(lint=LintConfig(select=["all"]));
+        set_config(config);
+        try {
+            prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        } finally {
+            set_config(None);
+        }
+
+        # Line of every surviving no-print error, so we can prove the *alias* form
+        # of suppression worked independently of the numeric-code form.
+        no_print_lines = [
+            e.loc.first_line
+            for e in prog.errors_had
+            if "[no-print]" in e.msg
+        ];
+        # `# jac:ignore[no-print]` (kebab alias) on line 9 suppresses it; line 5
+        # has no comment and must still fire.
+        assert 9 not in no_print_lines , f"alias suppression on line 9 failed: {no_print_lines}";
+        assert 5 in no_print_lines , f"line 5 should still error: {no_print_lines}";
+    }
+    run_cases(
+        [
+            ("inline suppress by code", check_inline_suppress_by_code),
+            ("inline suppress by alias", check_inline_suppress_by_alias)
+        ]
+    );
+}
+
 
 test "inline suppress wrong code does not suppress" {
     input_path = auto_lint_fixture_path("inline_suppress_wrong_code.jac");
@@ -1313,82 +1584,60 @@ test "inline suppress wrong code does not suppress" {
     assert len(no_print_errors) == 1 , f"wrong ignore code wrongly suppressed no-print: {no_print_errors}";
 }
 
-test "inline suppress multiple codes" {
-    input_path = auto_lint_fixture_path("inline_suppress.jac");
 
-    config = JacConfig();
-    config.check = CheckConfig(lint=LintConfig(select=["all"]));
-    set_config(config);
-    try {
+test "W3038 auto-fix converts useState to has declaration, and related cases" {
+    # ── TestW3038UseStateToHas ────────────────────────────────────────────────
+    def check_w3038_auto_fix_converts_usestate_to_has_declarat {
+        input_path = auto_lint_fixture_path("usestate_to_has.jac");
         prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    } finally {
-        set_config(None);
+        formatted = prog.mod.main.gen.jac;
+
+        # both state vars converted and combined into one has declaration
+        assert "has count: int = 0" in formatted;
+        assert "label: str = \"hello\"" in formatted;
+
+        # both setter calls replaced with direct assignments
+        assert "count = count + 1;" in formatted;
+        assert "label = \"clicked\";" in formatted;
+        assert "setCount" not in formatted;
+        assert "setLabel" not in formatted;
+
+        # import fully removed
+        assert "= useState(" not in formatted;
+        assert "import from \"react\"" not in formatted;
     }
 
-    # Line 10 has # jac:ignore[E3012, W3001] - multiple codes
-    # The E3012 (no-print) should be suppressed on that line
-    error_msgs = [e.msg for e in prog.errors_had];
-    no_print_errors = [
-        m
-        for m in error_msgs
-        if "[no-print]" in m
-    ];
-    # Only line 5 should fire
-    assert len(no_print_errors) == 1;
-}
+    # ── W3042: map(lambda → JSX) to list comprehension ──────────────────────────
+    def check_w3042_converts_map_lambda_to_list_comprehension {
+        input_path = auto_lint_fixture_path("map_lambda_to_comprehension.jac");
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
 
-# ── TestW3037UnnecessaryNoneReturn ───────────────────────────────────────
-test "W3037 auto-fix removes unnecessary -> None from abilities" {
-    input_path = auto_lint_fixture_path("unnecessary_none_return.jac");
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
+        # Single-param case: HourGrid is converted.
+        assert "for hour in hours" in formatted;
+        assert "[<div className=\"text-xs text-center\">{hour}</div> for hour in hours]"
+            in formatted;
 
-    # Functions without return should have -> None removed
-    assert "def no_return_with_none {" in formatted;
-    assert "def with_params(x: int, y: str) {" in formatted;
-
-    # Methods without return should have -> None removed
-    assert "def method(self: Foo) {" in formatted;
-
-    # Functions WITH a return statement should keep -> None
-    assert "def has_return_with_none -> None" in formatted;
-
-    # Functions with non-None return type should be untouched
-    assert "def no_return_with_type -> int" in formatted;
-}
-
-test "W3037 auto-fix removes unnecessary -> None from lambdas" {
-    input_path = auto_lint_fixture_path("unnecessary_none_return.jac");
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # Lambda with typed param: -> None removed, param kept
-    assert "lambda (e: str) {" in formatted;
-    assert "lambda (x: int" in formatted and "y: int) {" in formatted;
-
-    # Lambda with no params: -> None removed
-    assert "lambda {" in formatted;
-}
-
-# ── TestW3038UseStateToHas ────────────────────────────────────────────────
-test "W3038 auto-fix converts useState to has declaration" {
-    input_path = auto_lint_fixture_path("usestate_to_has.jac");
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # both state vars converted and combined into one has declaration
-    assert "has count: int = 0" in formatted;
-    assert "label: str = \"hello\"" in formatted;
-
-    # both setter calls replaced with direct assignments
-    assert "count = count + 1;" in formatted;
-    assert "label = \"clicked\";" in formatted;
-    assert "setCount" not in formatted;
-    assert "setLabel" not in formatted;
-
-    # import fully removed
-    assert "= useState(" not in formatted;
-    assert "import from \"react\"" not in formatted;
+        # Multi-param case: MultiParamMap must be left untouched — list
+        # comprehensions only bind one iteration variable per `for` clause.
+        assert "items.map(" in formatted;
+        assert "lambda (a: any" in formatted;
+        assert "b: any)" in formatted;
+        assert "for a in items" not in formatted;
+        assert "for a, b in items" not in formatted;
+    }
+    run_cases(
+        [
+            (
+                "W3038 auto-fix converts useState to has declaration",
+                check_w3038_auto_fix_converts_usestate_to_has_declarat
+            ),
+            (
+                "W3042 converts map lambda to list comprehension",
+                check_w3042_converts_map_lambda_to_list_comprehension
+            )
+        ]
+    );
 }
 
 test "W3038 removes useState from partial import without breaking commas" {
@@ -1414,108 +1663,125 @@ test "W3038 removes useState from partial import without breaking commas" {
     assert "{ ," not in formatted;
 }
 
-test "W3038 does not remove import when useState call is not a destructure assignment" {
-    input_path = auto_lint_fixture_path("usestate_calls_remain.jac");
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
 
-    # non-destructure useState left untouched
-    assert "useState(" in formatted;
-
-    # import must stay since useState is still referenced
-    assert "import from \"react\"" in formatted;
-    assert "useState" in formatted;
-}
-
-# ── W3042: map(lambda → JSX) to list comprehension ──────────────────────────
-test "W3042 converts map lambda to list comprehension" {
-    input_path = auto_lint_fixture_path("map_lambda_to_comprehension.jac");
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # Single-param case: HourGrid is converted.
-    assert "for hour in hours" in formatted;
-    assert "[<div className=\"text-xs text-center\">{hour}</div> for hour in hours]"
-        in formatted;
-
-    # Multi-param case: MultiParamMap must be left untouched — list
-    # comprehensions only bind one iteration variable per `for` clause.
-    assert "items.map(" in formatted;
-    assert "lambda (a: any" in formatted;
-    assert "b: any)" in formatted;
-    assert "for a in items" not in formatted;
-    assert "for a, b in items" not in formatted;
-}
-
-test "W3042 filter-map chain converts to filtered comprehension" {
-    input_path = auto_lint_fixture_path("filter_map_lambda_to_comprehension.jac");
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
-
-    # Both .filter() and .map() calls must be gone
-    assert ".map(" not in formatted;
-    assert ".filter(" not in formatted;
-
-    # Should produce a filtered list comprehension with an if clause
-    assert "<li className=\"active\">{item.name}</li>" in formatted;
-    assert "for item in items" in formatted;
-    assert "if item.active" in formatted;
-}
-
-test "W3050 strip-comments removes all comments when selected" {
-    input_path = auto_lint_fixture_path("deslop.jac");
-    config = JacConfig();
-    config.check = CheckConfig(lint=LintConfig(select=["default", "strip-comments"]));
-    set_config(config);
-    try {
-        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-        formatted = prog.mod.main.gen.jac;
-    } finally {
-        set_config(None);
+test "W3050 strip-comments removes all comments when selected, and related cases" {
+    def check_w3050_strip_comments_removes_all_comments_when_s {
+        input_path = auto_lint_fixture_path("deslop.jac");
+        config = JacConfig();
+        config.check = CheckConfig(
+            lint=LintConfig(select=["default", "strip-comments"])
+        );
+        set_config(config);
+        try {
+            prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+            formatted = prog.mod.main.gen.jac;
+        } finally {
+            set_config(None);
+        }
+        assert "# standalone comment" not in formatted;
+        assert "# inline comment" not in formatted;
+        assert "# field comment" not in formatted;
+        # Docstrings are a separate rule and must be preserved here.
+        assert "Module docstring to deslop" in formatted;
+        assert "Archetype docstring to deslop" in formatted;
     }
-    assert "# standalone comment" not in formatted;
-    assert "# inline comment" not in formatted;
-    assert "# field comment" not in formatted;
-    # Docstrings are a separate rule and must be preserved here.
-    assert "Module docstring to deslop" in formatted;
-    assert "Archetype docstring to deslop" in formatted;
+
+    def check_w3050_strip_comments_keeps_jac_ignore_directives {
+        input_path = auto_lint_fixture_path("deslop.jac");
+        config = JacConfig();
+        config.check = CheckConfig(
+            lint=LintConfig(select=["default", "strip-comments"])
+        );
+        set_config(config);
+        try {
+            prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+            formatted = prog.mod.main.gen.jac;
+        } finally {
+            set_config(None);
+        }
+        # The parser reads `# jac:ignore[...]` into inline_suppressions, so deleting
+        # one silently re-arms the diagnostic it was suppressing: it is a directive,
+        # not slop.
+        assert "# jac:ignore[E1053]" in formatted;
+        assert "# field comment" not in formatted;
+    }
+
+    def check_w3051_strip_docstrings_removes_all_docstrings_wh {
+        input_path = auto_lint_fixture_path("deslop.jac");
+        config = JacConfig();
+        config.check = CheckConfig(
+            lint=LintConfig(select=["default", "strip-docstrings"])
+        );
+        set_config(config);
+        try {
+            prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+            formatted = prog.mod.main.gen.jac;
+        } finally {
+            set_config(None);
+        }
+        assert "Module docstring to deslop" not in formatted;
+        assert "Archetype docstring to deslop" not in formatted;
+        # Comments are a separate rule and must be preserved here.
+        assert "# standalone comment" in formatted;
+        assert "# inline comment" in formatted;
+    }
+
+    def check_deslop_rules_fire_under_select_all {
+        input_path = auto_lint_fixture_path("deslop.jac");
+        config = JacConfig();
+        config.check = CheckConfig(lint=LintConfig(select=["all"]));
+        set_config(config);
+        try {
+            prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+            formatted = prog.mod.main.gen.jac;
+        } finally {
+            set_config(None);
+        }
+        assert "# standalone comment" not in formatted;
+        assert "Module docstring to deslop" not in formatted;
+        assert "Archetype docstring to deslop" not in formatted;
+        assert "# jac:ignore[E1053]" in formatted;
+    }
+
+    def check_deslop_rules_are_disabled_under_default_select {
+        input_path = auto_lint_fixture_path("deslop.jac");
+        config = JacConfig();
+        set_config(config);
+        try {
+            prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+            formatted = prog.mod.main.gen.jac;
+        } finally {
+            set_config(None);
+        }
+        assert "# standalone comment" in formatted;
+        assert "Module docstring to deslop" in formatted;
+    }
+    run_cases(
+        [
+            (
+                "W3050 strip-comments removes all comments when selected",
+                check_w3050_strip_comments_removes_all_comments_when_s
+            ),
+            (
+                "W3050 strip-comments keeps jac:ignore directives",
+                check_w3050_strip_comments_keeps_jac_ignore_directives
+            ),
+            (
+                "W3051 strip-docstrings removes all docstrings when selected",
+                check_w3051_strip_docstrings_removes_all_docstrings_wh
+            ),
+            (
+                "deslop rules fire under select all",
+                check_deslop_rules_fire_under_select_all
+            ),
+            (
+                "deslop rules are disabled under default select",
+                check_deslop_rules_are_disabled_under_default_select
+            )
+        ]
+    );
 }
 
-test "W3050 strip-comments keeps jac:ignore directives" {
-    input_path = auto_lint_fixture_path("deslop.jac");
-    config = JacConfig();
-    config.check = CheckConfig(lint=LintConfig(select=["default", "strip-comments"]));
-    set_config(config);
-    try {
-        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-        formatted = prog.mod.main.gen.jac;
-    } finally {
-        set_config(None);
-    }
-    # The parser reads `# jac:ignore[...]` into inline_suppressions, so deleting
-    # one silently re-arms the diagnostic it was suppressing: it is a directive,
-    # not slop.
-    assert "# jac:ignore[E1053]" in formatted;
-    assert "# field comment" not in formatted;
-}
-
-test "W3051 strip-docstrings removes all docstrings when selected" {
-    input_path = auto_lint_fixture_path("deslop.jac");
-    config = JacConfig();
-    config.check = CheckConfig(lint=LintConfig(select=["default", "strip-docstrings"]));
-    set_config(config);
-    try {
-        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-        formatted = prog.mod.main.gen.jac;
-    } finally {
-        set_config(None);
-    }
-    assert "Module docstring to deslop" not in formatted;
-    assert "Archetype docstring to deslop" not in formatted;
-    # Comments are a separate rule and must be preserved here.
-    assert "# standalone comment" in formatted;
-    assert "# inline comment" in formatted;
-}
 
 test "W3051 strip-docstrings removes string statements inside bodies" {
     input_path = auto_lint_fixture_path("deslop_string_stmts.jac");
@@ -1567,22 +1833,6 @@ test "W0060 flags every string statement in a body, not only the first" {
     assert lines == [2, 8, 9, 10, 12, 14, 29] , f"W0060 lines: {lines}";
 }
 
-test "deslop rules fire under select all" {
-    input_path = auto_lint_fixture_path("deslop.jac");
-    config = JacConfig();
-    config.check = CheckConfig(lint=LintConfig(select=["all"]));
-    set_config(config);
-    try {
-        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-        formatted = prog.mod.main.gen.jac;
-    } finally {
-        set_config(None);
-    }
-    assert "# standalone comment" not in formatted;
-    assert "Module docstring to deslop" not in formatted;
-    assert "Archetype docstring to deslop" not in formatted;
-    assert "# jac:ignore[E1053]" in formatted;
-}
 
 """Format the separate_impls fixture under the given lint select list."""
 def format_separate_impls(select: list[str]) -> str {
@@ -1635,20 +1885,35 @@ test "W3055 leaves bodies that an impl cannot name in place" {
     assert "impl Field.init" not in formatted;
 }
 
-test "W3055 separates generic bodies and restates their type parameters" {
-    formatted = format_separate_impls(["separate-impls"]);
-    assert "    def generic[T](x: T) -> T;\n" in formatted;
-    assert "impl Foo.generic[T](x: T) -> T {\n    return x;" in formatted;
+test "W3055 separates cases" {
+    def check_w3055_separates_generic_bodies_and_restates_thei {
+        formatted = format_separate_impls(["separate-impls"]);
+        assert "    def generic[T](x: T) -> T;\n" in formatted;
+        assert "impl Foo.generic[T](x: T) -> T {\n    return x;" in formatted;
+    }
+
+    def check_w3055_separates_client_component_bodies_like_any {
+        formatted = format_separate_impls(["separate-impls"]);
+        assert "\ndef badge(label: str) -> JsxElement;\n" in formatted;
+        assert "impl badge(label: str) -> JsxElement {\n    return <span>{label}</span>;"
+            in formatted;
+        assert "\ndef counter;\n" in formatted;
+        assert "impl counter {\n    has clicks: int = 0;" in formatted;
+    }
+    run_cases(
+        [
+            (
+                "W3055 separates generic bodies and restates their type parameters",
+                check_w3055_separates_generic_bodies_and_restates_thei
+            ),
+            (
+                "W3055 separates client component bodies like any other",
+                check_w3055_separates_client_component_bodies_like_any
+            )
+        ]
+    );
 }
 
-test "W3055 separates client component bodies like any other" {
-    formatted = format_separate_impls(["separate-impls"]);
-    assert "\ndef badge(label: str) -> JsxElement;\n" in formatted;
-    assert "impl badge(label: str) -> JsxElement {\n    return <span>{label}</span>;"
-        in formatted;
-    assert "\ndef counter;\n" in formatted;
-    assert "impl counter {\n    has clicks: int = 0;" in formatted;
-}
 
 test "W3055 separate-impls is idempotent" {
     formatted = format_separate_impls(["separate-impls"]);
@@ -1724,19 +1989,6 @@ test "W3056 impls-in-annex is on under all and off under default" {
     assert format_impls_in_annex(IMPLS_IN_MODULE, ["separate-impls"])[1] == 0;
 }
 
-test "deslop rules are disabled under default select" {
-    input_path = auto_lint_fixture_path("deslop.jac");
-    config = JacConfig();
-    set_config(config);
-    try {
-        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-        formatted = prog.mod.main.gen.jac;
-    } finally {
-        set_config(None);
-    }
-    assert "# standalone comment" in formatted;
-    assert "Module docstring to deslop" in formatted;
-}
 
 test "property-to-native folds '@x.getter' into the accessor block" {
     input_path = auto_lint_fixture_path("property_getter_decorator.jac");

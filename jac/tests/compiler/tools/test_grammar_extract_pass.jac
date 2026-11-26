@@ -7,7 +7,7 @@ Jac parser module. Also validates grammar matches jac.spec.
 
 import from pathlib { Path }
 import os;
-import from tests.support { JAC_ROOT }
+import from tests.support { JAC_ROOT, run_cases }
 import jaclang;
 import from jaclang.compiler.tools.grammar_extract_pass {
     GAlt,
@@ -376,70 +376,139 @@ def mini_rules -> dict[str, any] {
     return {r.name: r for r in mini_pass().rules};
 }
 
-test "contextual tokens and finally blocks retain their grammar" {
-    rules = mini_rules();
-    assert fmt(rules["contextual"].body) == '"graph" "{" ";"';
+test "contextual tokens and finally blocks retain their grammar, and related cases" {
+    def check_contextual_tokens_and_finally_blocks_retain_thei {
+        rules = mini_rules();
+
+        assert fmt(rules["contextual"].body) == '"graph" "{" ";"';
+    }
+
+    def check_or_merged_match_tok_loop_emits_full_token_set {
+        rules = mini_rules();
+
+        assert fmt(rules["loopy"].body) == '(("." | ".>") NAME)*';
+    }
+
+    def check_or_merged_match_tok_opt_emits_full_token_set {
+        rules = mini_rules();
+
+        assert fmt(rules["optish"].body) == '(("." | "<.") NAME)?';
+    }
+
+    def check_opaque_if_else_becomes_alternation {
+        rules = mini_rules();
+
+        assert fmt(rules["choice"].body) == '";" | ","';
+    }
+
+    def check_guard_suppressed_when_child_rule_consumes_it {
+        rules = mini_rules();
+
+        assert fmt(rules["outer"].body) == "inner_if | fallback";
+    }
+
+    def check_self_recursive_guard_is_kept {
+        rules = mini_rules();
+
+        assert fmt(rules["rec"].body) == '"-" rec | leaf';
+    }
+
+    def check_genuinely_nullable_dispatch_keeps_its_optionalit {
+        rules = mini_rules();
+
+        assert fmt(rules["marker"].body) == '("own" | "imm")?';
+    }
+
+    def check_none_returning_dispatcher_loses_redundant_option {
+        rules = mini_rules();
+
+        assert fmt(rules["marker2"].body) == '"own" | "imm"';
+    }
+
+    def check_ternary_with_none_branch_is_optional {
+        rules = mini_rules();
+
+        assert fmt(rules["maybe"].body) == 'leaf? ";"';
+    }
+
+    def check_mid_loop_separator_break_emits_optional_separato {
+        rules = mini_rules();
+
+        assert fmt(rules["listy"].body) == '(leaf ","?)*';
+    }
+
+    def check_exhaustive_if_else_chain_is_not_optional {
+        rules = mini_rules();
+
+        assert fmt(rules["either"].body) == '"if" | NAME';
+    }
+
+    def check_guard_covered_by_deep_first_set_is_elided {
+        rules = mini_rules();
+
+        assert fmt(rules["covered"].body) == 'wrapped ";" | leaf';
+    }
+
+    def check_try_parse_idiom_becomes_ordered_choice {
+        rules = mini_rules();
+
+        assert fmt(rules["trying"].body) == "marker2 | leaf";
+    }
+    run_cases(
+        [
+            (
+                "contextual tokens and finally blocks retain their grammar",
+                check_contextual_tokens_and_finally_blocks_retain_thei
+            ),
+            (
+                "or merged match_tok loop emits full token set",
+                check_or_merged_match_tok_loop_emits_full_token_set
+            ),
+            (
+                "or merged match_tok opt emits full token set",
+                check_or_merged_match_tok_opt_emits_full_token_set
+            ),
+            (
+                "opaque if else becomes alternation",
+                check_opaque_if_else_becomes_alternation
+            ),
+            (
+                "guard suppressed when child rule consumes it",
+                check_guard_suppressed_when_child_rule_consumes_it
+            ),
+            ("self recursive guard is kept", check_self_recursive_guard_is_kept),
+            (
+                "genuinely nullable dispatch keeps its optionality",
+                check_genuinely_nullable_dispatch_keeps_its_optionalit
+            ),
+            (
+                "none returning dispatcher loses redundant optionality",
+                check_none_returning_dispatcher_loses_redundant_option
+            ),
+            (
+                "ternary with none branch is optional",
+                check_ternary_with_none_branch_is_optional
+            ),
+            (
+                "mid loop separator break emits optional separator",
+                check_mid_loop_separator_break_emits_optional_separato
+            ),
+            (
+                "exhaustive if else chain is not optional",
+                check_exhaustive_if_else_chain_is_not_optional
+            ),
+            (
+                "guard covered by deep first set is elided",
+                check_guard_covered_by_deep_first_set_is_elided
+            ),
+            (
+                "try parse idiom becomes ordered choice",
+                check_try_parse_idiom_becomes_ordered_choice
+            )
+        ]
+    );
 }
 
-test "or merged match_tok loop emits full token set" {
-    rules = mini_rules();
-    assert fmt(rules["loopy"].body) == '(("." | ".>") NAME)*';
-}
-
-test "or merged match_tok opt emits full token set" {
-    rules = mini_rules();
-    assert fmt(rules["optish"].body) == '(("." | "<.") NAME)?';
-}
-
-test "opaque if else becomes alternation" {
-    rules = mini_rules();
-    assert fmt(rules["choice"].body) == '";" | ","';
-}
-
-test "guard suppressed when child rule consumes it" {
-    rules = mini_rules();
-    assert fmt(rules["outer"].body) == "inner_if | fallback";
-}
-
-test "self recursive guard is kept" {
-    rules = mini_rules();
-    assert fmt(rules["rec"].body) == '"-" rec | leaf';
-}
-
-test "genuinely nullable dispatch keeps its optionality" {
-    rules = mini_rules();
-    assert fmt(rules["marker"].body) == '("own" | "imm")?';
-}
-
-test "none returning dispatcher loses redundant optionality" {
-    rules = mini_rules();
-    assert fmt(rules["marker2"].body) == '"own" | "imm"';
-}
-
-test "ternary with none branch is optional" {
-    rules = mini_rules();
-    assert fmt(rules["maybe"].body) == 'leaf? ";"';
-}
-
-test "mid loop separator break emits optional separator" {
-    rules = mini_rules();
-    assert fmt(rules["listy"].body) == '(leaf ","?)*';
-}
-
-test "exhaustive if else chain is not optional" {
-    rules = mini_rules();
-    assert fmt(rules["either"].body) == '"if" | NAME';
-}
-
-test "guard covered by deep first set is elided" {
-    rules = mini_rules();
-    assert fmt(rules["covered"].body) == 'wrapped ";" | leaf';
-}
-
-test "try parse idiom becomes ordered choice" {
-    rules = mini_rules();
-    assert fmt(rules["trying"].body) == "marker2 | leaf";
-}
 
 test "strict diagnostics flag invisible constructs" {
     p = mini_pass();
@@ -492,34 +561,44 @@ test "known rule names" {
     assert len(missing) == 0 , f"Missing rules: {missing}";
 }
 
-test "bitwise or structure" {
-    extracted = real_parser_pass();
-    rule_map = {r.name: r for r in extracted.rules};
-    assert "bitwise_or" in rule_map;
-    ebnf = fmt(rule_map["bitwise_or"].body);
-    assert "bitwise_xor" in ebnf;
-    assert '"|"' in ebnf;
+test "bitwise or structure, and related cases" {
+    def check_bitwise_or_structure {
+        extracted = real_parser_pass();
+        rule_map = {r.name: r for r in extracted.rules};
+        assert "bitwise_or" in rule_map;
+        ebnf = fmt(rule_map["bitwise_or"].body);
+        assert "bitwise_xor" in ebnf;
+        assert '"|"' in ebnf;
+    }
+
+    def check_if_stmt_structure {
+        extracted = real_parser_pass();
+        rule_map = {r.name: r for r in extracted.rules};
+        assert "if_stmt" in rule_map;
+        ebnf = fmt(rule_map["if_stmt"].body);
+        assert '"if"' in ebnf;
+        assert "expression" in ebnf;
+        assert '"{"' in ebnf;
+        assert '"}"' in ebnf;
+    }
+
+    def check_while_stmt_structure {
+        extracted = real_parser_pass();
+        rule_map = {r.name: r for r in extracted.rules};
+        assert "while_stmt" in rule_map;
+        ebnf = fmt(rule_map["while_stmt"].body);
+        assert '"while"' in ebnf;
+        assert "expression" in ebnf;
+    }
+    run_cases(
+        [
+            ("bitwise or structure", check_bitwise_or_structure),
+            ("if stmt structure", check_if_stmt_structure),
+            ("while stmt structure", check_while_stmt_structure)
+        ]
+    );
 }
 
-test "if stmt structure" {
-    extracted = real_parser_pass();
-    rule_map = {r.name: r for r in extracted.rules};
-    assert "if_stmt" in rule_map;
-    ebnf = fmt(rule_map["if_stmt"].body);
-    assert '"if"' in ebnf;
-    assert "expression" in ebnf;
-    assert '"{"' in ebnf;
-    assert '"}"' in ebnf;
-}
-
-test "while stmt structure" {
-    extracted = real_parser_pass();
-    rule_map = {r.name: r for r in extracted.rules};
-    assert "while_stmt" in rule_map;
-    ebnf = fmt(rule_map["while_stmt"].body);
-    assert '"while"' in ebnf;
-    assert "expression" in ebnf;
-}
 
 test "forever stmt structure" {
     extracted = real_parser_pass();
