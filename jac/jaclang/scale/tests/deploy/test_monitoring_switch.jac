@@ -319,6 +319,11 @@ test "storage settings that would take the stack down are refused before anythin
         ("prometheus_storage", "ten"),
         ("loki_storage", "1.5Gi"),
         ("tempo_storage", "500Mi"),
+        # The size parser forgives both of these and Kubernetes does not, so
+        # they would pass here and be refused when the claim is made, after
+        # the app is already applied.
+        ("prometheus_storage", "10 Gi"),
+        ("tempo_storage", "1_0Gi"),
         ("loki_retention", "2h"),
         ("loki_retention", "soon")
     ] {
@@ -368,6 +373,14 @@ test "each data claim is the app's own and asks for the configured size and clas
     );
     assert classed["spec"]["storageClassName"] == "gp3";
     assert classed["spec"]["resources"]["requests"]["storage"] == "5Gi";
+    # What is checked is what is sent: space around a size is allowed, and the
+    # claim asks for the size without it.
+    padded = _stored(True, {"loki_storage": " 20Gi "});
+    assert padded._storage_problems() == [];
+    assert padded._data_pvc("t", "t-ns", "loki")["spec"]["resources"]["requests"][
+        "storage"
+    ]
+        == "20Gi";
 }
 
 
