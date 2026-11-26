@@ -911,9 +911,6 @@ impl NaIRGenPass._lower_class_type(t: ClassType) -> (ir.Type | None) {
             if _k is None or _v is None {
                 return None;
             }
-            if self?.jacval_type and _k == self.jacval_type {
-                return None;
-            }
             k_llvm = _k;
             v_llvm = _v;
         }
@@ -940,9 +937,6 @@ impl NaIRGenPass._lower_class_type(t: ClassType) -> (ir.Type | None) {
         if type_args {
             _e = self._elem_storage_llvm(type_args[0]);
             if _e is None {
-                return None;
-            }
-            if self?.jacval_type and _e == self.jacval_type {
                 return None;
             }
             elem_llvm = _e;

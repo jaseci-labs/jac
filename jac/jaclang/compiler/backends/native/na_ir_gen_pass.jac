@@ -3789,6 +3789,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> None;
 
     def _emit_cstr_hash_fn -> ir.Function;
+    def _jacval_hash_fn -> ir.Function;
     def _is_runtime_class_tuple(t: any) -> bool;
     def _runtime_class_value(expr: (uni.UniNode | None)) -> (ir.Value | None);
     def _runtime_class_arms(

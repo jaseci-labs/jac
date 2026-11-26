@@ -766,16 +766,9 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     _k_store = self._elem_storage_llvm(_dk_args[0])
         if (_dk_args is not None and len(_dk_args) >= 2)
         else None;
-    if _k_store is not None and self?.jacval_type and _k_store == self.jacval_type {
-        self.emit(
-            E5092,
-            node_override=nd,
-            kind="expression",
-            name="dict with mixed key types",
-            help_text="Native dicts hash a single concrete key type; a dict whose keys mix representations has no native storage. Use one key type (for example str) and keep the mixing on the value side."
-        );
-        return None;
-    }
+    any_keys = _k_store is not None
+        and self?.jacval_type is not None
+        and _k_store == self.jacval_type;
 
     first_pair = nd.kv_pairs[0];
     first_key = self._str_norm_optional(self._codegen_expr(first_pair.key));
@@ -787,11 +780,14 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     _own_dk = self._dict_key_of(nd);
     use_jacval = _own_dk is not None and _own_dk.endswith(":jacval");
 
-    if _own_dk is not None and not use_jacval and _own_dk in self.dict_helpers {
+    if _own_dk is not None
+        and not use_jacval
+        and not any_keys
+        and _own_dk in self.dict_helpers {
         dict_key = _own_dk;
         helpers = self.dict_helpers[dict_key];
     } else {
-        key_type = first_key.type;
+        key_type = self.jacval_type if any_keys else first_key.type;
         (key_type_name, key_size) = self._hash_key_spec(key_type);
         if use_jacval {
             val_type: ir.Type = self.jacval_type;

@@ -882,6 +882,15 @@ impl NaIRGenPass._emit_key_comparison(
 ) -> ir.Value {
     i8_ptr = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
+    if self?.jacval_type is not None and key_type == self.jacval_type {
+        _saved = self._builder;
+        self._builder = b;
+        try {
+            return self._emit_jacval_eq(stored_val, search_val);
+        } finally {
+            self._builder = _saved;
+        }
+    }
     if isinstance(key_type, ir.IntType) {
         return b.icmp_signed("==", stored_val, search_val, name="key.eq");
     } elif self._is_bytes_type(key_type) {
