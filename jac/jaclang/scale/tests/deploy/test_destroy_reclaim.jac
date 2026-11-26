@@ -656,3 +656,45 @@ test "a data claim still terminating is let go by the pod holding it, then made 
         "the claim was not made again, so the new pod has nothing to mount"
     );
 }
+
+
+def _claim(size: str) -> any {
+    return SimpleNamespace(
+        metadata=SimpleNamespace(deletion_timestamp=None),
+        spec=SimpleNamespace(resources=SimpleNamespace(requests={"storage": size})),
+        status=SimpleNamespace(capacity={"storage": size})
+    );
+}
+
+
+test "ensuring a data claim reports the size the volume really has" {
+    # Prometheus is capped at a share of this size. Asking for 30Gi is not
+    # having 30Gi: a class that cannot expand refuses the resize, and an
+    # accepted one is not done until the capacity says so.
+    deployer = monitoring_mod.MonitoringDeployer(
+        k8s_config=KubernetesConfig.from_dict(
+            KubernetesConfig,
+            {"app_name": APP, "namespace": NS, "prometheus_storage": "30Gi"}
+        )
+    );
+    for (found, resize, want) in [
+        (ApiException(status=404), None, "30Gi"),
+        (_claim("10Gi"), ApiException(status=403, reason="Forbidden"), "10Gi"),
+        (_claim("10Gi"), None, "10Gi"),
+        (_claim("30Gi"), None, "30Gi")
+    ] {
+        core_v1 = unittest.mock.MagicMock();
+        if isinstance(found, ApiException) {
+            core_v1.read_namespaced_persistent_volume_claim.side_effect = found;
+        } else {
+            core_v1.read_namespaced_persistent_volume_claim.return_value = found;
+        }
+        core_v1.patch_namespaced_persistent_volume_claim.side_effect = resize;
+        got = deployer._ensure_data_pvc(
+            unittest.mock.MagicMock(),
+            core_v1,
+            deployer._data_pvc(APP, NS, "prometheus")
+        );
+        assert got == want , (found, resize, got);
+    }
+}

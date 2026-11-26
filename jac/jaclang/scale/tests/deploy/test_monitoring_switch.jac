@@ -285,6 +285,14 @@ test "with storage on, Prometheus and Loki are bounded so the volume cannot fill
     # A size cap on its own drops Prometheus's 15-day default, so the time
     # limit is passed with it.
     assert "--storage.tsdb.retention.time=15d" in args , args;
+    # The cap is worked out from the volume the claim really has. A size
+    # raised on a class that cannot expand leaves the old volume in place, and
+    # 80% of the new setting would be more than that volume holds.
+    raised = _stored(True, {"prometheus_storage": "30Gi"});
+    on_old_volume = raised._prometheus_deployment("t", "t-ns", "10Gi")["spec"][
+        "template"
+    ]["spec"]["containers"][0]["args"];
+    assert "--storage.tsdb.retention.size=8192MB" in on_old_volume , on_old_volume;
 
     loki = yaml.safe_load(deployer._loki_config());
     assert loki.get("compactor")
@@ -360,4 +368,44 @@ test "each data claim is the app's own and asks for the configured size and clas
     );
     assert classed["spec"]["storageClassName"] == "gp3";
     assert classed["spec"]["resources"]["requests"]["storage"] == "5Gi";
+}
+
+
+def _storage_target(
+    extra: dict[str, any], monitoring: bool = True
+) -> KubernetesTarget {
+    return KubernetesTarget(
+        config=KubernetesConfig.from_dict(
+            KubernetesConfig,
+            {
+                "app_name": "t",
+                "namespace": "t-ns",
+                "monitoring_enabled": monitoring,
+                "monitoring_storage_enabled": True
+            }
+                | extra
+        ),
+        gateway_config={}
+    );
+}
+
+
+test "storage settings that cannot be applied refuse the deploy, instead of a warning after it" {
+    # The observability stack is applied after the app, inside a try that
+    # turns any error into a warning. A setting the user wrote on purpose and
+    # that cannot be applied would then leave monitoring as it was under a
+    # deploy that reports success, so the deploy asks first and stops.
+    refusal = _storage_target({"loki_retention": "2h"})._monitoring_storage_refusal(
+        check_cluster=False
+    );
+    assert "loki_retention" in refusal , refusal;
+    assert _storage_target({})._monitoring_storage_refusal(check_cluster=False) == "";
+    # No stack is deployed for an app that asked for none, so its storage
+    # settings are not this deploy's to refuse.
+    assert _storage_target(
+        {"loki_retention": "2h"}, monitoring=False
+    )._monitoring_storage_refusal(
+        check_cluster=False
+    )
+        == "";
 }
