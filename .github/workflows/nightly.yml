@@ -233,6 +233,9 @@ jobs:
       - name: Run K8s microservice real-app e2e
         env:
           CLUSTER_TYPE: kind
+          # The slim leg keeps the monitoring data on claims and checks it
+          # survives a replaced pod; the other leg stays on emptyDir.
+          E2E_MONITORING_STORAGE: ${{ matrix.base == 'slim' && '1' || '0' }}
         run: |
           bash jac/jaclang/scale/scripts/k8s_microservice_real_e2e.sh \
               jac/jaclang/scale/tests/fixtures/k8s_e2e

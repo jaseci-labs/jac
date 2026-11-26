@@ -46,15 +46,21 @@ memory_request = "1Gi"
 TOML
     echo "# appended the e2e-harness memory_request for cart_app to jac.toml"
 fi
+# 1 keeps the monitoring data on claims and checks it survives a replaced
+# pod; 0 leaves it on emptyDir. The nightly runs one leg each way, so both
+# shapes are deployed against a real API server.
+E2E_MONITORING_STORAGE="${E2E_MONITORING_STORAGE:-1}"
 if ! grep -q "e2e-harness monitoring" "${PROJECT_DIR}/jac.toml"; then
     cat >> "${PROJECT_DIR}/jac.toml" <<'TOML'
 
 # --- e2e-harness monitoring (appended by k8s_microservice_real_e2e.sh) ---
 [scale.monitoring]
 enabled = true
-storage_enabled = true
 TOML
-    echo "# appended the e2e-harness monitoring switch to jac.toml"
+    if [ "${E2E_MONITORING_STORAGE}" = "1" ]; then
+        echo "storage_enabled = true" >> "${PROJECT_DIR}/jac.toml"
+    fi
+    echo "# appended the e2e-harness monitoring switch to jac.toml (storage=${E2E_MONITORING_STORAGE})"
 fi
 
 NAMESPACE="${NAMESPACE:-jac-e2e}"
@@ -159,7 +165,7 @@ target = KubernetesTarget(
         bundle_storage_class="${BUNDLE_STORAGE_CLASS}",
         python_image="${E2E_POD_BASE_IMAGE:-}",
         monitoring_enabled=True,
-        monitoring_storage_enabled=True,
+        monitoring_storage_enabled=$([ "${E2E_MONITORING_STORAGE}" = "1" ] && echo True || echo False),
     ),
     logger=StderrLogger(),
 )
@@ -506,69 +512,75 @@ else
     fi
     echo "  Prometheus job '${APP_NAME}': ${SCRAPE_STATE} targets up"
 
-    # storage_enabled puts the Prometheus data on a claim. On emptyDir a
-    # replaced pod starts with no history, so the same question about a moment
-    # before the delete is asked of the pod that comes back. The moment is a
-    # few seconds old, so no scrape is still landing on it. The second answer
-    # is taken from the new pod by name: the Service would also reach the old
-    # one while it is still terminating, and that answer proves nothing.
-    echo "  Prometheus keeps its samples when its pod is replaced..."
-    PROM_QUERY_URL="http://localhost:${PROM_LOCAL_PORT}/api/v1/query?query=count(up)&time=$(($(date +%s) - 5))"
-    prom_count_up() {
-        curl -s --max-time 5 "${PROM_QUERY_URL}" \
-            | jac -c 'import sys,json; r=json.load(sys.stdin)["data"]["result"]; print(r[0]["value"][1] if r else "")' \
-            2>/dev/null || true
-    }
-    prom_running_pod() {
-        kubectl get pods -n "${NAMESPACE}" -l "app=${APP_NAME}-prometheus" \
-            --field-selector=status.phase=Running \
-            -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true
-    }
-    PROM_POD_BEFORE=$(prom_running_pod)
-    SAMPLES_BEFORE=$(prom_count_up)
-    if [ -z "${PROM_POD_BEFORE}" ] || [ -z "${SAMPLES_BEFORE}" ]; then
-        echo "FAIL: Prometheus has no samples to keep before its pod is replaced (pod=${PROM_POD_BEFORE:-none})"
-        exit 1
-    fi
-    kill "${PROM_PORT_FORWARD_PID}" 2>/dev/null || true
-    PROM_PORT_FORWARD_PID=""
-    kubectl delete pod -n "${NAMESPACE}" "${PROM_POD_BEFORE}" --wait=true
-    PROM_POD_AFTER=""
-    for attempt in $(seq 1 60); do
-        PROM_POD_AFTER=$(prom_running_pod)
-        if [ -n "${PROM_POD_AFTER}" ] && [ "${PROM_POD_AFTER}" != "${PROM_POD_BEFORE}" ]; then
-            break
+    if [ "${E2E_MONITORING_STORAGE}" != "1" ]; then
+        echo "  storage is off on this leg: Prometheus is on emptyDir, so there is no history to keep"
+        kill "${PROM_PORT_FORWARD_PID}" 2>/dev/null || true
+        PROM_PORT_FORWARD_PID=""
+    else
+        # storage_enabled puts the Prometheus data on a claim. On emptyDir a
+        # replaced pod starts with no history, so the same question about a moment
+        # before the delete is asked of the pod that comes back. The moment is a
+        # few seconds old, so no scrape is still landing on it. The second answer
+        # is taken from the new pod by name: the Service would also reach the old
+        # one while it is still terminating, and that answer proves nothing.
+        echo "  Prometheus keeps its samples when its pod is replaced..."
+        PROM_QUERY_URL="http://localhost:${PROM_LOCAL_PORT}/api/v1/query?query=count(up)&time=$(($(date +%s) - 5))"
+        prom_count_up() {
+            curl -s --max-time 5 "${PROM_QUERY_URL}" \
+                | jac -c 'import sys,json; r=json.load(sys.stdin)["data"]["result"]; print(r[0]["value"][1] if r else "")' \
+                2>/dev/null || true
+        }
+        prom_running_pod() {
+            kubectl get pods -n "${NAMESPACE}" -l "app=${APP_NAME}-prometheus" \
+                --field-selector=status.phase=Running \
+                -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true
+        }
+        PROM_POD_BEFORE=$(prom_running_pod)
+        SAMPLES_BEFORE=$(prom_count_up)
+        if [ -z "${PROM_POD_BEFORE}" ] || [ -z "${SAMPLES_BEFORE}" ]; then
+            echo "FAIL: Prometheus has no samples to keep before its pod is replaced (pod=${PROM_POD_BEFORE:-none})"
+            exit 1
         fi
-        sleep 5
-    done
-    if [ -z "${PROM_POD_AFTER}" ] || [ "${PROM_POD_AFTER}" = "${PROM_POD_BEFORE}" ]; then
-        echo "FAIL: no new ${APP_NAME}-prometheus pod is Running after ${PROM_POD_BEFORE} was deleted"
-        kubectl get pvc -n "${NAMESPACE}" || true
-        dump_pod_state
-        exit 1
-    fi
-    kubectl port-forward -n "${NAMESPACE}" "pod/${PROM_POD_AFTER}" \
-        "${PROM_LOCAL_PORT}:9090" >/dev/null 2>&1 &
-    PROM_PORT_FORWARD_PID=$!
-    sleep 3
-    SAMPLES_AFTER=""
-    for attempt in $(seq 1 12); do
-        SAMPLES_AFTER=$(prom_count_up)
-        if [ "${SAMPLES_AFTER}" = "${SAMPLES_BEFORE}" ]; then
-            break
+        kill "${PROM_PORT_FORWARD_PID}" 2>/dev/null || true
+        PROM_PORT_FORWARD_PID=""
+        kubectl delete pod -n "${NAMESPACE}" "${PROM_POD_BEFORE}" --wait=true
+        PROM_POD_AFTER=""
+        for attempt in $(seq 1 60); do
+            PROM_POD_AFTER=$(prom_running_pod)
+            if [ -n "${PROM_POD_AFTER}" ] && [ "${PROM_POD_AFTER}" != "${PROM_POD_BEFORE}" ]; then
+                break
+            fi
+            sleep 5
+        done
+        if [ -z "${PROM_POD_AFTER}" ] || [ "${PROM_POD_AFTER}" = "${PROM_POD_BEFORE}" ]; then
+            echo "FAIL: no new ${APP_NAME}-prometheus pod is Running after ${PROM_POD_BEFORE} was deleted"
+            kubectl get pvc -n "${NAMESPACE}" || true
+            dump_pod_state
+            exit 1
         fi
-        echo "    attempt ${attempt}/12: count(up)=${SAMPLES_AFTER:-none}, was ${SAMPLES_BEFORE}, retrying in 5s..."
-        sleep 5
-    done
-    if [ "${SAMPLES_AFTER}" != "${SAMPLES_BEFORE}" ]; then
-        echo "FAIL: ${PROM_POD_AFTER} answers count(up)=${SAMPLES_AFTER:-none} for a moment before ${PROM_POD_BEFORE} was deleted, which answered ${SAMPLES_BEFORE}"
-        kubectl get pvc -n "${NAMESPACE}" || true
-        dump_pod_state
-        exit 1
+        kubectl port-forward -n "${NAMESPACE}" "pod/${PROM_POD_AFTER}" \
+            "${PROM_LOCAL_PORT}:9090" >/dev/null 2>&1 &
+        PROM_PORT_FORWARD_PID=$!
+        sleep 3
+        SAMPLES_AFTER=""
+        for attempt in $(seq 1 12); do
+            SAMPLES_AFTER=$(prom_count_up)
+            if [ "${SAMPLES_AFTER}" = "${SAMPLES_BEFORE}" ]; then
+                break
+            fi
+            echo "    attempt ${attempt}/12: count(up)=${SAMPLES_AFTER:-none}, was ${SAMPLES_BEFORE}, retrying in 5s..."
+            sleep 5
+        done
+        if [ "${SAMPLES_AFTER}" != "${SAMPLES_BEFORE}" ]; then
+            echo "FAIL: ${PROM_POD_AFTER} answers count(up)=${SAMPLES_AFTER:-none} for a moment before ${PROM_POD_BEFORE} was deleted, which answered ${SAMPLES_BEFORE}"
+            kubectl get pvc -n "${NAMESPACE}" || true
+            dump_pod_state
+            exit 1
+        fi
+        echo "  Prometheus kept count(up)=${SAMPLES_AFTER}: ${PROM_POD_BEFORE} was deleted and ${PROM_POD_AFTER} gives the same answer"
+        kill "${PROM_PORT_FORWARD_PID}" 2>/dev/null || true
+        PROM_PORT_FORWARD_PID=""
     fi
-    echo "  Prometheus kept count(up)=${SAMPLES_AFTER}: ${PROM_POD_BEFORE} was deleted and ${PROM_POD_AFTER} gives the same answer"
-    kill "${PROM_PORT_FORWARD_PID}" 2>/dev/null || true
-    PROM_PORT_FORWARD_PID=""
 
     echo "  waiting on Alloy DaemonSet..."
     if ! kubectl rollout status "daemonset/${ALLOY_DS}" -n "${NAMESPACE}" --timeout="${ROLLOUT_TIMEOUT}"; then
