@@ -59,7 +59,17 @@ It's time to show and stop telling. See all of those features running in one sin
 
 ## Try Jac in 30 seconds
 
-Install the self-contained `jac` binary. No Python, pip, Node, or C toolchain required:
+Jac comes as two self-contained binaries. Neither needs Python, pip, Node, or a C toolchain.
+
+**[neojac](https://github.com/jaseci-labs/neojac), Jac's most advanced compiler:**
+
+```bash
+curl -fsSL https://github.com/jaseci-labs/neojac/releases/latest/download/install.sh | bash
+```
+
+Run `neojac skills install` in your project to give your agent neojac's playbooks. The [neojac README](https://github.com/jaseci-labs/neojac#readme) has prompts to try.
+
+**`jac`, Jac's reference compiler**, which the rest of this README uses:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
