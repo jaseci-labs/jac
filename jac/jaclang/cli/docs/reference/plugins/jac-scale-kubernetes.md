@@ -777,14 +777,15 @@ With it on, each of the three components gets:
 
 - a `ReadWriteOnce` claim named `<app>-prometheus-data`, `<app>-loki-data` or `<app>-tempo-data`
 - a `Recreate` rollout, because the volume attaches to one node at a time. Every later rollout of that component has a few seconds with no pod
-- a limit that fits the volume: Prometheus is capped at 80% of `prometheus_storage` and keeps 15 days at most, Loki keeps `loki_retention`, Tempo keeps 48 hours
+- a limit that fits the volume: Prometheus is capped at 80% of the size its claim really has and keeps 15 days at most, Loki keeps `loki_retention`, Tempo keeps 48 hours
 
 Things to know before turning it on:
 
 - **The switch itself replaces each pod once.** Whatever is on the `emptyDir` at that moment is lost one last time.
-- **Use a block-storage class.** Leave `storage_class` empty for the cluster default, or name a `ReadWriteOnce` class such as `gp3`. Do not reuse the `ReadWriteMany` class set as `bundle_storage_class`: Prometheus does not support NFS-style file systems. The deploy refuses a class the cluster does not have, and an empty value on a cluster with no default class.
+- **Use a block-storage class.** Leave `storage_class` empty for the cluster default, or name a `ReadWriteOnce` class such as `gp3`. Do not reuse the `ReadWriteMany` class set as `bundle_storage_class`: Prometheus does not support NFS-style file systems.
+- **A setting that cannot be applied refuses the deploy.** A size or retention period that is not valid, a `storage_class` the cluster does not have, or an empty `storage_class` on a cluster with no default class stops the deploy before anything is applied.
 - **Size Loki for its busiest week.** Loki and Tempo drop data by age only, so a volume that fills stays full until it is grown. Sizes are whole-number quantities of at least `1Gi`, and `loki_retention` is hours, days or weeks of at least `24h` (`168h`, `7d`, `1w`).
-- **Sizes can be raised, not lowered.** A larger value grows the claim on the next deploy. A smaller one is ignored with a warning. `storage_class` cannot be changed on a claim that exists.
+- **Sizes can be raised, not lowered.** A larger value grows the claim on the next deploy. A smaller one is ignored with a warning, and so is a larger one on a class that cannot expand volumes: the claim keeps its size and Prometheus stays capped to the volume it has. `storage_class` cannot be changed on a claim that exists.
 - **Turning it off leaves the claims in place.** The pods go back to `emptyDir`, and the claims keep their data until `jac scale destroy` deletes them, either in full or with `--component monitoring`.
 
 **Prometheus scrape targets:**

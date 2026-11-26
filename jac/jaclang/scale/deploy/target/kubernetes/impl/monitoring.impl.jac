@@ -85,7 +85,7 @@ impl MonitoringDeployer._scrape_config(app_name: str, namespace: str) -> str {
 }
 
 impl MonitoringDeployer._prometheus_deployment(
-    app_name: str, namespace: str
+    app_name: str, namespace: str, volume_size: str = ''
 ) -> dict[str, any] {
     prometheus_name = f"{app_name}-prometheus";
     prometheus_sa_name = f"{prometheus_name}-sa";
@@ -164,7 +164,11 @@ impl MonitoringDeployer._prometheus_deployment(
         }
     };
     if self.k8s_config.monitoring_storage_enabled {
-        cap: int = (parse_storage_quantity(self.k8s_config.prometheus_storage) * 4 // 5)
+        cap: int = (
+            parse_storage_quantity(volume_size or self.k8s_config.prometheus_storage)
+                * 4
+            // 5
+        )
             // (1024 ** 2);
         deployment['spec']['template']['spec']['containers'][0]['args'] += [
             '--storage.tsdb.retention.time=15d',
@@ -330,12 +334,15 @@ impl MonitoringDeployer._deploy_prometheus(
         }
     }
 
+    volume_size: str = '';
     if self.k8s_config.monitoring_storage_enabled {
-        self._ensure_data_pvc(
+        volume_size = self._ensure_data_pvc(
             apps_v1, core_v1, self._data_pvc(app_name, namespace, 'prometheus')
         );
     }
-    prometheus_deployment = self._prometheus_deployment(app_name, namespace);
+    prometheus_deployment = self._prometheus_deployment(
+        app_name, namespace, volume_size
+    );
 
     try {
         apps_v1.patch_namespaced_deployment(
@@ -2117,7 +2124,6 @@ impl MonitoringDeployer._deploy_alloy(
 impl MonitoringDeployer.deploy(
     app_name: str, namespace: str, apps_v1: any, core_v1: any
 ) {
-    self._check_storage();
     if self.k8s_config.monitoring_enabled {
         if self.k8s_config.k8s_metrics_enabled {
             self._deploy_kube_state_metrics(app_name, namespace, apps_v1, core_v1);
@@ -2435,11 +2441,7 @@ impl MonitoringDeployer._storage_class_problem(classes: dict[str, bool]) -> str 
     return "";
 }
 
-impl MonitoringDeployer._check_storage {
-    if not self.k8s_config.monitoring_storage_enabled {
-        return;
-    }
-    problems: list[str] = self._storage_problems();
+impl MonitoringDeployer._cluster_storage_problem -> str {
     try {
         classes: dict[str, bool] = {};
         for sc in client.StorageV1Api().list_storage_class().items {
@@ -2450,17 +2452,12 @@ impl MonitoringDeployer._check_storage {
                     notes.get('storageclass.beta.kubernetes.io/is-default-class')
                 ];
         }
-        problem: str = self._storage_class_problem(classes);
-        if problem {
-            problems.append(problem);
-        }
+        return self._storage_class_problem(classes);
     } except ApiException as e {
         if e.status != 403 {
             raise;
         }
-    }
-    if problems {
-        raise ValueError("; ".join(problems));
+        return "";
     }
 }
 
@@ -2538,9 +2535,10 @@ impl MonitoringDeployer._data_pvc(
 
 impl MonitoringDeployer._ensure_data_pvc(
     apps_v1: any, core_v1: any, manifest: dict[str, any]
-) {
+) -> str {
     name: str = manifest['metadata']['name'];
     namespace: str = manifest['metadata']['namespace'];
+    asked: str = manifest['spec']['resources']['requests']['storage'];
     try {
         claim = core_v1.read_namespaced_persistent_volume_claim(
             name=name, namespace=namespace
@@ -2552,7 +2550,7 @@ impl MonitoringDeployer._ensure_data_pvc(
         core_v1.create_namespaced_persistent_volume_claim(
             namespace=namespace, body=manifest
         );
-        return;
+        return asked;
     }
     if claim.metadata.deletion_timestamp is not None {
         delete_if_exists(
@@ -2570,16 +2568,11 @@ impl MonitoringDeployer._ensure_data_pvc(
         core_v1.create_namespaced_persistent_volume_claim(
             namespace=namespace, body=manifest
         );
-        return;
+        return asked;
     }
     refused: str = "";
     try {
-        resize_pvc_if_needed(
-            core_v1,
-            namespace,
-            name,
-            manifest['spec']['resources']['requests']['storage']
-        );
+        resize_pvc_if_needed(core_v1, namespace, name, asked);
     } except ValueError as e {
         refused = str(e);
     } except ApiException as e {
@@ -2590,4 +2583,8 @@ impl MonitoringDeployer._ensure_data_pvc(
             f"Monitoring data claim '{name}' keeps its current size: {refused}"
         );
     }
+    capacity: dict[str, str] = (claim.status.capacity if claim.status else None) or {};
+    return str(
+        capacity.get('storage') or claim.spec.resources.requests.get('storage') or asked
+    );
 }

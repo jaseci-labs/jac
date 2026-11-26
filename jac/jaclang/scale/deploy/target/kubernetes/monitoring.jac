@@ -27,7 +27,10 @@ obj MonitoringDeployer {
 
     def ensure_service(core_v1: any, name: str, namespace: str, body: dict[str, any]);
     def _scrape_config(app_name: str, namespace: str) -> str;
-    def _prometheus_deployment(app_name: str, namespace: str) -> dict[str, any];
+    def _prometheus_deployment(
+        app_name: str, namespace: str, volume_size: str = ''
+    ) -> dict[str, any];
+
     def _deploy_prometheus(app_name: str, namespace: str, apps_v1: any, core_v1: any);
     def _kube_state_metrics_rbac(app_name: str, namespace: str) -> dict[str, any];
     def _deploy_kube_state_metrics(
@@ -50,8 +53,8 @@ obj MonitoringDeployer {
     def destroy(app_name: str, namespace: str, apps_v1: any, core_v1: any);
     def _storage_problems -> list[str];
     def _storage_class_problem(classes: dict[str, bool]) -> str;
-    def _check_storage;
+    def _cluster_storage_problem -> str;
     def _apply_storage(deployment: dict[str, any], volume: str) -> dict[str, any];
     def _data_pvc(app_name: str, namespace: str, component: str) -> dict[str, any];
-    def _ensure_data_pvc(apps_v1: any, core_v1: any, manifest: dict[str, any]);
+    def _ensure_data_pvc(apps_v1: any, core_v1: any, manifest: dict[str, any]) -> str;
 }

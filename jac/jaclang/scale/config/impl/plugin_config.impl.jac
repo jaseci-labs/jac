@@ -1140,7 +1140,7 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                     "prometheus_storage": {
                         "type": "string",
                         "default": "10Gi",
-                        "description": "Size of the Prometheus data claim when storage_enabled is set. A whole-number Kubernetes quantity of at least 1Gi, e.g. 30Gi. Prometheus is capped at 80% of it, so it cannot fill the volume. Can be raised later, not lowered"
+                        "description": "Size of the Prometheus data claim when storage_enabled is set. A whole-number Kubernetes quantity of at least 1Gi, e.g. 30Gi. Prometheus is capped at 80% of the size the claim really has, so it cannot fill the volume. Can be raised later, not lowered"
                     },
                     "loki_storage": {
                         "type": "string",
