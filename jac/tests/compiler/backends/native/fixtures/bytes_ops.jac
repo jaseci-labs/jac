@@ -143,6 +143,16 @@ def in_nul -> int {
     return 1 if b"\x00c" in b"a\x00cd" else 0;
 }
 
+# a NUL-led needle that is absent; a C-string search reads it as empty and finds it
+def in_nul_absent -> int {
+    return 1 if b"\x00z" in b"a\x00cd" else 0;
+}
+
+# the match lies past the haystack's NUL; a C-string search stops before it
+def in_past_nul -> int {
+    return 1 if b"cd" in b"a\x00cd" else 0;
+}
+
 def not_in_true -> int {
     return 1 if b"xy" not in b"abcd" else 0;
 }
