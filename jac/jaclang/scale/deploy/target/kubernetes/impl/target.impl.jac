@@ -322,7 +322,7 @@ impl KubernetesTarget.deploy(app_config: AppConfig) -> DeploymentResult {
 
     try {
         storage_refusal = self._monitoring_storage_refusal(
-            check_cluster=not self.dry_run
+            app_name, check_cluster=not self.dry_run
         );
     } except Exception as e {
         storage_refusal = f"monitoring storage check failed: {e}";
@@ -2415,15 +2415,20 @@ impl KubernetesTarget._destroy_named_component(
     }
 }
 
-impl KubernetesTarget._monitoring_storage_refusal(check_cluster: bool = True) -> str {
+impl KubernetesTarget._monitoring_storage_refusal(
+    app_name: str, check_cluster: bool = True
+) -> str {
     if not self.k8s_config.monitoring_storage_enabled
         or not self._observability_requested() {
         return "";
     }
-    deployer = MonitoringDeployer(self._build_observability_config(), self.logger);
+    obs_config = self._build_observability_config();
+    deployer = MonitoringDeployer(obs_config, self.logger);
     problems: list[str] = deployer._storage_problems();
     if check_cluster {
-        problem: str = deployer._cluster_storage_problem();
+        problem: str = deployer._cluster_storage_problem(
+            app_name, obs_config.namespace
+        );
         if problem {
             problems.append(problem);
         }

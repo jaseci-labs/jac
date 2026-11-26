@@ -51,9 +51,10 @@ obj MonitoringDeployer {
     def _deploy_alloy(app_name: str, namespace: str, apps_v1: any, core_v1: any);
     def deploy(app_name: str, namespace: str, apps_v1: any, core_v1: any);
     def destroy(app_name: str, namespace: str, apps_v1: any, core_v1: any);
+    def _data_parts -> list[str];
     def _storage_problems -> list[str];
     def _storage_class_problem(classes: dict[str, bool]) -> str;
-    def _cluster_storage_problem -> str;
+    def _cluster_storage_problem(app_name: str, namespace: str) -> str;
     def _apply_storage(deployment: dict[str, any], volume: str) -> dict[str, any];
     def _data_pvc(app_name: str, namespace: str, component: str) -> dict[str, any];
     def _ensure_data_pvc(apps_v1: any, core_v1: any, manifest: dict[str, any]) -> str;

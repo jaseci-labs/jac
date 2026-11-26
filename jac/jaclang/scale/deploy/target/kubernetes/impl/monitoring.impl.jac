@@ -2165,6 +2165,12 @@ impl MonitoringDeployer.destroy(
         apps_v1.delete_namespaced_deployment, prometheus_name, namespace, 'Deployment'
     );
     delete_if_exists(
+        core_v1.delete_namespaced_persistent_volume_claim,
+        f"{prometheus_name}-data",
+        namespace,
+        'PersistentVolumeClaim'
+    );
+    delete_if_exists(
         core_v1.delete_namespaced_service,
         f"{prometheus_name}-service",
         namespace,
@@ -2252,6 +2258,12 @@ impl MonitoringDeployer.destroy(
         apps_v1.delete_namespaced_deployment, loki_name, namespace, 'Deployment'
     );
     delete_if_exists(
+        core_v1.delete_namespaced_persistent_volume_claim,
+        f"{loki_name}-data",
+        namespace,
+        'PersistentVolumeClaim'
+    );
+    delete_if_exists(
         core_v1.delete_namespaced_service, f"{loki_name}-service", namespace, 'Service'
     );
     try {
@@ -2323,6 +2335,12 @@ impl MonitoringDeployer.destroy(
         apps_v1.delete_namespaced_deployment, tempo_name, namespace, 'Deployment'
     );
     delete_if_exists(
+        core_v1.delete_namespaced_persistent_volume_claim,
+        f"{tempo_name}-data",
+        namespace,
+        'PersistentVolumeClaim'
+    );
+    delete_if_exists(
         core_v1.delete_namespaced_service, f"{tempo_name}-service", namespace, 'Service'
     );
     try {
@@ -2380,48 +2398,58 @@ impl MonitoringDeployer.destroy(
         'ServiceAccount'
     );
 
-    for part in ['prometheus', 'loki', 'tempo'] {
-        delete_if_exists(
-            core_v1.delete_namespaced_persistent_volume_claim,
-            f"{app_name}-{part}-data",
-            namespace,
-            'PersistentVolumeClaim'
-        );
-    }
-
     if self.logger {
         self.logger.info(f"Monitoring stack destroyed for '{app_name}'");
     }
 }
 
+impl MonitoringDeployer._data_parts -> list[str] {
+    cfg = self.k8s_config;
+    return [
+        part
+        for (part, deployed) in [
+            ('prometheus', cfg.monitoring_enabled),
+            ('loki', cfg.loki_enabled),
+            ('tempo', cfg.tracing_enabled)
+        ]
+        if deployed
+    ];
+}
+
 impl MonitoringDeployer._storage_problems -> list[str] {
     cfg = self.k8s_config;
+    parts: list[str] = self._data_parts();
     problems: list[str] = [];
-    for (key, size) in [
-        ('prometheus_storage', cfg.prometheus_storage),
-        ('loki_storage', cfg.loki_storage),
-        ('tempo_storage', cfg.tempo_storage)
-    ] {
-        if re.fullmatch(r'[0-9]+(Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?', size.strip())
-            is None {
+    for part in parts {
+        key: str = f"{part}_storage";
+        size: any = getattr(cfg, key);
+        if not isinstance(size, str)
+            or re.fullmatch(r'[0-9]+(Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?', size.strip())
+                is None {
             problems.append(
-                f"[scale.monitoring] {key} = '{size}' is not a whole-number "
-                "Kubernetes quantity such as 10Gi"
+                f"[scale.monitoring] {key} = {size!r} is not a whole-number "
+                "Kubernetes quantity in quotes, such as \"10Gi\""
             );
         } elif parse_storage_quantity(size) < 1024 ** 3 {
             problems.append(f"[scale.monitoring] {key} = '{size}' is below 1Gi");
         }
     }
-    period = re.fullmatch(r'(\d+)([hdw])', cfg.loki_retention.strip());
-    hours: int = 0;
-    if period {
-        hours = int(period.group(1)) * {'h': 1, 'd': 24, 'w': 168}[period.group(2)];
-    }
-    if hours < 24 {
-        problems.append(
-            f"[scale.monitoring] loki_retention = '{cfg.loki_retention}' must be "
-            "hours, days or weeks and at least 24h, e.g. 168h or 7d"
-        );
+    if 'loki' in parts {
+        kept: any = cfg.loki_retention;
+        hours: int = 0;
+        if isinstance(kept, str) {
+            period = re.fullmatch(r'([0-9]{1,6})([hdw])', kept.strip());
+            if period {
+                hours = int(period.group(1))
+                    * {'h': 1, 'd': 24, 'w': 168}[period.group(2)];
+            }
+        }
+        if hours < 24 {
+            problems.append(
+                f"[scale.monitoring] loki_retention = {kept!r} must be hours, days "
+                "or weeks in quotes and at least 24h, such as \"168h\" or \"7d\""
+            );
+        }
     }
     return problems;
 }
@@ -2443,8 +2471,25 @@ impl MonitoringDeployer._storage_class_problem(classes: dict[str, bool]) -> str 
     return "";
 }
 
-impl MonitoringDeployer._cluster_storage_problem -> str {
+impl MonitoringDeployer._cluster_storage_problem(app_name: str, namespace: str) -> str {
     try {
+        core_v1 = client.CoreV1Api();
+        to_make: bool = False;
+        for part in self._data_parts() {
+            try {
+                core_v1.read_namespaced_persistent_volume_claim(
+                    name=f"{app_name}-{part}-data", namespace=namespace
+                );
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise;
+                }
+                to_make = True;
+            }
+        }
+        if not to_make {
+            return "";
+        }
         classes: dict[str, bool] = {};
         for sc in client.StorageV1Api().list_storage_class().items {
             notes: dict[str, str] = sc.metadata.annotations or {};
@@ -2456,8 +2501,12 @@ impl MonitoringDeployer._cluster_storage_problem -> str {
         }
         return self._storage_class_problem(classes);
     } except ApiException as e {
-        if e.status != 403 {
-            raise;
+        if self.logger {
+            self.logger.warn(
+                "Could not check the monitoring storage class before deploying "
+                f"({e.reason}). A claim on a class the cluster does not have stays "
+                "Pending."
+            );
         }
         return "";
     }
@@ -2578,15 +2627,24 @@ impl MonitoringDeployer._ensure_data_pvc(
     } except ValueError as e {
         refused = str(e);
     } except ApiException as e {
-        refused = str(e.reason);
+        refused = f"{e.reason} {str(e.body or '')[:300]}".strip();
     }
     if refused and self.logger {
         self.logger.warn(
-            f"Monitoring data claim '{name}' keeps its current size: {refused}"
+            f"Monitoring data claim '{name}' was not resized to {asked}: {refused}"
         );
     }
     capacity: dict[str, str] = (claim.status.capacity if claim.status else None) or {};
-    return str(
-        capacity.get('storage') or claim.spec.resources.requests.get('storage') or asked
-    );
+    for size in [
+        capacity.get('storage'),
+        claim.spec.resources.requests.get('storage')
+    ] {
+        try {
+            parse_storage_quantity(str(size));
+            return str(size);
+        } except ValueError {
+            continue;
+        }
+    }
+    return asked;
 }
