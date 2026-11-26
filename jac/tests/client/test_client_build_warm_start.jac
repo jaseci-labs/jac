@@ -123,14 +123,9 @@ test "a warm client build over a real layout is served from the cache" {
     for name in ["main.jac", "Navbar.jac", "button.jac", "index.jac", "about.jac"] {
         assert name in cold , f"the cold build must compile {name}, saw {cold}";
     }
-    for done in [
-        "JavaScript written for the entry and its imports",
-        "Pages compiled"
-    ] {
-        assert f"{done} (" in timed.getvalue() , (
-            f"a timed build must print a line for {done!r}, saw {timed.getvalue()!r}"
-        );
-    }
+    assert "Pages compiled (" in timed.getvalue() , (
+        f"a timed build must print a line for the pages, saw {timed.getvalue()!r}"
+    );
     assert warm == [] , f"the warm build must be served from the cache, compiled {warm}";
     assert "\u2714" not in quiet.getvalue() , (
         f"a build with timing off must print no stage, saw {quiet.getvalue()!r}"
@@ -195,10 +190,7 @@ test "a client build that cannot bundle the app as written is refused" {
     import from io { StringIO }
     import jaclang.client.client_bundle as client_bundle;
     import from jaclang.client.targets.web_target { WebTarget }
-    entry_done = [
-        "Entry module and its imports compiled",
-        "JavaScript written for the entry and its imports"
-    ];
+    entry_done = ["Entry module and its imports compiled"];
     cases: list[tuple[str, str, str, list[str], list[str]]] = [
         (
             "an app that declares no children would drop every routed page",

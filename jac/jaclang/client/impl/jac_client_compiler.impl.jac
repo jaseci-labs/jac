@@ -76,26 +76,22 @@ impl JacClientCompiler.compile(
     source_root = client_source_root(self.project_dir, module_path);
     self.jac_compiler.source_root = source_root;
     self.emit_prelude();
+    artifact = self.jac_compiler.compile_module(module_path);
+    self._collect_na_modules(artifact);
+    collected_exports: set[str] = set(
+        self.jac_compiler.extract_exports(artifact.manifest)
+    );
+    client_globals_map = self.jac_compiler.extract_globals(artifact.manifest, module);
+    collected_globals: dict[(str, any)] = dict(client_globals_map);
     visited: set[Path] = set();
-    with stage("JavaScript written for the entry and its imports") {
-        artifact = self.jac_compiler.compile_module(module_path);
-        self._collect_na_modules(artifact);
-        collected_exports: set[str] = set(
-            self.jac_compiler.extract_exports(artifact.manifest)
-        );
-        client_globals_map = self.jac_compiler.extract_globals(
-            artifact.manifest, module
-        );
-        collected_globals: dict[(str, any)] = dict(client_globals_map);
-        self.emit_dependencies(
-            module_path,
-            visited=visited,
-            collected_exports=collected_exports,
-            collected_globals=collected_globals,
-            source_root=source_root,
-            native=native
-        );
-    }
+    self.emit_dependencies(
+        module_path,
+        visited=visited,
+        collected_exports=collected_exports,
+        collected_globals=collected_globals,
+        source_root=source_root,
+        native=native
+    );
     with stage("Pages compiled") {
         self._has_pages = self._scan_and_compile_pages(
             entry_manifest=artifact.manifest,
