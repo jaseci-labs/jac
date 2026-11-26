@@ -4,6 +4,7 @@ handed the deployer, so a configured `false` was overridden and a configured
 `true` alone never reached the deployer at all. Real config objects, no mocks:
 `gateway_config` is injected as a plain dict, which is the same seam
 `_gateway_cfg` reads in production."""
+import json;
 import re;
 import yaml;
 
@@ -157,5 +158,26 @@ test "Alloy discovers pods only in the namespace it was deployed for" {
             "\n}\n", 1
         )[0];
         assert f'names = ["{ns}"]' in discovery , discovery;
+    }
+}
+
+
+test "grafana queries the metric prefix the app pods export" {
+    for (given, want) in [
+        ({}, "jaclang_scale"),
+        ({"metrics_namespace": "jac_shop"}, "jac_shop")
+    ] {
+        values: dict[str, any] = {"app_name": "t", "namespace": "t-ns"};
+        values.update(given);
+        config = KubernetesConfig.from_dict(KubernetesConfig, values);
+        deployer = MonitoringDeployer(k8s_config=config);
+        dashboard = json.loads(deployer._app_dashboard_json());
+        prefixes: set[str] = set();
+        for panel in dashboard["panels"] {
+            for target in panel["targets"] {
+                prefixes.update(re.findall(r"(\w+?)_http_request", target["expr"]));
+            }
+        }
+        assert prefixes == {want} , (given, prefixes);
     }
 }
