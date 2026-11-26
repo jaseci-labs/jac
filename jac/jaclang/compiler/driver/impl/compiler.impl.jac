@@ -892,12 +892,17 @@ impl JacCompiler._get_client_artifact(
         actual_program.hub.client_artifacts.pop(full_target, None);
     }
     mark = len(actual_program.errors_had);
+    held_errors = len(actual_program.diags.owned_errors(full_target));
     compiled = self.compile(
         file_path=full_target,
         target_program=actual_program,
         options=CompileOptions(no_cgen=True)
     );
     if len(actual_program.errors_had) > mark {
+        if len(actual_program.diags.owned_errors(full_target)) > held_errors {
+            import from jaclang.compiler.driver.pipeline { mark_failed }
+            mark_failed(actual_program, compiled, CompilationProduct.CLIENT);
+        }
         return None;
     }
     if not self.ensure_client_codegen(compiled, actual_program) {

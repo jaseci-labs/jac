@@ -159,3 +159,39 @@ test "an artifact built for another framework is not served" {
     );
     assert again is not None and again.framework == "react";
 }
+
+
+test "a module that does not compile is refused on every request until it is fixed" {
+    cases: list[tuple[str, str]] = [
+        (
+            "a syntax error",
+            _WIDGET_SRC.replace("<div>{out}</div>;\n}\n", "<div>{out}</div>\n")
+        ),
+        (
+            "a break outside a loop",
+            _WIDGET_SRC.replace("    return <div>", "    break;\n    return <div>")
+        )
+    ];
+    for (what, broken) in cases {
+        (_, widget) = _project();
+        _edit(widget, broken);
+        prog = JacProgram();
+        refused = [_client_artifact(prog, widget) is None for _ in range(2)];
+        assert refused == [True, True] , (
+            f"{what}: every request for the broken module must be refused, got {refused}"
+        );
+        _edit(widget, _WIDGET_SRC);
+        prog.invalidate_module(widget);
+        assert prog.diags.owned_errors(widget) , (
+            f"{what}: dropping the tree must leave its old errors recorded, or this "
+            "no longer shows that they do not keep the fixed module refused"
+        );
+        built = [
+            (a is not None and "label_of" in a.js)
+            for a in [_client_artifact(prog, widget) for _ in range(2)]
+        ];
+        assert built == [True, True] , (
+            f"{what}: the fixed module must build on every request, got {built}"
+        );
+    }
+}

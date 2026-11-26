@@ -738,6 +738,12 @@ impl JacClientCompiler._route_exports_of(
     source_root = self.jac_compiler.source_root or self.project_dir;
     try {
         artifact = self.jac_compiler._compile_to_js(module_path, source_root);
+    } except ClientCompileError {
+        held = resolve_route_exports(module_path);
+        if held == (None, None) {
+            raise;
+        }
+        return held;
     } except ClientBundleError {
         return resolve_route_exports(module_path);
     }
