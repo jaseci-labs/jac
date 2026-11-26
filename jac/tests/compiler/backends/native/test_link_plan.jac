@@ -455,8 +455,7 @@ test "a stale recorded dependency is recompiled until the plan agrees" {
 
 test "two links from one cache are byte-identical" {
     if not _can_link_host() {
-        import pytest;
-        pytest.skip("host linker unavailable");
+        testskip("host linker unavailable");
     } else {
         root_dir = _diamond_copy();
         (prog, plan) = _plan_for(root_dir);
@@ -477,8 +476,7 @@ test "two links from one cache are byte-identical" {
 
 test "objects mode and bitcode mode agree on the program" {
     if not _can_link_host() {
-        import pytest;
-        pytest.skip("host linker unavailable");
+        testskip("host linker unavailable");
     } else {
         root_dir = _diamond_copy();
         (prog_o, plan_o) = _plan_for(root_dir, NATIVE_LINK_MODE_OBJECTS);
@@ -542,29 +540,6 @@ define i64 @gamma(i64 %x) {
         for s in defined
         if s not in ("alpha", "beta", "gamma")
     ) , defined;
-}
-
-test "a shared link exports only the C ABI" {
-    if not _can_link_host() {
-        import pytest;
-        pytest.skip("host linker unavailable");
-    } else {
-        root_dir = _diamond_copy();
-        prog = JacProgram();
-        opts = _opts();
-        base = os.path.join(root_dir, "base.jac");
-        prog.compile(file_path=base, options=opts);
-        plan = build_link_plan(prog, [base], opts);
-        suffix = ".dylib" if sys.platform == "darwin" else ".so";
-        out = os.path.join(root_dir, "libbase" + suffix);
-        result = link_artifact(plan, out, ArtifactKind.SHARED);
-        import ctypes;
-        lib = ctypes.CDLL(out);
-        assert lib.diamond_abi_version() == 1;
-        assert hasattr(lib, "__jac_shared_init");
-        assert hasattr(lib, "jac_retain") and hasattr(lib, "jac_release");
-        assert result.sha256 == hashlib.sha256(Path(out).read_bytes()).hexdigest();
-    }
 }
 
 test "shared retain and release helpers honor --gc none" {

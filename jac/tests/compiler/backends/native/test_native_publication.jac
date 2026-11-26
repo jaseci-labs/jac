@@ -84,8 +84,7 @@ test "rebuilding a native executable preserves its open previous image" {
 
 test "new atomic products follow the process umask" {
     if os.name == "nt" {
-        import pytest;
-        pytest.skip("POSIX permissions");
+        testskip("POSIX permissions");
     }
     with tempfile.TemporaryDirectory() as directory {
         target = Path(directory) / "product";

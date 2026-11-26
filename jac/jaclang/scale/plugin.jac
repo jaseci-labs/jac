@@ -17,6 +17,8 @@ def scale_local_serve(
     no_client: bool = False
 ) -> int | None;
 
+def _ensure_target_tooling(target: str, dry_run: bool = False);
+
 def scale_deploy(
     filename: str,
     target: str,

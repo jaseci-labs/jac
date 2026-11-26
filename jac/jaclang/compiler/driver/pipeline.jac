@@ -285,6 +285,8 @@ def require(
 
 def invalidate(program: JacProgram, module: Module, product: CompilationProduct);
 
+def mark_failed(program: JacProgram, module: Module, product: CompilationProduct);
+
 def execute_passes(
     program: JacProgram,
     module: Module,

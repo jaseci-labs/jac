@@ -8,6 +8,7 @@ import unittest.mock;
 import from types { SimpleNamespace }
 import from kubernetes.client.exceptions { ApiException }
 import from jaclang.scale.deploy.target.kubernetes { target as target_mod }
+import from jaclang.scale.deploy.target.kubernetes { monitoring as monitoring_mod }
 import from jaclang.scale.deploy.target.kubernetes.utils { kubernetes_utils as utils }
 
 glob APP: str = "test01",
@@ -222,6 +223,18 @@ test "a namespace this app created but no longer holds alone is kept" {
     );
     assert bundle_loader_pod_name(APP)
         in [call.args[0] for call in core_v1.delete_namespaced_pod.call_args_list] , "a leftover bundle loader holds the PVC destroy deleted in Terminating";
+
+    # A neighbour seen only by the volume its monitoring data is kept on.
+    deleted_namespaces = [];
+    apps_v1.list_namespaced_stateful_set.return_value = SimpleNamespace(items=[]);
+    core_v1.list_namespaced_persistent_volume_claim.return_value = SimpleNamespace(
+        items=[_pvc(f"{CO_TENANT}-prometheus-data", "monitoring-data", CO_TENANT)]
+    );
+    _run_destroy(apps_v1, core_v1, _recording(deleted_namespaces));
+    assert not deleted_namespaces , (
+        f"the namespace was deleted whole while '{CO_TENANT}' still kept its "
+        "monitoring data in it"
+    );
 }
 
 
@@ -236,7 +249,8 @@ test "a namespace this app created and holds alone is still reclaimed" {
     core_v1.list_namespaced_persistent_volume_claim.return_value = SimpleNamespace(
         items=[
             _pvc(bundle_pvc_name(APP), "bundle-store"),
-            _pvc("uploads", "shared-volume", APP)
+            _pvc("uploads", "shared-volume", APP),
+            _pvc(f"{APP}-prometheus-data", "monitoring-data", APP)
         ]
     );
 
@@ -583,4 +597,64 @@ test "a redeploy reuses a live bundle PVC and replaces a terminating one" {
             == len(reads) , "the redeploy stopped reading before the PVC was gone";
         assert core_v1.create_namespaced_persistent_volume_claim.called == recreated;
     }
+}
+
+
+test "a data claim goes with its Deployment when destroy is refused part-way, and one stuck terminating is made again" {
+    # The two faults a cluster does not produce on demand. That every claim is
+    # gone after a destroy is checked on a real one, at the end of
+    # k8s_microservice_real_e2e.sh.
+    deployer = monitoring_mod.MonitoringDeployer(
+        k8s_config=KubernetesConfig(app_name=APP, namespace=NS)
+    );
+    # Removing cluster roles refused: a claim left behind after its Deployment
+    # was deleted is billed with nothing to mount it, and no later destroy by
+    # the same identity gets that far.
+    apps_v1 = unittest.mock.MagicMock();
+    core_v1 = unittest.mock.MagicMock();
+    rbac_v1 = unittest.mock.MagicMock();
+    rbac_v1.delete_cluster_role.side_effect = ApiException(status=403);
+    fake_client = SimpleNamespace(RbacAuthorizationV1Api=lambda { rbac_v1; });
+    raised = False;
+    with unittest.mock.patch.object(monitoring_mod, "client", fake_client) {
+        try {
+            deployer.destroy(APP, NS, apps_v1, core_v1);
+        } except ApiException {
+            raised = True;
+        }
+    }
+    gone: list[str] = [
+        call.args[0]
+        for call in apps_v1.delete_namespaced_deployment.call_args_list
+        if call.args[0].split("-")[-1] in ["prometheus", "loki", "tempo"]
+    ];
+    deleted: list[str] = [
+        call.args[0]
+        for call in core_v1.delete_namespaced_persistent_volume_claim.call_args_list
+    ];
+    assert raised and gone and deleted == [f"{name}-data" for name in gone] , (
+        f"Deployments deleted {gone}, claims deleted {deleted}"
+    );
+    # A claim deleted while its pod runs stays Terminating for as long as the
+    # pod does. Waiting on it alone never ends, so the holder goes first.
+    dying = SimpleNamespace(
+        metadata=SimpleNamespace(deletion_timestamp="2026-11-25T00:00:00Z")
+    );
+    apps_v1 = unittest.mock.MagicMock();
+    core_v1 = unittest.mock.MagicMock();
+    core_v1.read_namespaced_persistent_volume_claim.side_effect = [
+        dying,
+        dying,
+        ApiException(status=404)
+    ];
+    with unittest.mock.patch("time.sleep") {
+        deployer._ensure_data_pvc(
+            apps_v1, core_v1, deployer._data_pvc(APP, NS, "loki")
+        );
+    }
+    released: list[str] = [
+        call.args[0] for call in apps_v1.delete_namespaced_deployment.call_args_list
+    ];
+    assert released == [f"{APP}-loki"] , released;
+    assert core_v1.create_namespaced_persistent_volume_claim.called;
 }

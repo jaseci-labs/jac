@@ -12,6 +12,8 @@ with entry {
         import from kubernetes.client.exceptions { ApiException }
         import from kubernetes.config.config_exception { ConfigException }
         import from kubernetes.stream { stream }
+        import from urllib3 { exceptions as urllib3_exceptions }
+        HTTPError: type[Exception] = urllib3_exceptions.HTTPError;
         HAS_KUBERNETES = True;
     } except ImportError {
         client = None;
@@ -20,6 +22,7 @@ with entry {
         stream = None;
         ApiException = Exception;
         ConfigException = Exception;
+        HTTPError = Exception;
         AutoscalingV2Api = None;
         V2CrossVersionObjectReference = None;
         V2HorizontalPodAutoscaler = None;

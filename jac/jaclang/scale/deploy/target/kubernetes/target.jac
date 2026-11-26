@@ -90,6 +90,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
     ) -> str;
 
     def _observability_requested -> bool;
+    def _monitoring_storage_refusal(app_name: str, check_cluster: bool = True) -> str;
     def _deploy_observability(app_name: str) -> None;
     def ensure_alb_readiness_gates(core_v1: any, namespace: str) -> None;
     def _ensure_privileged_namespace(core_v1: any, namespace: str) -> None;

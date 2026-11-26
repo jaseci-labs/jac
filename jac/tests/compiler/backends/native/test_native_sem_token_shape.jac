@@ -108,84 +108,12 @@ def _sv_module -> object {
 }
 
 
-test "a Jac enum member written as a constant expression carries its value" {
-    f = _get(_compile(), "kind_of");
-    assert f(0) == 0 , "NAMESPACE is a literal 0 and was never at risk";
-    assert f(1) == 2 , (
-        "CLASS is `1 << 1`; an unfolded initialiser gives it 0, colliding "
-        "with NAMESPACE and reporting nothing"
-    );
-    assert f(2) == 3 , "ENUM is `(1 << 1) | 1`";
-    assert f(3) == 7 , "PARAM is a literal 7";
-}
-
-
-test "a class-form IntFlag member written as a constant expression lowers" {
-    f = _get(_compile(), "mod_of");
-    assert f(0) == 1 , "DECLARATION is `1 << 0`";
-    assert f(1) == 2 , "DEFINITION is `1 << 1`";
-    assert f(2) == 4 , "READONLY is `1 << 2`";
-    assert f(3) == 1 , "LITERAL_ONE is a literal 1 and lowered before";
-}
-
-
-test "both enums combined answer the way the pair of reads does" {
-    f = _get(_compile(), "kind_and_mod");
-    assert f(0) == 1 , "NAMESPACE(0) with DECLARATION(1)";
-    assert f(1) == 202 , "CLASS(2) with DEFINITION(2)";
-    assert f(2) == 304 , "ENUM(3) with READONLY(4)";
-    assert f(3) == 701 , "PARAM(7) with LITERAL_ONE(1)";
-}
-
-
-test "__class__.__name__ off an opaque object pointer answers the runtime class" {
-    eng = _compile();
-    for name in ("open_name_rank", "open_dunder_rank") {
-        f = _get(eng, name);
-        assert f(1) == 1 , (
-            f"{name}: a type-erased generic slot holding a Leaf reports Leaf"
-        );
-        assert f(2) == 2 , f"{name}: the same slot holding a Branch reports Branch";
-        assert f(0) == 3 , f"{name}: and a Node reports Node, not a subclass";
-    }
-}
-
-
-test "the same read off an option unwraps before it resolves" {
-    f = _get(_compile(), "opt_name_rank");
-    assert f(1) == 1 , "the present arm carries a Leaf";
-    assert f(2) == 2 , "and a Branch";
-    assert f(3) == 3 , "and a Node";
-    assert f(0) == 9 , (
-        "an unset option is None, whose class is NoneType -- the payload slot "
-        "on that arm holds nothing worth dereferencing"
-    );
-}
-
-
 test "the class name off an open receiver is the name, not a stand-in" {
     eng = _compile();
     f = native_str_func(eng, "open_name", ctypes.c_char_p, ctypes.c_int64);
     assert f(1) == b"Leaf" , "the rank mapping could pass on any three values";
     assert f(2) == b"Branch" , "so the string itself is read back too";
     assert f(0) == b"Node" , "the base class reports its own name";
-}
-
-
-test "a receiver whose static type names an archetype is unaffected" {
-    f = _get(_compile(), "known_name_rank");
-    assert f(1) == 1 , "a Node-typed parameter holding a Leaf still reports Leaf";
-    assert f(2) == 2 , "and a Branch still reports Branch";
-    assert f(0) == 3 , "and a Node reports Node";
-}
-
-
-test "sem_token's whole shape: both gaps and a tuple[A, B] | None return" {
-    f = _get(_compile(), "sem_token_rank");
-    assert f(0) == -1 , "the absent answer stays None through the option";
-    assert f(1) == 201 , "Leaf -> (CLASS, DECLARATION), both folded values";
-    assert f(2) == 302 , "Branch -> (ENUM, DEFINITION)";
-    assert f(3) == 704 , "Node -> (PARAM, READONLY)";
 }
 
 

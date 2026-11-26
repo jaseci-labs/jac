@@ -1,33 +1,16 @@
-import from enum { Enum }
-
-class LegacyPropertyWriteKind(Enum) {
-    with entry {
-        NOT_PROPERTY = 0;
-        READ_ONLY = 1;
-        WRITABLE = 2;
-    }
-}
-
-test "Jac property kinds preserve plain Enum values and identity" {
-    for value in (0, 1, 2) {
-        actual = PropertyWriteKind(value);
-        expected = LegacyPropertyWriteKind(value);
-        assert actual.name == expected.name;
-        assert actual.value == expected.value;
-        assert actual is PropertyWriteKind(value);
-        assert (actual == value) == (expected == value);
-        assert isinstance(actual, int) == isinstance(expected, int);
-    }
-}
-
-test "Jac property kinds preserve invalid-value rejection" {
-    for value in (-1, 3, 100) {
+"""The type evaluator builds PropertyWriteKind from the provider's raw
+property_kind() integer, so the numbering is a contract."""
+test "property write kinds keep the numbers providers report" {
+    assert PropertyWriteKind(0) is PropertyWriteKind.NOT_PROPERTY;
+    assert PropertyWriteKind(1) is PropertyWriteKind.READ_ONLY;
+    assert PropertyWriteKind(2) is PropertyWriteKind.WRITABLE;
+    for value in (-1, 3) {
         rejected = False;
         try {
             PropertyWriteKind(value);
         } except ValueError {
             rejected = True;
         }
-        assert rejected;
+        assert rejected , value;
     }
 }

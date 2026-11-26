@@ -404,6 +404,22 @@ test "python import keeps module server under native default" {
     assert stamp_of(mod, "helper") == 'server';
 }
 
+test "importing a jaclang host module keeps the importer server under native default" {
+    mod = compile_with_default("nadefault_host_import.jac", "native");
+    assert stamp_of(mod, "helper") == 'server';
+}
+
+test "a Python-only builtin places its function server, not the whole module" {
+    mod = compile_with_default("nadefault_pyonly_builtin.jac", "native", cgen=True);
+    assert stamp_of(mod, "uses_eval") == 'server';
+    assert stamp_of(mod, "add_one") == 'native';
+}
+
+test "a user function named like a Python-only builtin stays native" {
+    mod = compile_with_default("nadefault_user_eval.jac", "native", cgen=True);
+    assert stamp_of(mod, "caller") == 'native';
+}
+
 test "pure import chain infers native under native default" {
     mod = compile_with_default("nadefault_chain.jac", "native", cgen=True);
     assert mod.decided_codespace == 'native' , "closure of pure plain modules is native";

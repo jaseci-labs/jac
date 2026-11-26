@@ -499,6 +499,12 @@ impl invalidate(program: JacProgram, module: Module, product: CompilationProduct
     }
 }
 
+impl mark_failed(program: JacProgram, module: Module, product: CompilationProduct) {
+    program.analysis.build(module).tasks[product] = ProductTask(
+        product, TaskState.FAILED
+    );
+}
+
 impl execute_passes(
     program: JacProgram,
     module: Module,

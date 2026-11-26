@@ -224,6 +224,19 @@ glob NATIVE_ERASED_IMPORTS: dict[str, frozenset[str]] = {
              | NATIVE_ERASED_ANNOTATIONS
      };
 
+glob NATIVE_PYTHON_ONLY_BUILTINS: set[str] = {
+         "breakpoint",
+         "compile",
+         "eval",
+         "exec",
+         "globals",
+         "locals",
+         "testfail",
+         "testraises",
+         "testskip",
+         "vars"
+     };
+
 def native_erased_import_names(module_name: str, names: list[str]) -> bool;
 
 def set_effective_default_codespace(value: str);

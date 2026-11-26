@@ -210,6 +210,24 @@ impl parse_storage_quantity(quantity: str) -> int {
         'P': 1000 ** 5,
         'E': 1000 ** 6
     };
+    mantissa = q.lower().partition('e');
+    if mantissa[0].isascii()
+        and mantissa[0].isdigit()
+        and mantissa[2].isascii()
+        and mantissa[2].isdigit() {
+        return int(mantissa[0]) * int(10 ** int(mantissa[2]));
+    }
+    for (suffix, divisor) in [('n', 1000 ** 3), ('u', 1000 ** 2), ('m', 1000)] {
+        if q.endswith(suffix) {
+            number_part = q[:-len(suffix)].strip();
+            if number_part == '' {
+                raise ValueError(
+                    f"Storage quantity '{quantity}' is missing a numeric component."
+                );
+            }
+            return int(number_part) // divisor;
+        }
+    }
     for (suffix, multiplier) in suffixes_binary.items() {
         if q.endswith(suffix) {
             number_part = q[:-len(suffix)].strip();

@@ -178,6 +178,7 @@ graph import {
             | byllm.model_cache._emit
             | client.asset_processor
             | client.cli._npm_context
+            | client.client_bundle.stage
             | client.client_deps.prompt_install_client_deps
             | client.compiler
             | client.config_loader
@@ -3543,6 +3544,9 @@ graph import {
     testing.test ++> [
         compiler.tests.test_pipeline_products
             | compiler.tests.test_prim_equivalence
+            | compiler.tests.test_prim_equivalence_2
+            | compiler.tests.test_prim_equivalence_3
+            | compiler.tests.test_prim_equivalence_4
             | scale.tests.deploy.test_k8s_utils { parametrize },
         runtime.runtime.JacTest.jac_test { JacTestCheck },
     ]
@@ -4182,7 +4186,12 @@ graph import cli.shadcn {
 
 graph import client {
     artifact ++> [
-        client_bundle { ClientBundle, ClientBundleError, prebuilt_bundle },
+        client_bundle {
+            ClientBundle,
+            ClientBundleError,
+            ClientCompileError,
+            prebuilt_bundle
+        },
         serving { client_output_dir },
     ]
     asset_processor ++> jac_client_compiler { AssetProcessor }
@@ -4194,17 +4203,16 @@ graph import client {
         client_runtime | solid_runtime { SignupResult },
     ]
     client_bundle ++> [
+        cli.run_client_build { timing_stages },
         compiler { ClientBuildInputs, ClientBundle, ClientBundleError },
         compiler.ViteCompiler._compile_wasm_module { client_program },
         compiler.ViteCompiler.prepare_bundle { client_program },
         jac_client_compiler | npm_provider | route_scanner | vite_bundler {
             ClientBundleError
         },
-        jac_client_compiler.JacClientCompiler.compile { client_source_root },
-        targets.web_target.WebTarget.build {
-            client_context_program,
-            client_source_root
-        },
+        jac_client_compiler.JacClientCompiler._route_exports_of { ClientCompileError },
+        jac_client_compiler.JacClientCompiler.compile
+            | targets.web_target.WebTarget.build { client_source_root, stage },
         vite_client_bundle {
             ClientBuildInputs,
             ClientBundle,
@@ -5740,7 +5748,11 @@ graph import compiler {
         passes.boundary_analysis_pass.BoundaryAnalysisPass._interop_symbol {
             interop_callback_symbol
         },
-        passes.capability_check_pass { NATIVE_SUPPORTED_STDLIB, is_native_by_location },
+        passes.capability_check_pass {
+            NATIVE_PYTHON_ONLY_BUILTINS,
+            NATIVE_SUPPORTED_STDLIB,
+            is_native_by_location
+        },
         passes.capability_check_pass.classify_native_import
             | placement.placement._erased_only_import { native_erased_import_names },
         passes.endpoint_effect_pass.EndpointEffectPass._classify {
@@ -8789,7 +8801,8 @@ graph import compiler {
         driver.jir._ct_pkg_ref | placement.placement_facts._toolchain_rel {
             target_package_rel
         },
-        driver.program.JacProgram.declared_codespace { package_host_edge },
+        driver.program.JacProgram.declared_codespace
+            | placement.placement_solver.native_closure_blocker { package_host_edge },
     ]
     pkg_paths --> [
         driver.program.JacProgram.infers_native_codespace { package_host_edge },
@@ -10368,6 +10381,7 @@ graph import compiler.driver {
     pipeline --> [
         application._tree_source { CompilationProduct, require },
         compiler.JacCompiler._format_program { execute_passes },
+        compiler.JacCompiler._get_client_artifact { mark_failed },
         compiler.JacCompiler.ensure_client_codegen
             | ifacecache.IfaceRegistry._ensure_flow_graph { require },
         compiler.JacCompiler.jac_file_linter { execute_passes },
@@ -11167,7 +11181,12 @@ graph import compiler.placement {
 }
 
 graph import compiler.tests {
+    prim_equiv_cases ++> test_prim_equivalence
+        | test_prim_equivalence_2
+        | test_prim_equivalence_3
+        | test_prim_equivalence_4 { EQUIV_CASES, equiv_case }
     xbackend_equiv ++> [
+        prim_equiv_cases | test_shared_types_equivalence { run_with_both },
         test_fixed_width_equivalence {
             call_py_fixture,
             compile_fixture_to_js,
@@ -11203,7 +11222,6 @@ graph import compiler.tests {
             run_py_fixture,
             run_with_both
         },
-        test_shared_types_equivalence { run_with_both },
         test_socket_equivalence | test_ssl_equivalence | test_urllib_equivalence {
             compile_native,
             get_func,
@@ -13143,7 +13161,6 @@ graph import scale {
         admin.k8s_ops { HAS_KUBERNETES, client, config },
         deploy.autoscale.autoscaler.Autoscaler.read_workload
             | deploy.target.kubernetes.ingress
-            | deploy.target.kubernetes.monitoring
             | deploy.target.kubernetes.target
             | deploy.target.kubernetes.utils.kubernetes_utils
             | injector.pvc_injector.PvcInjector.seed { ApiException, client },
@@ -13165,6 +13182,7 @@ graph import scale {
             config as k8s_cluster_config,
             stream
         },
+        deploy.target.kubernetes.monitoring { ApiException, HTTPError, client },
         tests.deploy.observer_transition_recorder { ApiException, config },
         tests.misc.test_optional_deps { HAS_KUBERNETES, client as k8s_client },
     ]
@@ -13267,6 +13285,7 @@ graph import scale {
             | tests.deploy.test_deploy_k8s
             | tests.deploy.test_dry_run_purity
             | tests.deploy.test_factories
+            | tests.deploy.test_monitoring_switch
             | tests.deploy.test_ops_rbac
             | tests.deploy.test_pdb_budget
             | tests.deploy.test_pod_env
@@ -14157,6 +14176,7 @@ graph import scale {
             in_cluster_namespace
         },
         deploy.target.kubernetes.database_provisioner
+            | deploy.target.kubernetes.monitoring
             | deploy.target.kubernetes.ops_rbac
             | sdk.client { k8s_safe_name },
         deploy.target.kubernetes.manifest_builder
@@ -14801,7 +14821,14 @@ graph import scale.deploy.target.kubernetes {
             in_cluster_kubectl,
             kubectl_cluster
         },
-        monitoring { FLEET_SELECTOR, delete_if_exists, delete_k8s_secret },
+        monitoring {
+            FLEET_SELECTOR,
+            delete_if_exists,
+            delete_k8s_secret,
+            parse_storage_quantity,
+            resize_pvc_if_needed,
+            wait_until_deleted
+        },
         target {
             FLEET_SELECTOR,
             PSS_ENFORCE_LABEL,

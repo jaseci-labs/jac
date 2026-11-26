@@ -117,15 +117,16 @@ impl ClientBundleBuilder._compile_to_js(
     if artifact is None {
         errors = diagnostic_program.errors_had[prev_error_count:]
             or _errors_reaching(diagnostic_program, str(source_path));
-        formatted = '\n'.join(str(err) for err in errors);
-        if not formatted {
-            formatted = (
-                " it lowers to no client code because it declares nothing that runs on "
-                "or is exposed to the client."
+        if errors {
+            formatted = '\n'.join(str(err) for err in errors);
+            raise ClientCompileError(
+                f"Failed to compile '{source_path}' for client bundle:{formatted}"
             );
         }
         raise ClientBundleError(
-            f"Failed to compile '{source_path}' for client bundle:{formatted}"
+            f"Failed to compile '{source_path}' for client bundle: it lowers to no "
+            "client code because it declares nothing that runs on or is exposed to "
+            "the client."
         );
     }
     return artifact;
@@ -163,6 +164,28 @@ impl emitted_tree_digest(tree_root: Path) -> str {
 impl ClientBundleBuilder._signature(paths: Iterable[Path]) -> str {
     parts = [f"{path}:{ct_dep_digest(str(path), with_annexes=True)}" for path in paths];
     return hashlib.sha256('|'.join(parts).encode('utf-8')).hexdigest();
+}
+
+impl timing_stages -> Iterator[None] {
+    token = _stage_timing.set(True);
+    try {
+        yield ;
+    } finally {
+        _stage_timing.reset(token);
+    }
+}
+
+impl stage(done: str) -> Iterator[None] {
+    if not _stage_timing.get() {
+        yield ;
+        return;
+    }
+    began = time.monotonic();
+    yield ;
+    took = time.monotonic() - began;
+    if took >= STAGE_SHOWN_FROM_SECONDS {
+        console.print(f"  ✔ {done} ({took:.1f}s)");
+    }
 }
 
 impl client_source_root(project_dir: Path, entry_path: Path) -> Path {
