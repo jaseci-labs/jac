@@ -2,6 +2,8 @@
 
 Covers lazy adapters (map/filter/enumerate/zip) driven through for-loops,
 composition, break/empty edge cases, and first-class iter()/next() values.
+
+Each fixture is compiled once and its functions are checked as one table.
 """
 
 import ctypes;
@@ -14,152 +16,61 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
 
-test "list consumes the remaining iterator values with their element types" {
-    (eng, _) = compile_native("iter_protocol.jac");
-    f = get_func(eng, "iterator_list_values", ctypes.c_int64);
-    assert f() == 25;
+test "iter_adapters: map, filter, enumerate and zip drive for-loops" {
+    (eng, _) = compile_native("iter_adapters.jac");
+    want = {
+        "map_sum": 20,
+        "filter_sum": 12,
+        "filter_empty": 0,
+        "compose_sum": 24,  # map over filter
+        "map_break": 6,
+        "enum_sum": 360,  # enumerate / zip unpack tuples
+        "zip_sum": 140,
+        "zip_unequal": 50
+    };
+    got = {fn: get_func(eng, fn, ctypes.c_int64)() for fn in want};
+    assert got == want , {
+        fn: (got[fn], want[fn])
+        for fn in want
+        if got[fn] != want[fn]
+    };
 }
 
-test "returned iterators own their local source collections" {
+test "iter_protocol: first-class iter() and next() over every iterable" {
     (eng, _) = compile_native("iter_protocol.jac");
-    f = get_func(eng, "returned_iterator_values", ctypes.c_int64);
+    want = {
+        # list() consumes the remaining values with their element types
+        "iterator_list_values": 25,
+        # #6403 phase 2: `it = iter(x); next(it)` and `for x in it` over a
+        # stored iterator, typed through the for-loop's __iter__/__next__
+        "iter_next_basic": 57,
+        "for_over_iter": 10,
+        "str_iter_next": 2,
+        "next_exhausted": 99,  # next() past the end raises StopIteration
+        # M1: iter() over range / dict / set
+        "for_over_range_iter": 10,
+        "next_range": 1013,  # stepped range
+        "for_over_range_desc": 15,
+        "for_over_dict_iter": 3,  # yields keys
+        "for_over_set_iter": 12,
+        "map_over_stored": 12,  # an adapter over a stored iterator
+        # #6403: iter(it) returns the JacIter the variable owns; the loop's
+        # reference carries its own +1, so the source is not released twice
+        # (loop end + scope exit)
+        "for_over_iter_of_stored": 10,
+        "assign_iter_of_stored": 10
+    };
+    got = {fn: get_func(eng, fn, ctypes.c_int64)() for fn in want};
+    assert got == want , {
+        fn: (got[fn], want[fn])
+        for fn in want
+        if got[fn] != want[fn]
+    };
+    # a returned iterator owns its local source collection: both items drop
     drops = get_func(eng, "iterator_item_drop_count", ctypes.c_int64);
     before = drops();
-    assert f() == 268;
+    assert get_func(eng, "returned_iterator_values", ctypes.c_int64)() == 268;
     assert drops() - before == 2;
-}
-
-# --- map / filter ---
-test "iter map sum" {
-    (eng, _) = compile_native("iter_adapters.jac");
-    f = get_func(eng, "map_sum", ctypes.c_int64);
-    assert f() == 20;
-}
-
-test "iter filter sum" {
-    (eng, _) = compile_native("iter_adapters.jac");
-    f = get_func(eng, "filter_sum", ctypes.c_int64);
-    assert f() == 12;
-}
-
-test "iter filter empty" {
-    (eng, _) = compile_native("iter_adapters.jac");
-    f = get_func(eng, "filter_empty", ctypes.c_int64);
-    assert f() == 0;
-}
-
-test "iter compose map over filter" {
-    (eng, _) = compile_native("iter_adapters.jac");
-    f = get_func(eng, "compose_sum", ctypes.c_int64);
-    assert f() == 24;
-}
-
-test "iter map with break" {
-    (eng, _) = compile_native("iter_adapters.jac");
-    f = get_func(eng, "map_break", ctypes.c_int64);
-    assert f() == 6;
-}
-
-# --- enumerate / zip (tuple unpack) ---
-test "iter enumerate sum" {
-    (eng, _) = compile_native("iter_adapters.jac");
-    f = get_func(eng, "enum_sum", ctypes.c_int64);
-    assert f() == 360;
-}
-
-test "iter zip sum" {
-    (eng, _) = compile_native("iter_adapters.jac");
-    f = get_func(eng, "zip_sum", ctypes.c_int64);
-    assert f() == 140;
-}
-
-test "iter zip unequal lengths" {
-    (eng, _) = compile_native("iter_adapters.jac");
-    f = get_func(eng, "zip_unequal", ctypes.c_int64);
-    assert f() == 50;
-}
-
-# --- first-class iter() / next() (#6403 phase 2) ---
-# `it = iter(x); next(it)` and `for x in it` over a stored iterator value, now
-# that the native checker infers `iter(x) -> Iterator[T]` / `next(it) -> T`
-# through the same __iter__/__next__ machinery the for-loop uses.
-test "iter next basic" {
-    (eng, _) = compile_native("iter_protocol.jac");
-    f = get_func(eng, "iter_next_basic", ctypes.c_int64);
-    assert f() == 57;
-}
-
-test "iter for over stored iterator" {
-    (eng, _) = compile_native("iter_protocol.jac");
-    f = get_func(eng, "for_over_iter", ctypes.c_int64);
-    assert f() == 10;
-}
-
-test "iter str iter next" {
-    (eng, _) = compile_native("iter_protocol.jac");
-    f = get_func(eng, "str_iter_next", ctypes.c_int64);
-    assert f() == 2;
-}
-
-# next() past the end raises StopIteration (Python contract), caught here.
-test "iter next exhausted raises stopiteration" {
-    (eng, _) = compile_native("iter_protocol.jac");
-    f = get_func(eng, "next_exhausted", ctypes.c_int64);
-    assert f() == 99;
-}
-
-# --- M1: first-class iter() over range / dict / set ---
-test "iter over range" {
-    (eng, _) = compile_native("iter_protocol.jac");
-    f = get_func(eng, "for_over_range_iter", ctypes.c_int64);
-    assert f() == 10;
-}
-
-test "iter next over stepped range" {
-    (eng, _) = compile_native("iter_protocol.jac");
-    f = get_func(eng, "next_range", ctypes.c_int64);
-    assert f() == 1013;
-}
-
-test "iter over descending range" {
-    (eng, _) = compile_native("iter_protocol.jac");
-    f = get_func(eng, "for_over_range_desc", ctypes.c_int64);
-    assert f() == 15;
-}
-
-test "iter over dict yields keys" {
-    (eng, _) = compile_native("iter_protocol.jac");
-    f = get_func(eng, "for_over_dict_iter", ctypes.c_int64);
-    assert f() == 3;
-}
-
-test "iter over set" {
-    (eng, _) = compile_native("iter_protocol.jac");
-    f = get_func(eng, "for_over_set_iter", ctypes.c_int64);
-    assert f() == 12;
-}
-
-# --- composition: adapter over a stored iterator ---
-test "iter map over stored iterator" {
-    (eng, _) = compile_native("iter_protocol.jac");
-    f = get_func(eng, "map_over_stored", ctypes.c_int64);
-    assert f() == 12;
-}
-
-# --- #6403: iter() of a stored iterator must retain (no double-release UAF) ---
-# `iter(it)` returns the same JacIter the variable owns; the loop's owned
-# reference must carry its own +1 so the source's single +1 is not released
-# twice (loop end + scope exit).
-test "iter for over iter of stored iterator" {
-    (eng, _) = compile_native("iter_protocol.jac");
-    f = get_func(eng, "for_over_iter_of_stored", ctypes.c_int64);
-    assert f() == 10;
-}
-
-test "iter assign iter of stored iterator" {
-    (eng, _) = compile_native("iter_protocol.jac");
-    f = get_func(eng, "assign_iter_of_stored", ctypes.c_int64);
-    assert f() == 10;
 }
 
 # --- #6403: iter()/next() are positional-only; the keyword form is rejected ---
@@ -181,60 +92,25 @@ test "iter next keyword arg rejected" {
 # first-class iter()/next(), composes under map/filter/enumerate, and crosses
 # function boundaries — its `__next__`'s StopIteration becomes the protocol's
 # i1-0 exhaustion flag.
-test "user iter self for-loop" {
+test "iter_user: a user __iter__/__next__ drives the protocol" {
     (eng, _) = compile_native("iter_user.jac");
-    f = get_func(eng, "user_self_for", ctypes.c_int64);
-    assert f() == 10;
-}
-
-test "user iter borrowed var for-loop" {
-    (eng, _) = compile_native("iter_user.jac");
-    f = get_func(eng, "user_self_for_var", ctypes.c_int64);
-    assert f() == 3;
-}
-
-test "user iter separate iterator for-loop" {
-    (eng, _) = compile_native("iter_user.jac");
-    f = get_func(eng, "user_separate_for", ctypes.c_int64);
-    assert f() == 6;
-}
-
-test "user iter first-class iter next" {
-    (eng, _) = compile_native("iter_user.jac");
-    f = get_func(eng, "user_iter_next", ctypes.c_int64);
-    assert f() == 1011;
-}
-
-test "user iter under map adapter" {
-    (eng, _) = compile_native("iter_user.jac");
-    f = get_func(eng, "user_map_compose", ctypes.c_int64);
-    assert f() == 6;
-}
-
-test "user iter break mid-iteration" {
-    (eng, _) = compile_native("iter_user.jac");
-    f = get_func(eng, "user_break", ctypes.c_int64);
-    assert f() == 3;
-}
-
-test "user iter crosses function boundary" {
-    (eng, _) = compile_native("iter_user.jac");
-    f = get_func(eng, "user_cross_fn", ctypes.c_int64);
-    assert f() == 10;
-}
-
-# A non-StopIteration error from __next__ must propagate, not end the loop.
-test "user iter next non-stopiteration propagates" {
-    (eng, _) = compile_native("iter_user.jac");
-    f = get_func(eng, "user_next_propagates", ctypes.c_int64);
-    assert f() == 42;
-}
-
-# A subclass driving __iter__/__next__ inherited from its base.
-test "user iter inherited from base" {
-    (eng, _) = compile_native("iter_user.jac");
-    f = get_func(eng, "user_inherited_iter", ctypes.c_int64);
-    assert f() == 6;
+    want = {
+        "user_self_for": 10,
+        "user_self_for_var": 3,  # borrowed var
+        "user_separate_for": 6,  # a separate iterator object
+        "user_iter_next": 1011,
+        "user_map_compose": 6,
+        "user_break": 3,
+        "user_cross_fn": 10,
+        "user_next_propagates": 42,  # a non-StopIteration error propagates
+        "user_inherited_iter": 6  # __iter__/__next__ inherited from a base
+    };
+    got = {fn: get_func(eng, fn, ctypes.c_int64)() for fn in want};
+    assert got == want , {
+        fn: (got[fn], want[fn])
+        for fn in want
+        if got[fn] != want[fn]
+    };
 }
 
 test "iterator bindings retain borrowed objects across cleanup and reassignment" {
