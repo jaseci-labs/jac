@@ -5748,7 +5748,11 @@ graph import compiler {
         passes.boundary_analysis_pass.BoundaryAnalysisPass._interop_symbol {
             interop_callback_symbol
         },
-        passes.capability_check_pass { NATIVE_SUPPORTED_STDLIB, is_native_by_location },
+        passes.capability_check_pass {
+            NATIVE_PYTHON_ONLY_BUILTINS,
+            NATIVE_SUPPORTED_STDLIB,
+            is_native_by_location
+        },
         passes.capability_check_pass.classify_native_import
             | placement.placement._erased_only_import { native_erased_import_names },
         passes.endpoint_effect_pass.EndpointEffectPass._classify {
@@ -8796,7 +8800,8 @@ graph import compiler {
         driver.jir._ct_pkg_ref | placement.placement_facts._toolchain_rel {
             target_package_rel
         },
-        driver.program.JacProgram.declared_codespace { package_host_edge },
+        driver.program.JacProgram.declared_codespace
+            | placement.placement_solver.native_closure_blocker { package_host_edge },
     ]
     pkg_paths --> [
         driver.program.JacProgram.infers_native_codespace { package_host_edge },
