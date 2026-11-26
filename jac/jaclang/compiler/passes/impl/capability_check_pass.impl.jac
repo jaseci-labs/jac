@@ -403,6 +403,30 @@ impl native_capability_violations(
             if isinstance(nd, Import) {
                 continue;
             }
+            if isinstance(nd, Name)
+                and nd.expr_ctx == ExprCtx.LOAD
+                and nd.value in NATIVE_PYTHON_ONLY_BUILTINS {
+                _bdecl = nd.sym.decl if nd.sym is not None else None;
+                _bmod = _bdecl.find_parent_of_type(Module)
+                    if _bdecl is not None
+                    else None;
+                _bpath = _bmod.loc.mod_path
+                    if (_bmod is not None and _bmod.loc is not None)
+                    else "";
+                if _bpath.endswith("builtins.pyi") {
+                    out.append(
+                        (
+                            nd,
+                            "Python-only builtin",
+                            nd.value,
+                            f"'{nd.value}' exists only on the Python tier and has no "
+                            "native implementation, so the code that uses it runs "
+                            "in Python."
+                        )
+                    );
+                    continue;
+                }
+            }
             if isinstance(nd, Assignment) {
                 _targets = (
                     nd.target if isinstance(nd.target, (list, tuple)) else [nd.target]

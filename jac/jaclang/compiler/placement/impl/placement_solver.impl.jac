@@ -269,6 +269,9 @@ impl native_closure_blocker(
         if pinned_module_space(dep) == 'server' {
             return (f"'{name}' is pinned to the server", True);
         }
+        if package_host_edge(dep) {
+            return (f"'{name}' is a jaclang host module, never compiled native", False);
+        }
         summary = dependency_summary(prog, dep);
         if summary is None {
             return (f"'{name}' has no placement facts", False);

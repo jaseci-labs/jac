@@ -178,6 +178,7 @@ graph import {
             | byllm.model_cache._emit
             | client.asset_processor
             | client.cli._npm_context
+            | client.client_bundle.stage
             | client.client_deps.prompt_install_client_deps
             | client.compiler
             | client.config_loader
@@ -4201,6 +4202,7 @@ graph import client {
         client_runtime | solid_runtime { SignupResult },
     ]
     client_bundle ++> [
+        cli.run_client_build { timing_stages },
         compiler { ClientBuildInputs, ClientBundle, ClientBundleError },
         compiler.ViteCompiler._compile_wasm_module { client_program },
         compiler.ViteCompiler.prepare_bundle { client_program },
@@ -4209,7 +4211,7 @@ graph import client {
         },
         jac_client_compiler.JacClientCompiler._route_exports_of { ClientCompileError },
         jac_client_compiler.JacClientCompiler.compile
-            | targets.web_target.WebTarget.build { client_source_root },
+            | targets.web_target.WebTarget.build { client_source_root, stage },
         vite_client_bundle {
             ClientBuildInputs,
             ClientBundle,
@@ -5713,7 +5715,11 @@ graph import compiler {
         passes.boundary_analysis_pass.BoundaryAnalysisPass._interop_symbol {
             interop_callback_symbol
         },
-        passes.capability_check_pass { NATIVE_SUPPORTED_STDLIB, is_native_by_location },
+        passes.capability_check_pass {
+            NATIVE_PYTHON_ONLY_BUILTINS,
+            NATIVE_SUPPORTED_STDLIB,
+            is_native_by_location
+        },
         passes.capability_check_pass.classify_native_import
             | placement.placement._erased_only_import { native_erased_import_names },
         passes.endpoint_effect_pass.EndpointEffectPass._classify {
@@ -8739,7 +8745,8 @@ graph import compiler {
         driver.jir._ct_pkg_ref | placement.placement_facts._toolchain_rel {
             target_package_rel
         },
-        driver.program.JacProgram.declared_codespace { package_host_edge },
+        driver.program.JacProgram.declared_codespace
+            | placement.placement_solver.native_closure_blocker { package_host_edge },
     ]
     pkg_paths --> [
         driver.program.JacProgram.infers_native_codespace { package_host_edge },
