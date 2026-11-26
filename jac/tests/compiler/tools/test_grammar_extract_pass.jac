@@ -7,7 +7,7 @@ Jac parser module. Also validates grammar matches jac.spec.
 
 import from pathlib { Path }
 import os;
-import from tests.support { JAC_ROOT, run_cases }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.tools.grammar_extract_pass {
     GAlt,
@@ -80,37 +80,91 @@ def parse_spec(text: str) -> dict[str, str] {
 }
 
 # ── Unit tests: grammar model and formatting ─────────────────────────────
-test "gtok ebnf" {
-    assert fmt(GTok(name="KW_IF")) == '"if"';
-}
+# (case, expression, its EBNF)
+glob EBNF_CASES: list[tuple[str, any, str]] = [
+         ("gtok ebnf", GTok(name="KW_IF"), '"if"'),
+         ("gref ebnf", GRef(name="expression"), "expression"),
+         (
+             "gseq ebnf",
+             GSeq(items=[GTok(name="KW_IF"), GRef(name="expression")]),
+             '"if" expression'
+         ),
+         (
+             "galt ebnf",
+             GAlt(choices=[GRef(name="elif_stmt"), GRef(name="else_stmt")]),
+             "elif_stmt | else_stmt"
+         ),
+         ("gopt ebnf", GOpt(inner=GRef(name="else_stmt")), "else_stmt?"),
+         (
+             "gopt alt ebnf",
+             GOpt(inner=GAlt(choices=[GRef(name="elif_stmt"), GRef(name="else_stmt")])),
+             "(elif_stmt | else_stmt)?"
+         ),
+         (
+             "gstar ebnf",
+             GStar(inner=GSeq(items=[GTok(name="BW_OR"), GRef(name="bitwise_xor")])),
+             '("|" bitwise_xor)*'
+         ),
+         (
+             "alt inside seq gets parens",
+             GSeq(
+                 items=[GTok(name="A"), GAlt(choices=[GTok(name="B"), GTok(name="C")])]
+             ),
+             "A (B | C)"
+         )
+     ],
+     SIMPLIFY_CASES: list[tuple[str, any, str]] = [
+         (
+             "simplify nested seq",
+             GSeq(items=[GTok(name="A"), GSeq(items=[GTok(name="B"), GTok(name="C")])]),
+             "A B C"
+         ),
+         ("simplify single item seq", GSeq(items=[GTok(name="A")]), "A"),
+         (
+             "simplify nested alt",
+             GAlt(
+                 choices=[
+                     GTok(name="A"),
+                     GAlt(choices=[GTok(name="B"), GTok(name="C")])
+                 ]
+             ),
+             "A | B | C"
+         ),
+         (
+             "alt collapses bare choice into optional twin",
+             GAlt(choices=[GTok(name="SEMI"), GOpt(inner=GTok(name="SEMI"))]),
+             '";"?'
+         ),
+         (
+             "alt collapses bare choice into star twin",
+             GAlt(choices=[GStar(inner=GTok(name="COMMA")), GTok(name="COMMA")]),
+             '","*'
+         ),
+         (
+             "opt hoist skips outer opt when a star choice exists",
+             GAlt(
+                 choices=[
+                     GStar(inner=GTok(name="COMMA")),
+                     GOpt(inner=GTok(name="SEMI"))
+                 ]
+             ),
+             '","* | ";"'
+         )
+     ];
 
-test "gref ebnf" {
-    assert fmt(GRef(name="expression")) == "expression";
-}
-
-test "gseq ebnf" {
-    seq = GSeq(items=[GTok(name="KW_IF"), GRef(name="expression")]);
-    assert fmt(seq) == '"if" expression';
-}
-
-test "galt ebnf" {
-    alt = GAlt(choices=[GRef(name="elif_stmt"), GRef(name="else_stmt")]);
-    assert fmt(alt) == "elif_stmt | else_stmt";
-}
-
-test "gopt ebnf" {
-    opt = GOpt(inner=GRef(name="else_stmt"));
-    assert fmt(opt) == "else_stmt?";
-}
-
-test "gopt alt ebnf" {
-    opt = GOpt(inner=GAlt(choices=[GRef(name="elif_stmt"), GRef(name="else_stmt")]));
-    assert fmt(opt) == "(elif_stmt | else_stmt)?";
-}
-
-test "gstar ebnf" {
-    star = GStar(inner=GSeq(items=[GTok(name="BW_OR"), GRef(name="bitwise_xor")]));
-    assert fmt(star) == '("|" bitwise_xor)*';
+# (case, expression, its EBNF after simplify)
+test "each grammar expression formats to its EBNF" {
+    failed = [
+        f"{label}: got {fmt(expr)!r}, expected {want!r}"
+        for (label, expr, want) in EBNF_CASES
+        if fmt(expr) != want
+    ]
+        + [
+            f"{label}: got {fmt(simplify(expr))!r}, expected {want!r}"
+            for (label, expr, want) in SIMPLIFY_CASES
+            if fmt(simplify(expr)) != want
+        ];
+    assert not failed , "\n".join(failed);
 }
 
 test "grammar rule ebnf" {
@@ -127,53 +181,11 @@ test "grammar rule ebnf" {
     assert ebnf == 'bitwise_or ::= bitwise_xor ("|" bitwise_xor)*';
 }
 
-test "alt inside seq gets parens" {
-    seq = GSeq(items=[GTok(name="A"), GAlt(choices=[GTok(name="B"), GTok(name="C")])]);
-    assert fmt(seq) == "A (B | C)";
-}
-
-test "simplify nested seq" {
-    expr = GSeq(items=[GTok(name="A"), GSeq(items=[GTok(name="B"), GTok(name="C")])]);
-    simplified = simplify(expr);
-    assert fmt(simplified) == "A B C";
-}
-
-test "simplify single item seq" {
-    expr = GSeq(items=[GTok(name="A")]);
-    simplified = simplify(expr);
-    assert fmt(simplified) == "A";
-}
-
-test "simplify nested alt" {
-    expr = GAlt(
-        choices=[GTok(name="A"), GAlt(choices=[GTok(name="B"), GTok(name="C")])]
-    );
-    simplified = simplify(expr);
-    assert fmt(simplified) == "A | B | C";
-}
-
 test "equality" {
     assert GTok(name="X") == GTok(name="X");
     assert GRef(name="foo") == GRef(name="foo");
     assert GTok(name="X") != GTok(name="Y");
     assert GTok(name="X") != GRef(name="X");
-}
-
-test "alt collapses bare choice into optional twin" {
-    expr = GAlt(choices=[GTok(name="SEMI"), GOpt(inner=GTok(name="SEMI"))]);
-    assert fmt(simplify(expr)) == '";"?';
-}
-
-test "alt collapses bare choice into star twin" {
-    expr = GAlt(choices=[GStar(inner=GTok(name="COMMA")), GTok(name="COMMA")]);
-    assert fmt(simplify(expr)) == '","*';
-}
-
-test "opt hoist skips outer opt when a star choice exists" {
-    expr = GAlt(
-        choices=[GStar(inner=GTok(name="COMMA")), GOpt(inner=GTok(name="SEMI"))]
-    );
-    assert fmt(simplify(expr)) == '","* | ";"';
 }
 
 # ── Mini-parser fixture: behaviors of interpretation itself ──────────────
@@ -376,139 +388,56 @@ def mini_rules -> dict[str, any] {
     return {r.name: r for r in mini_pass().rules};
 }
 
-test "contextual tokens and finally blocks retain their grammar, and related cases" {
-    def check_contextual_tokens_and_finally_blocks_retain_thei {
-        rules = mini_rules();
+# (case, mini parser rule, its extracted EBNF)
+glob MINI_RULE_CASES: list[tuple[str, str, str]] = [
+         (
+             "contextual tokens and finally blocks retain their grammar",
+             "contextual",
+             '"graph" "{" ";"'
+         ),
+         (
+             "or merged match_tok loop emits full token set",
+             "loopy",
+             '(("." | ".>") NAME)*'
+         ),
+         (
+             "or merged match_tok opt emits full token set",
+             "optish",
+             '(("." | "<.") NAME)?'
+         ),
+         ("opaque if else becomes alternation", "choice", '";" | ","'),
+         (
+             "guard suppressed when child rule consumes it",
+             "outer",
+             "inner_if | fallback"
+         ),
+         ("self recursive guard is kept", "rec", '"-" rec | leaf'),
+         (
+             "genuinely nullable dispatch keeps its optionality",
+             "marker",
+             '("own" | "imm")?'
+         ),
+         (
+             "none returning dispatcher loses redundant optionality",
+             "marker2",
+             '"own" | "imm"'
+         ),
+         ("ternary with none branch is optional", "maybe", 'leaf? ";"'),
+         ("mid loop separator break emits optional separator", "listy", '(leaf ","?)*'),
+         ("exhaustive if else chain is not optional", "either", '"if" | NAME'),
+         ("guard covered by deep first set is elided", "covered", 'wrapped ";" | leaf'),
+         ("try parse idiom becomes ordered choice", "trying", "marker2 | leaf")
+     ];
 
-        assert fmt(rules["contextual"].body) == '"graph" "{" ";"';
-    }
-
-    def check_or_merged_match_tok_loop_emits_full_token_set {
-        rules = mini_rules();
-
-        assert fmt(rules["loopy"].body) == '(("." | ".>") NAME)*';
-    }
-
-    def check_or_merged_match_tok_opt_emits_full_token_set {
-        rules = mini_rules();
-
-        assert fmt(rules["optish"].body) == '(("." | "<.") NAME)?';
-    }
-
-    def check_opaque_if_else_becomes_alternation {
-        rules = mini_rules();
-
-        assert fmt(rules["choice"].body) == '";" | ","';
-    }
-
-    def check_guard_suppressed_when_child_rule_consumes_it {
-        rules = mini_rules();
-
-        assert fmt(rules["outer"].body) == "inner_if | fallback";
-    }
-
-    def check_self_recursive_guard_is_kept {
-        rules = mini_rules();
-
-        assert fmt(rules["rec"].body) == '"-" rec | leaf';
-    }
-
-    def check_genuinely_nullable_dispatch_keeps_its_optionalit {
-        rules = mini_rules();
-
-        assert fmt(rules["marker"].body) == '("own" | "imm")?';
-    }
-
-    def check_none_returning_dispatcher_loses_redundant_option {
-        rules = mini_rules();
-
-        assert fmt(rules["marker2"].body) == '"own" | "imm"';
-    }
-
-    def check_ternary_with_none_branch_is_optional {
-        rules = mini_rules();
-
-        assert fmt(rules["maybe"].body) == 'leaf? ";"';
-    }
-
-    def check_mid_loop_separator_break_emits_optional_separato {
-        rules = mini_rules();
-
-        assert fmt(rules["listy"].body) == '(leaf ","?)*';
-    }
-
-    def check_exhaustive_if_else_chain_is_not_optional {
-        rules = mini_rules();
-
-        assert fmt(rules["either"].body) == '"if" | NAME';
-    }
-
-    def check_guard_covered_by_deep_first_set_is_elided {
-        rules = mini_rules();
-
-        assert fmt(rules["covered"].body) == 'wrapped ";" | leaf';
-    }
-
-    def check_try_parse_idiom_becomes_ordered_choice {
-        rules = mini_rules();
-
-        assert fmt(rules["trying"].body) == "marker2 | leaf";
-    }
-    run_cases(
-        [
-            (
-                "contextual tokens and finally blocks retain their grammar",
-                check_contextual_tokens_and_finally_blocks_retain_thei
-            ),
-            (
-                "or merged match_tok loop emits full token set",
-                check_or_merged_match_tok_loop_emits_full_token_set
-            ),
-            (
-                "or merged match_tok opt emits full token set",
-                check_or_merged_match_tok_opt_emits_full_token_set
-            ),
-            (
-                "opaque if else becomes alternation",
-                check_opaque_if_else_becomes_alternation
-            ),
-            (
-                "guard suppressed when child rule consumes it",
-                check_guard_suppressed_when_child_rule_consumes_it
-            ),
-            ("self recursive guard is kept", check_self_recursive_guard_is_kept),
-            (
-                "genuinely nullable dispatch keeps its optionality",
-                check_genuinely_nullable_dispatch_keeps_its_optionalit
-            ),
-            (
-                "none returning dispatcher loses redundant optionality",
-                check_none_returning_dispatcher_loses_redundant_option
-            ),
-            (
-                "ternary with none branch is optional",
-                check_ternary_with_none_branch_is_optional
-            ),
-            (
-                "mid loop separator break emits optional separator",
-                check_mid_loop_separator_break_emits_optional_separato
-            ),
-            (
-                "exhaustive if else chain is not optional",
-                check_exhaustive_if_else_chain_is_not_optional
-            ),
-            (
-                "guard covered by deep first set is elided",
-                check_guard_covered_by_deep_first_set_is_elided
-            ),
-            (
-                "try parse idiom becomes ordered choice",
-                check_try_parse_idiom_becomes_ordered_choice
-            )
-        ]
-    );
+test "each mini parser rule extracts to its expected grammar" {
+    rules = mini_rules();
+    failed = [
+        f"{label}: {rule} gave {fmt(rules[rule].body)!r}, expected {want!r}"
+        for (label, rule, want) in MINI_RULE_CASES
+        if fmt(rules[rule].body) != want
+    ];
+    assert not failed , "\n".join(failed);
 }
-
 
 test "strict diagnostics flag invisible constructs" {
     p = mini_pass();
@@ -561,56 +490,46 @@ test "known rule names" {
     assert len(missing) == 0 , f"Missing rules: {missing}";
 }
 
-test "bitwise or structure, and related cases" {
-    def check_bitwise_or_structure {
-        extracted = real_parser_pass();
-        rule_map = {r.name: r for r in extracted.rules};
-        assert "bitwise_or" in rule_map;
-        ebnf = fmt(rule_map["bitwise_or"].body);
-        assert "bitwise_xor" in ebnf;
-        assert '"|"' in ebnf;
-    }
+# (case, real parser rule, text its EBNF must contain, text it must not contain)
+glob STRUCTURE_CASES: list[tuple[str, str, list[str], list[str]]] = [
+         ("bitwise or structure", "bitwise_or", ["bitwise_xor", '"|"'], []),
+         ("if stmt structure", "if_stmt", ['"if"', "expression", '"{"', '"}"'], []),
+         ("while stmt structure", "while_stmt", ['"while"', "expression"], []),
+         # forever has no condition and no else clause
+         (
+             "forever stmt structure",
+             "forever_stmt",
+             ['"forever"', "code_block_stmts"],
+             ["expression", "else_stmt"]
+         )
+     ];
 
-    def check_if_stmt_structure {
-        extracted = real_parser_pass();
-        rule_map = {r.name: r for r in extracted.rules};
-        assert "if_stmt" in rule_map;
-        ebnf = fmt(rule_map["if_stmt"].body);
-        assert '"if"' in ebnf;
-        assert "expression" in ebnf;
-        assert '"{"' in ebnf;
-        assert '"}"' in ebnf;
+test "each real parser rule has its expected structure" {
+    rule_map = {r.name: r for r in real_parser_pass().rules};
+    failed: list[str] = [];
+    for (label, rule, present, absent) in STRUCTURE_CASES {
+        if rule not in rule_map {
+            failed.append(f"{label}: no {rule} rule");
+            continue;
+        }
+        ebnf = fmt(rule_map[rule].body);
+        missing = [
+            s
+            for s in present
+            if s not in ebnf
+        ];
+        leaked = [
+            s
+            for s in absent
+            if s in ebnf
+        ];
+        if missing or leaked {
+            failed.append(f"{label}: missing {missing}, unexpected {leaked} in {ebnf}");
+        }
     }
-
-    def check_while_stmt_structure {
-        extracted = real_parser_pass();
-        rule_map = {r.name: r for r in extracted.rules};
-        assert "while_stmt" in rule_map;
-        ebnf = fmt(rule_map["while_stmt"].body);
-        assert '"while"' in ebnf;
-        assert "expression" in ebnf;
-    }
-    run_cases(
-        [
-            ("bitwise or structure", check_bitwise_or_structure),
-            ("if stmt structure", check_if_stmt_structure),
-            ("while stmt structure", check_while_stmt_structure)
-        ]
-    );
+    assert not failed , "\n".join(failed);
 }
 
-
-test "forever stmt structure" {
-    extracted = real_parser_pass();
-    rule_map = {r.name: r for r in extracted.rules};
-    assert "forever_stmt" in rule_map;
-    ebnf = fmt(rule_map["forever_stmt"].body);
-    assert '"forever"' in ebnf;
-    assert "code_block_stmts" in ebnf;
-    # forever has no condition and no else clause
-    assert "expression" not in ebnf;
-    assert "else_stmt" not in ebnf;
-}
 
 test "ebnf output nonempty" {
     extracted = real_parser_pass();
