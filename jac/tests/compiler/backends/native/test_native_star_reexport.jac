@@ -19,11 +19,6 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
 
-test "star re-export chain compiles" {
-    (eng, ir) = compile_native("na_star_reexport_main.jac");
-    assert ir.gen.llvm_ir is not None;
-}
-
 test "star re-export chain executes" {
     (eng, ir) = compile_native("na_star_reexport_main.jac");
     f = get_func(eng, "use_star", ctypes.c_int64, ctypes.c_int64);

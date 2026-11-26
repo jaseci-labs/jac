@@ -6,11 +6,6 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
 
-test "cyclic import: mandated two-file cycle compiles" {
-    (eng, _) = compile_native("cycle_ping.jac");
-    assert eng is not None;
-}
-
 test "cyclic import: mutual recursion computes across modules" {
     (eng, _) = compile_native("cycle_ping.jac");
     get_func(eng, "jac_entry", None)();
