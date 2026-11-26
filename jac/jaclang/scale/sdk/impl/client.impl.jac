@@ -128,9 +128,15 @@ impl ScaleClient.bundle_keys(
 }
 
 impl ScaleClient.scale(
-    app_name: str, namespace: str, replicas: int, target: str = 'auto'
+    app_name: str,
+    namespace: str,
+    replicas: int,
+    target: str = 'auto',
+    service: str = ''
 ) {
-    self._lifecycle_target(app_name, namespace, target).scale(app_name, replicas);
+    self._lifecycle_target(app_name, namespace, target).scale(
+        app_name, replicas, service
+    );
 }
 
 impl ScaleClient._emit(

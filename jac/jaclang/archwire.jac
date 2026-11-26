@@ -14163,6 +14163,7 @@ graph import scale {
             in_cluster_namespace
         },
         deploy.target.kubernetes.database_provisioner
+            | deploy.target.kubernetes.kubernetes_target
             | deploy.target.kubernetes.ops_rbac
             | sdk.client { k8s_safe_name },
         deploy.target.kubernetes.manifest_builder
@@ -14180,7 +14181,8 @@ graph import scale {
             | tests.deploy.test_http_activation_microservices
             | tests.deploy.test_memory_trigger_guard
             | tests.deploy.test_ops_rbac
-            | tests.deploy.test_pod_env { GATEWAY_NAME },
+            | tests.deploy.test_pod_env
+            | tests.deploy.test_superseded_deployment_reap { GATEWAY_NAME },
     ]
     runtime.context.util --> [
         tests.apps.test_app_scale_overrides {
@@ -14797,6 +14799,7 @@ graph import scale.deploy.target.kubernetes {
         ingress { KubectlCluster, delete_if_exists },
         kubernetes_target {
             COMPANION_DEFS,
+            FLEET_SELECTOR,
             KubectlCluster,
             create_k8s_secret,
             get_cluster_provider,
