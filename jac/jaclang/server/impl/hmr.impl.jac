@@ -6,7 +6,8 @@ import time;
 import shutil;
 import from pathlib { Path }
 
-glob logger = logging.getLogger(__name__);
+glob logger = logging.getLogger(__name__),
+     SOURCES_CHANGED_ATTEMPTS: int = 3;
 
 def _syntax_error_line(file_path: str, err: SyntaxError) -> str;
 
@@ -436,7 +437,16 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
                 import from jaclang.compiler.driver.application {
                     reprepare_application
                 }
-                prepared = reprepare_application(prepared, Jac.get_program());
+                fresh = None;
+                for _ in range(SOURCES_CHANGED_ATTEMPTS - 1) {
+                    try {
+                        fresh = reprepare_application(prepared, Jac.get_program());
+                        break;
+                    } except SourcesChanged {}
+                }
+                prepared = fresh
+                    if fresh is not None
+                    else reprepare_application(prepared, Jac.get_program());
                 if prepared.client_compiler is not None {
                     self.client_compiler = prepared.client_compiler;
                 }

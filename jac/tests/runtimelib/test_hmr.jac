@@ -26,9 +26,12 @@ def _as_any(v: any) -> any {
     return v;
 }
 
-test "prepared namespaced modules reload through their source source_path" {
+test "prepared modules reload through their source path, retrying a mid-reload source change" {
     import sys;
+    import jaclang.compiler.driver.application as driver;
     import from jaclang.runtime.runtime { JacRuntime as Jac }
+    import from jaclang.runtime.preparation_lock { SourcesChanged }
+    import from jaclang.server.hmr { SOURCES_CHANGED_ATTEMPTS }
     import from jaclang.compiler.driver.application { prepare_application }
     import from jaclang.runtime.prepared {
         initialize_application,
@@ -48,12 +51,37 @@ test "prepared namespaced modules reload through their source source_path" {
                 entry_path=str(source_path),
                 watcher=JacFileWatcher(watch_paths=[tmp])
             );
-            source_path.write_text('def value -> int { return 2; }\n');
-            reloader._process_change(str(source_path));
-            assert not reloader.diagnostics();
-            updated: any = load_prepared_module(str(source_path));
-            assert updated.value() == 2;
-            assert updated is not module;
+            original = driver.reprepare_application;
+            # (value, SourcesChanged raised before preparation succeeds)
+            for (value, failures) in [(2, 0), (3, 1), (4, SOURCES_CHANGED_ATTEMPTS)] {
+                label = f"failures={failures}";
+                calls: list[int] = [];
+                def flaky(*args: any, **kwargs: any) -> any {
+                    calls.append(1);
+                    if len(calls) <= failures {
+                        raise SourcesChanged("changed");
+                    }
+                    return original(*args, **kwargs);
+                }
+                source_path.write_text(
+                    'def value -> int { return ' + str(value) + '; }\n'
+                );
+                with patch.object(driver, 'reprepare_application', flaky) {
+                    reloader._process_change(str(source_path));
+                }
+                updated: any = load_prepared_module(str(source_path));
+                if failures < SOURCES_CHANGED_ATTEMPTS {
+                    assert not reloader.diagnostics() , label;
+                    assert updated.value() == value , label;
+                    assert updated is not module , label;
+                } else {
+                    status = reloader.build_status();
+                    assert status["status"] == "error" , label;
+                    assert "SourcesChanged"
+                        in status["diagnostics"][0]["message"] , label;
+                    assert len(calls) == SOURCES_CHANGED_ATTEMPTS , label;
+                }
+            }
         } finally {
             forget(str(source_path));
             for name in list(sys.modules) {
