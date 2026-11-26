@@ -15,6 +15,8 @@ def bootstrap_tier_failure_details(path: str) -> str;
 
 def _compiler_source_root -> str;
 
+def _cause_chain(err: BaseException) -> list[any];
+
 def _jac_source_failure_path(err: BaseException) -> (str | None);
 
 def fail_loud_on_compiler_source(err: ImportError) -> None;

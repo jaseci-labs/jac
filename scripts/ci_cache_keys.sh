@@ -50,10 +50,26 @@ tree jac/jaclang jac/build.zig jac/build.zig.zon jac/launcher jac/bootstrap \
 # A -Ddev binary bundles no jaclang: only the launcher (compiled by the native
 # backend, linking the fused runtime and native floors), the payload tool's
 # Python payload, and the pins. A jaclang edit elsewhere reuses it.
-tree jac/launcher jac/jaclang/dist/fused jac/jaclang/dist/payload \
-  jac/jaclang/compiler/backends/native jac/jaclang/runtime/na_stdlib \
-  jac/build.zig jac/build.zig.zon jac/bootstrap jac/native jac/_jac_finder.py \
-  jac/sitecustomize.py jac.toml jac/jac.toml | emit devbinary
+# Of jac.toml the build reads only `version` (stamped into the dist-info), so
+# check, lint and test settings there leave the binary alone.
+{
+  tree jac/launcher jac/jaclang/dist/fused jac/jaclang/dist/payload \
+    jac/jaclang/compiler/backends/native jac/jaclang/runtime/na_stdlib \
+    jac/build.zig jac/build.zig.zon jac/bootstrap jac/native jac/_jac_finder.py \
+    jac/sitecustomize.py
+  git show HEAD:jac.toml | grep -m1 -E '^[[:space:]]*version[[:space:]]*='
+} | emit devbinary
 tree jac/launcher jac/bootstrap jac/build.zig jac/build.zig.zon jac/native \
   jac/jaclang/client/js_runtime.jac jac/jaclang/compiler/backends/native/wasm_rt |
   emit layers
+# The dev kit's vendored runtimes (bun, static musl, wasm libc): the payload
+# tool that fetches or builds them, its pins (BUN_VERSION lives in
+# js_runtime.jac, WASM_FLOOR_MANIFEST in floors.jac), and the sources it
+# compiles into the musl and wasm archives.
+tree jac/bootstrap jac/build.zig jac/build.zig.zon jac/native \
+  jac/jaclang/dist/payload jac/jaclang/client/js_runtime.jac \
+  jac/jaclang/compiler/backends/native/floors.jac \
+  jac/jaclang/compiler/backends/native/wasm_rt \
+  jac/jaclang/compiler/backends/native/musl_compat \
+  jac/jaclang/compiler/backends/native/compiler_rt |
+  emit devassets

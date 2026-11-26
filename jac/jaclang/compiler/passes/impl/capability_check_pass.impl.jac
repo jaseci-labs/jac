@@ -704,7 +704,7 @@ impl native_capability_violations(
     return out;
 }
 
-impl native_capability_demotion_owner(viol_node: UniNode) -> (Ability | None) {
+impl native_capability_owner(viol_node: UniNode) -> (Ability | None) {
     _owner: (Ability | None) = viol_node if isinstance(viol_node, Ability) else None;
     _cur: UniNode = viol_node;
     while True {

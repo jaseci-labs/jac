@@ -82,30 +82,11 @@ impl wasm_artifact_inputs(
 }
 
 impl native_application(
-    program: JacProgram,
-    file_path: str,
-    target: str = '',
-    memory: str = '',
-    debug: bool = False,
-    no_ir_cache: bool = False
+    program: JacProgram, file_path: str
 ) -> tuple[uni.Module, CompileOptions] {
-    previous = push_native_target(target) if target else None;
-    try {
-        options = CompileOptions(
-            aot_mode=True,
-            default_codespace='native',
-            memory_profile=memory or None,
-            native_target=target or None,
-            native_debug=True if debug else None,
-            no_ir_cache=debug or no_ir_cache
-        );
-        module = program.compile(file_path=os.path.abspath(file_path), options=options);
-        return (module, options);
-    } finally {
-        if target {
-            pop_native_target(previous);
-        }
-    }
+    options = CompileOptions(aot_mode=True, default_codespace='native');
+    module = program.compile(file_path=os.path.abspath(file_path), options=options);
+    return (module, options);
 }
 
 impl route_exports(program: JacProgram, path: str) -> tuple[str | None, str | None] {

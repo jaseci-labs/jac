@@ -33,8 +33,7 @@ def _field_info_from_dict(raw: any) -> NativeFieldInfo;
 def native_layout_from_dict(raw: any) -> NativeModuleLayout;
 
 glob NIFACE_FORMAT: int = 6,
-     NIFACE_HASH_LEN: int = 64,
-     EXPORT_FUNCTION: str = "function";
+     NIFACE_HASH_LEN: int = 64;
 
 obj NativeExport {
     has name: str,
@@ -88,8 +87,6 @@ obj NativeClassLayout {
     static def from_dict(d: dict[str, any]) -> NativeClassLayout;
 }
 
-def _fields_digest(fields: dict[str, any]) -> str;
-
 obj NativeIface {
     has format: int = NIFACE_FORMAT,
         module: str = "",
@@ -111,7 +108,6 @@ obj NativeIface {
 
     def digest_fields -> dict[str, any];
     def digest -> str;
-    def to_dict -> dict[str, any];
     def _with_references(fields: dict[str, any]) -> dict[str, any];
     def resolve_deps(anchor: str);
     def to_bytes -> bytes;
@@ -121,7 +117,6 @@ obj NativeIface {
     static def read_digest(raw: (bytes | None)) -> (str | None);
     def pub_symbols -> list[str];
     def symbol_of(name: str) -> (str | None);
-    def classes_json -> dict[str, any];
 }
 
 def _rekey_class_refs(value: any, keys: dict[str, str]) -> any;

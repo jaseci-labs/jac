@@ -379,7 +379,7 @@ impl build_native_legality(
                 }
                 continue;
             }
-            owner = native_capability_demotion_owner(note.site);
+            owner = native_capability_owner(note.site);
             if owner is None {
                 legality.refuse_site(mod, noted);
             } else {
@@ -388,7 +388,7 @@ impl build_native_legality(
         }
     }
     for (vnode, vkind, vname, vhelp) in native_capability_violations(mod) {
-        owner = native_capability_demotion_owner(vnode);
+        owner = native_capability_owner(vnode);
         if owner is None {
             note = "No owning method or function can absorb this construct as a "
             "native seam, so the element that contains it is placed in Python.";
@@ -443,7 +443,7 @@ impl build_native_legality(
             }
             unprovided = interop_refusal(mod, nm);
             if unprovided is not None {
-                caller = native_capability_demotion_owner(nm);
+                caller = native_capability_owner(nm);
                 if caller is None {
                     legality.refuse_site(mod, unprovided);
                 } else {
@@ -458,7 +458,7 @@ impl build_native_legality(
                         site=nm,
                         text=f"error[E5090]: {gap}"
                     );
-                    gap_owner = native_capability_demotion_owner(nm);
+                    gap_owner = native_capability_owner(nm);
                     if gap_owner is None {
                         legality.refuse_site(mod, missing);
                     } else {
@@ -694,7 +694,7 @@ impl uncrossable_native(mod: Module, prog: JacProgram, held: set[int]) -> set[in
     return moved;
 }
 
-impl _demote_unreached_imports(
+impl _server_place_unreached_imports(
     mod: Module, tentative: list[ContextAwareNode], prog: JacProgram
 ) -> None {
     refresh_placement_module(mod, prog);
@@ -937,12 +937,12 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
     }
     refresh_placement_module(ir_in, self.prog);
     if carries_native and inferred_refused {
-        _demote_unreached_imports(ir_in, tentative, self.prog);
+        _server_place_unreached_imports(ir_in, tentative, self.prog);
         if _runs_split(ir_in) {
             split_moved = uncrossable_native(ir_in, self.prog, set(required.keys()));
             if split_moved {
                 inferred_refused.update(split_moved);
-                _demote_unreached_imports(ir_in, tentative, self.prog);
+                _server_place_unreached_imports(ir_in, tentative, self.prog);
                 still_native = False;
                 for elem in ir_in.elements {
                     if isinstance(elem, ContextAwareNode)

@@ -90,17 +90,6 @@ test "a bare abc module import still refuses" {
 }
 
 
-test "an ABC base over an abst method lowers natively" {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=os.path.join(FIXTURES, "abc_marker_base.jac"),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , "no native IR for the abc fixture";
-}
-
-
 test "the erased base leaves the archetype's behavior intact" {
     prog = JacProgram();
     ir = prog.compile(

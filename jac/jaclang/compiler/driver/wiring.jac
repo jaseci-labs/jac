@@ -1,4 +1,5 @@
 import hashlib;
+import json;
 import os;
 import sys;
 import from collections.abc { Iterator }
@@ -7,7 +8,23 @@ import from contextvars { ContextVar }
 
 glob ARCH_FILE_NAME: str = "archwire.jac",
      SKIPPED_PROJECT_DIRS: tuple[str, ...] = ("node_modules", "__pycache__"),
-     RECORDS_FORMAT: int = 4;
+     RECORDS_FORMAT: int = 5,
+     _WIRE_FIELDS: tuple[str, ...] = (
+         "provider",
+         "consumers",
+         "is_module_form",
+         "is_absorb",
+         "is_typed",
+         "is_comptime",
+         "is_injected",
+         "alias",
+         "items",
+         "line",
+         "col",
+         "lb_line",
+         "lb_col",
+         "payload"
+     );
 
 obj WireBinding {
     has provider: str,
@@ -65,17 +82,13 @@ obj WiringSpec {
         wires: list[WireRec] = [],
         rules: list[RuleRec] = [],
         _raw: dict[str, list[WireRec]] = {},
-        _raw_by_prefix: dict[str, list[str]] = {},
-        _by_consumer: dict[str, list[WireRec]] = {},
+        _by_consumer: dict[str, list[tuple[WireRec, list[list[str]]]]] = {},
         _splits: dict[str, (tuple[str, list[str]] | None)] = {},
-        _annex_cache: dict[str, str] = {},
         _policy_digest: str = "",
         _project_modules: (list[str] | None) = None,
         _unnamed_modules: (list[str] | None) = None,
         _prefix: (str | None) = None,
         _owned_dirs: dict[str, bool] = {},
-        _scopes: dict[tuple[str, int], list[list[str]]] = {},
-        _wire_lines: dict[int, list[WireRec]] = {},
         package_prefix: str = "";
 
     def postinit -> None;
@@ -87,11 +100,9 @@ obj WiringSpec {
     def _variant_file(local: str, parts: list[str]) -> (str | None);
     def owns(path: str) -> bool;
     def split_consumer(path: str) -> (tuple[str, list[str]] | None);
-    def consumer_scope(consumer: str, wire: WireRec) -> list[str];
-    def consumer_scopes(consumer: str, wire: WireRec) -> list[list[str]];
     def wire_for_import(
         stmt: Import, consumer: str, taken: set[int]
-    ) -> (WireRec | None);
+    ) -> (tuple[WireRec, list[list[str]]] | None);
 
     def wire_import(wire: WireRec) -> (Import | None);
     def is_package_dir(name: str) -> bool;
@@ -99,7 +110,7 @@ obj WiringSpec {
     def ruled_modules -> list[str];
     def ruled_as(consumer: str) -> list[str];
     def _scan_modules(directory: str, found: list[str], seen: set[str]) -> None;
-    def consumer_wires(consumer: str) -> list[WireRec];
+    def consumer_wires(consumer: str) -> list[tuple[WireRec, list[list[str]]]];
     def is_covered(consumer: str) -> bool;
     def _wire_pieces(wire: WireRec) -> list[tuple[int, int, str]];
     def annex_source(consumer: str) -> (str | None);
@@ -111,8 +122,14 @@ obj WiringSpec {
     def import_provider(path_node: ModulePath) -> (str | None);
     def import_bindings(imp: Import) -> list[tuple[WireBinding, UniNode]];
     def wire_suggestion(binding: WireBinding, consumer: str) -> str;
-    def rules_governing(provider: str, consumer: str, local: bool) -> list[RuleRec];
-    def rules_admitting(provider: str, consumer: str, local: bool) -> list[RuleRec];
+    def rules_governing(
+        provider: str, consumer: str, local: bool, rules: (list[RuleRec] | None) = None
+    ) -> list[RuleRec];
+
+    def rules_admitting(
+        provider: str, consumer: str, local: bool, rules: (list[RuleRec] | None) = None
+    ) -> list[RuleRec];
+
     def top_package(module: str) -> str;
     def top_pattern(top: str) -> PatternRec;
     def needs_rule(provider: str, consumer: str, local: bool) -> bool;
@@ -124,8 +141,7 @@ glob _spec_cache: dict[str, tuple[tuple[float, int], WiringSpec]] = {},
      _resolution: ContextVar[dict[str, WiringSpec | None] | None] = ContextVar(
          'jac_wiring_resolution', `default=None
      ),
-     _building: set[str] = set(),
-     _STDLIB_NAMES: list[set[str]] = [];
+     _building: set[str] = set();
 
 @contextmanager
 def wiring_scope -> Iterator[None];
@@ -163,9 +179,7 @@ def propose_rules(
 
 def _wire_name(name: str) -> str;
 def _target_text(consumers: list[str], items: (list[tuple[str, str]] | None)) -> str;
-def _entry_order(
-    pair: tuple[list[str], (list[tuple[str, str]] | None)]
-) -> tuple[list[str], list[tuple[str, str]]];
+def _form_prefix(form: str) -> str;
 
 def _block_text(block: str, body: list[str]) -> str;
 def canonical_wiring_source(source: str, path: str) -> str;
@@ -175,11 +189,7 @@ def encode_records(
 ) -> str;
 
 def decode_records(text: str) -> (tuple[bool, list[WireRec], list[RuleRec]] | None);
-def _split_list(text: str) -> list[str];
-def _encode_patterns(patterns: list[PatternRec]) -> str;
-def _decode_patterns(text: str) -> (list[PatternRec] | None);
 def import_prefix_for(root_dir: str) -> str;
-def is_stdlib_module(name: str) -> bool;
 
 def _load_spec(root_dir: str, arch_path: str) -> WiringSpec;
 def scope_path_of(nd: UniNode) -> (list[str] | None);

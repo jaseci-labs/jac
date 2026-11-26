@@ -51,6 +51,8 @@ jobs:
       run: |
         Xvfb :99 -screen 0 1280x720x24 &
         XVFB_PID=$!
+        for i in $(seq 1 50); do [ -S /tmp/.X11-unix/X99 ] && break; sleep 0.2; done
+        [ -S /tmp/.X11-unix/X99 ] || { echo "::error::Xvfb did not start on :99"; exit 1; }
         DISPLAY=:99 \
         FONTCONFIG_FILE=$PWD/minimal-fonts.conf \
         JAC_CEF_DISABLE_GPU=1 \
@@ -81,7 +83,7 @@ jobs:
   # The darwin native lane: sealed macOS kit + the Mach-O / wasm-floor /
   # libSystem-equivalence tests that consume it. Off the PR critical path
   # (44-68 min, and 60 runs of evidence that it duplicated the Linux seal
-  # refusal); see _macos-native.yml. ci.yml still runs it on a `macos` label.
+  # refusal); see _macos-native.yml.
   # This is also the only caller that runs on main, so it is what seeds the
   # shared macOS caches -- setup-jac gates every cache save to main.
   macos-native:
@@ -231,6 +233,9 @@ jobs:
       - name: Run K8s microservice real-app e2e
         env:
           CLUSTER_TYPE: kind
+          # The slim leg keeps the monitoring data on claims and checks it
+          # survives a replaced pod; the other leg stays on emptyDir.
+          E2E_MONITORING_STORAGE: ${{ matrix.base == 'slim' && '1' || '0' }}
         run: |
           bash jac/jaclang/scale/scripts/k8s_microservice_real_e2e.sh \
               jac/jaclang/scale/tests/fixtures/k8s_e2e

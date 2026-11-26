@@ -66,7 +66,7 @@ test "a connected subgraph keeps itself alive until it is destroyed" {
     assert got == 99 , str(got);
 }
 
-test "destroying a subgraph reclaims its nodes and edges" {
+test "tearing down a deeper subgraph reclaims every node and edge" {
     got = call("teardown_tree", 5);
     assert got == 11010 , str(got);
 }

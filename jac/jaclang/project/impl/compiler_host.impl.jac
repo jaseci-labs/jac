@@ -534,16 +534,20 @@ impl ProjectHost.parse_python(
     source_str: str, file_path: str, program: JacProgram
 ) -> tuple[Module, bool] {
     import ast as py_ast;
-    built = run_utility(
-        CompilationProduct.PYTHON_AST,
-        uni.PythonModuleAst(
-            py_ast.parse(source_str),
-            orig_src=uni.Source(source_str, mod_path=file_path)
+    import from typing { cast }
+    built = run_pass(
+        PyastBuildPass,
+        cast(
+            uni.Module,
+            uni.PythonModuleAst(
+                py_ast.parse(source_str),
+                orig_src=uni.Source(source_str, mod_path=file_path)
+            )
         ),
         program,
         cancel_token=program.options.cancel_token if program.options else None
     );
-    return (built.module, len(built.ctx.errors_had) > 0);
+    return (cast(uni.Module, built.module), len(built.ctx.errors_had) > 0);
 }
 
 impl UnitCollectBudget.due -> bool {

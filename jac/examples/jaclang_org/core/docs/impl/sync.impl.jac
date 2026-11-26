@@ -175,7 +175,11 @@ impl docs_sync_tick {
             ingest(bundle);
         }
         settled = await sync_release_lines(label_of(bundle.jac_version));
-        SYNC_STATE["next_at"] = now + (RECHECK_S if settled else SYNC_TICK_S);
+        next_at = now + (RECHECK_S if settled else SYNC_TICK_S);
+        def hold_off {
+            SYNC_STATE["next_at"] = next_at;
+        }
+        on_commit(hold_off);
     } except Exception as e {
         log.error("docs sync: failed: " + str(e));
     }

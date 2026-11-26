@@ -104,19 +104,11 @@ impl WebTarget.build(
     loaded_mod.__file__ = str(entry_file.resolve());
     builder = make_client_bundle_builder(project_dir);
     try {
-        entry_program = client_context_program(
-            program, client_source_root(project_dir, entry_file)
+        artifact = builder._compile_to_js(
+            entry_file.resolve(), client_source_root(project_dir, entry_file)
         );
-        before = len(entry_program.errors_had);
-        artifact = program._get_compiler().get_client_artifact(
-            str(entry_file.resolve()), entry_program
-        );
-        if len(entry_program.errors_had) > before {
-            errors = '\n'.join(str(e) for e in entry_program.errors_had[before:]);
-            raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}");
-        }
         inputs = builder.prepare(loaded_mod);
-        exports = list(artifact.manifest.exports or []) if artifact is not None else [];
+        exports = list(artifact.manifest.exports or []);
     } finally {
         program._get_compiler().release_compile_state(program);
     }

@@ -61,6 +61,12 @@ impl scale_local_serve(
     return 0;
 }
 
+impl _ensure_target_tooling(target: str, dry_run: bool = False) {
+    if target in ('kubernetes', 'kubernetes-microservice') {
+        ensure_deploy_tooling(dry_run);
+    }
+}
+
 impl scale_deploy(
     filename: str,
     target: str,
@@ -73,9 +79,7 @@ impl scale_deploy(
 ) -> int {
     mark_scale_runtime();
     try {
-        if target in ('kubernetes', 'kubernetes-microservice') {
-            ensure_deploy_tooling(dry_run);
-        }
+        _ensure_target_tooling(target, dry_run);
         import from jaclang.scale.runtime.realizer.kubernetes_realizer {
             KubernetesRealizer
         }
@@ -93,6 +97,7 @@ impl scale_build(
 ) -> int {
     mark_scale_runtime();
     try {
+        _ensure_target_tooling(target);
         import from jaclang.scale.runtime.realizer.kubernetes_realizer {
             KubernetesRealizer
         }

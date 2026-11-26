@@ -60,7 +60,7 @@ def binds_module_name(mod: Module, nm: Name) -> bool;
 def element_requirements(mod: Module, prog: JacProgram) -> dict[int, tuple[str, str]];
 def client_refused_elements(mod: Module) -> dict[int, list[tuple[UniNode, str]]];
 def _runs_split(mod: Module) -> bool;
-def _demote_unreached_imports(
+def _server_place_unreached_imports(
     mod: Module, tentative: list[ContextAwareNode], prog: JacProgram
 ) -> None;
 
@@ -69,8 +69,7 @@ def uncrossable_native(mod: Module, prog: JacProgram, held: set[int]) -> set[int
 
 walker PlacementPass(CompilerPass) {
     static has contract: PassContract = PassContract(
-        requires=(AnalysisFact.TYPE_OF, ),
-        provides=(AnalysisFact.CAPABILITY, AnalysisFact.CLIENT_CAPABILITY, )
+        requires=(AnalysisFact.TYPE_OF, ), provides=(AnalysisFact.CAPABILITY, )
     );
 
     def _emit_refusal(refusal: NativeRefusal, required_by: str) -> None;

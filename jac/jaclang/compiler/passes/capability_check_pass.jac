@@ -23,7 +23,7 @@ def native_capability_violations(
     mod: Module
 ) -> list[tuple[(UniNode, str, str, (str | None))]];
 
-def native_capability_demotion_owner(viol_node: UniNode) -> (Ability | None);
+def native_capability_owner(viol_node: UniNode) -> (Ability | None);
 
 walker PortabilityWarnPass(CompilerPass) {
     static has contract: PassContract = PassContract(

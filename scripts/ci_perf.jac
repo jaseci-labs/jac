@@ -519,7 +519,7 @@ def main(argv: list[str] | None = None) -> int {
         type=Path,
         `default=Path(
             os.environ.get("JAC_CI_PERF_POLICY")
-                or repo / ".github/pack-smoke-perf.json"
+                or repo / "scripts/ci_perf.json"
         )
     );
     parser.add_argument(

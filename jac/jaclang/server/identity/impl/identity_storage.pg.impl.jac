@@ -32,7 +32,12 @@ glob _PG_IDENTITY_SCHEMA: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_identity_lookups_user
         ON identity_lookups (user_id)
     """
-     ];
+     ],
+     _PG_PROVISIONED_WHERE: str = """
+          AND COALESCE(u.doc->'identities', '[]'::jsonb) = '[]'::jsonb
+          AND COALESCE(u.doc->'credentials', '[]'::jsonb) = '[]'::jsonb
+          AND NOT EXISTS (SELECT 1 FROM sso_lookups s WHERE s.user_id = u.user_id)
+          AND NOT EXISTS (SELECT 1 FROM identity_lookups l WHERE l.user_id = u.user_id)""";
 
 
 def _pg_json_default(o: object) -> str;
@@ -545,6 +550,80 @@ impl PgIdentityStorage.list_all_users(limit: int, offset: int) -> list[dict[str,
         {'g': Con.GUEST.value, 'l': str(limit), 'o': str(offset)}
     );
     return [_pg_public(r[0]) for r in rows];
+}
+
+impl PgIdentityStorage.list_provisioned_users -> list[dict[str, any]] {
+    rows = self.store.rows(
+        """
+        SELECT u.user_id, u.doc->>'root_id', u.doc->>'created_at'
+        FROM identity_users u
+        WHERE TRUE"""
+            + _PG_PROVISIONED_WHERE
+            + """
+        ORDER BY u.doc->>'created_at'
+        """,
+        {}
+    );
+    anchors_table = self.store.rows("SELECT to_regclass('anchors') IS NOT NULL", {});
+    has_graph = bool(anchors_table and anchors_table[0][0]);
+    found: list[dict[str, any]] = [];
+    for (user_id, root_id, created_at) in rows {
+        holds_data = False;
+        if has_graph and root_id {
+            holds_data = bool(
+                self.store.rows(
+                    """
+                    SELECT 1 FROM anchors
+                    WHERE root_id = CAST(:r AS uuid) AND id <> CAST(:r AS uuid)
+                    LIMIT 1
+                    """,
+                    {'r': str(root_id)}
+                )
+            );
+        }
+        found.append(
+            {
+                'user_id': str(user_id),
+                'root_id': root_id,
+                'created_at': created_at,
+                'holds_data': holds_data
+            }
+        );
+    }
+    return found;
+}
+
+impl PgIdentityStorage.count_provisioned_users -> int {
+    rows = self.store.rows(
+        "SELECT COUNT(*) FROM identity_users u WHERE TRUE" + _PG_PROVISIONED_WHERE, {}
+    );
+    return int(rows[0][0]) if rows else 0;
+}
+
+impl PgIdentityStorage.delete_if_provisioned(user_id: str) -> bool {
+    anchors_table = self.store.rows("SELECT to_regclass('anchors') IS NOT NULL", {});
+    no_data = '';
+    if anchors_table and anchors_table[0][0] {
+        no_data = """
+          AND NOT EXISTS (
+              SELECT 1 FROM anchors a
+              WHERE a.root_id = CAST(u.doc->>'root_id' AS uuid)
+                AND a.id <> CAST(u.doc->>'root_id' AS uuid)
+          )""";
+    }
+
+    rows = self.store.rows(
+        """
+        DELETE FROM identity_users u
+        WHERE u.user_id = :u"""
+            + _PG_PROVISIONED_WHERE
+            + no_data
+            + """
+        RETURNING u.user_id
+        """,
+        {'u': user_id}
+    );
+    return bool(rows);
 }
 
 impl _pg_json_default(o: object) -> str {

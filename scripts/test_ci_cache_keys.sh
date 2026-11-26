@@ -17,6 +17,7 @@ printf 'fetch\n' > jac/bootstrap/fetch_pbs.zig
 printf '{}\n' > jac/bootstrap/pins.json
 printf 'shim\n' > jac/native/shim.cpp
 printf 'dependencies\n' > jac/build.zig.zon
+printf '[project]\nversion = "1.0.0"\n\n[check]\nexclude = ["a"]\n' > jac.toml
 git add .
 git commit -qm seed
 keys() { bash scripts/ci_cache_keys.sh; }
@@ -38,7 +39,7 @@ rm -rf jac/jaclang/vendor jac/jaclang/compiler/__pycache__ jac/jaclang/compiler/
 printf 'app edit\n' >> jac/jaclang/scale/app.jac
 commit app
 after=$(keys)
-same compiler; same python
+same compiler; same python; same devassets
 changed payload; changed binary
 
 before=$after
@@ -53,7 +54,7 @@ before=$after
 printf 'compiler edit\n' >> jac/jaclang/compiler/pass.jac
 commit compiler
 after=$(keys)
-changed compiler; same python; changed binary
+changed compiler; same python; changed binary; same devassets
 
 before=$after
 git mv jac/jaclang/compiler/pass.jac jac/jaclang/compiler/renamed.jac
@@ -71,7 +72,7 @@ before=$after
 printf ' ' >> jac/bootstrap/pins.json
 commit pin
 after=$(keys)
-changed python; same compiler; changed binary
+changed python; same compiler; changed binary; changed devassets
 
 before=$after
 printf fetch >> jac/bootstrap/fetch_pbs.zig
@@ -89,12 +90,43 @@ before=$after
 printf shim >> jac/native/shim.cpp
 commit shim
 after=$(keys)
-changed binary; same python
+changed binary; same python; changed devassets
 before=$after
 mkdir -p jac/examples/tiny_jacyac
 printf example > jac/examples/tiny_jacyac/web.jac
 commit tiny-example
 after=$(keys)
 changed binary; same compiler; same python
+
+before=$after
+mkdir -p jac/jaclang/dist/payload
+printf payload > jac/jaclang/dist/payload/fetch.jac
+commit payload-tool
+after=$(keys)
+changed devassets; same python
+
+for input in client/js_runtime.jac compiler/backends/native/floors.jac \
+  compiler/backends/native/musl_compat/forwarders.c \
+  compiler/backends/native/compiler_rt/aarch64/lse.S \
+  compiler/backends/native/wasm_rt/libc.c; do
+  before=$after
+  mkdir -p "jac/jaclang/$(dirname "$input")"
+  printf edit >> "jac/jaclang/$input"
+  commit "$input"
+  after=$(keys)
+  changed devassets; same python
+done
+
+before=$after
+printf '[project]\nversion = "1.0.0"\n\n[check]\nexclude = ["a", "b"]\n' > jac.toml
+commit toml-settings
+after=$(keys)
+same devbinary; changed binary
+
+before=$after
+printf '[project]\nversion = "1.0.1"\n\n[check]\nexclude = ["a", "b"]\n' > jac.toml
+commit toml-version
+after=$(keys)
+changed devbinary
 
 echo 'CI cache mutation tests passed'

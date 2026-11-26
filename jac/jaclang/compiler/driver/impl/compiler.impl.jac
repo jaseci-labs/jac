@@ -44,7 +44,7 @@ impl JacCompiler.ensure_stub_catalog -> StubCatalog | None {
     if found is not None
         and internal is not None
         and not self._reentrant_depth
-        and not internal.scratch.compile_depth
+        and not internal.compile_depth
         and any(path.endswith('.pyi') for path in internal.mod.hub) {
         self.release_compile_state(internal);
     }
@@ -54,11 +54,7 @@ impl JacCompiler.ensure_stub_catalog -> StubCatalog | None {
 impl JacCompiler.product_program(
     full_target: str, target_program: JacProgram
 ) -> JacProgram {
-    actual = self.selfhost.resolve(full_target, target_program);
-    if actual.internal {
-        return actual;
-    }
-    return context_program(actual, bind_options(full_target, actual, actual.options));
+    return program_for(full_target, self.selfhost.resolve(full_target, target_program));
 }
 
 impl JacCompiler.get_native_interop_setup(
@@ -69,13 +65,6 @@ impl JacCompiler.get_native_interop_setup(
         gen = actual_program.hub.artifacts[full_target];
         return (gen.native_engine, gen.interop_py_funcs);
     }
-    if (full_target in actual_program.mod.hub) {
-        mod = actual_program.mod.hub[full_target];
-        native_engine = mod.gen.native_engine;
-        interop_py_funcs = mod.gen.interop_py_funcs;
-        return (native_engine, interop_py_funcs);
-    }
-
     keyed = actual_program.find_module(full_target);
     if keyed is not None {
         return (keyed.gen.native_engine, keyed.gen.interop_py_funcs);
@@ -104,28 +93,14 @@ impl JacCompiler._get_bytecode(
 ) -> (types.CodeType | None) {
     actual_program = self.selfhost.resolve(full_target, target_program);
     (rebuild, _) = cache_mode();
-    symtab_only_recovery = False;
-
-    if (
-        (not rebuild)
-        and (full_target in actual_program.mod.hub)
-        and not actual_program.is_hub_entry_fresh(full_target)
-    ) {
+    hit_mod = None if rebuild else actual_program.mod.hub.get(full_target);
+    if hit_mod is not None and not actual_program.is_hub_entry_fresh(full_target) {
         actual_program.invalidate_module(full_target);
+        hit_mod = None;
     }
-    if (
-        (not rebuild)
-        and (full_target in actual_program.mod.hub)
-        and not actual_program.mod.hub[full_target].gen.py_bytecode
-    ) {
+    if hit_mod is not None and not hit_mod.gen.py_bytecode {
         actual_program.invalidate_module(full_target);
-        symtab_only_recovery = True;
-    } elif (
-        (not rebuild)
-        and (full_target in actual_program.mod.hub)
-        and actual_program.mod.hub[full_target].gen.py_bytecode
-    ) {
-        hit_mod = actual_program.mod.hub[full_target];
+    } elif hit_mod is not None {
         codeobj = hit_mod.gen.py_bytecode;
         if isinstance(codeobj, `bytes) and not actual_program.internal {
             self._persist_module_cache(full_target, hit_mod, actual_program);
@@ -199,7 +174,6 @@ impl JacCompiler._get_bytecode(
                 }
             } else {
                 actual_program.invalidate_module(full_target);
-                symtab_only_recovery = True;
             }
         } except Exception {}
     }
@@ -566,9 +540,7 @@ impl JacCompiler.enter_compile(ctx: SessionContext) -> CompileFrame {
         and not target_program.internal {
         self.ensure_stub_catalog();
     }
-    frame = CompileFrame(
-        nested=self._reentrant_depth > 0, depth_prev=self._reentrant_depth
-    );
+    frame = CompileFrame(depth_prev=self._reentrant_depth);
     self._reentrant_depth += 1;
     if frame.depth_prev == 0 {
         self._closure_opts = ctx.options;
@@ -591,36 +563,14 @@ impl JacCompiler.enter_compile(ctx: SessionContext) -> CompileFrame {
     return frame;
 }
 
-impl JacCompiler.assemble_python(program: JacProgram, module: uni.Module) {
-    require(program, module, CompilationProduct.BYTECODE);
-}
-
-impl JacCompiler.assemble_native(
-    program: JacProgram, module: uni.Module, checking: bool
-) {
-    import copy;
-    if not checking {
-        require(program, module, CompilationProduct.NATIVE_OBJECT);
-        return;
-    }
-    previous = program.options;
-    checked = copy.copy(previous);
-    checked.aot_mode = True;
-    checked.skip_native_engine = False;
-    program.options = checked;
-    try {
-        require(program, module, CompilationProduct.NATIVE_OBJECT);
-    } finally {
-        program.options = previous;
-    }
-}
-
 impl JacCompiler.leave_compile(ctx: SessionContext, frame: CompileFrame) {
     self._reentrant_depth = max(self._reentrant_depth - 1, 0);
     if self._reentrant_depth == 0 {
         self._closure_opts = None;
         if ctx.caller is not ctx.target {
-            self._release_compile_scratch(ctx.caller);
+            try {
+                ctx.caller.release_check_caches();
+            } except Exception {}
         }
     }
 }
@@ -700,14 +650,12 @@ impl JacCompiler._persist_native_unit(
         registry = actual_program.native_units();
         registry.record_module(result, actual_program.options);
         sections = registry.product_sections(full_target);
-        interop = interop_record(result);
-        if interop {
-            sections[SEC_INTEROP] = json.dumps(interop).encode('utf-8');
-        }
-        placement = placement_record(result, actual_program);
-        if placement {
-            sections[SEC_PLACEMENT] = placement.encode('utf-8');
-        }
+        boundary = UnitProducts(
+            path=full_target,
+            interop=interop_json(result),
+            placement=placement_record(result, actual_program)
+        );
+        sections.update(unit_sections(boundary, None));
         write_module_cache(full_target, None, extra_sections=sections);
     } except Exception as exc {
         import logging;
@@ -715,12 +663,6 @@ impl JacCompiler._persist_native_unit(
             f"Could not persist native products for {full_target}: {exc}", exc_info=True
         );
     }
-}
-
-impl JacCompiler._release_compile_scratch(target_program: JacProgram) -> None {
-    try {
-        target_program.release_check_caches();
-    } except Exception {}
 }
 
 impl JacCompiler.run_module(
@@ -743,7 +685,7 @@ impl JacCompiler.run_module(
         }
     }
     if registry is None {
-        plain = self._compile_pipeline(file_path, target_program, use_str, options);
+        plain = compile_module(self, target_program, file_path, options, use_str);
         if use_str is None {
             self._persist_native_unit(iface_target, plain, target_program);
         }
@@ -754,7 +696,7 @@ impl JacCompiler.run_module(
     registry.frame_push(iface_target);
     compiled: (uni.Module | None) = None;
     try {
-        compiled = self._compile_pipeline(file_path, target_program, use_str, options);
+        compiled = compile_module(self, target_program, file_path, options, use_str);
         try {
             registry.persist_after_compile(
                 iface_target, compiled, options, err_start, warn_start
@@ -766,15 +708,6 @@ impl JacCompiler.run_module(
     }
     assert compiled is not None;
     return compiled;
-}
-
-impl JacCompiler._compile_pipeline(
-    file_path: str,
-    actual_program: JacProgram,
-    use_str: (str | None) = None,
-    options: CompileOptions = CompileOptions()
-) -> uni.Module {
-    return compile_module(self, actual_program, file_path, options, use_str);
 }
 
 impl JacCompiler._prepare_tool_program(
@@ -824,12 +757,11 @@ impl JacCompiler._format_program(
     if current_mod is None {
         return prog;
     }
-    import from jaclang.compiler.driver.pipeline { require }
-    require(
-        prog,
-        current_mod,
-        CompilationProduct.FORMAT_LINTFIX if auto_lint else CompilationProduct.FORMAT
-    );
+    import from jaclang.compiler.driver.pipeline { execute_passes }
+    passes = [CommentAttachPass, JacAutoLintPass, DocIRGenPass, JacFormatPass]
+        if auto_lint
+        else [CommentAttachPass, DocIRGenPass, JacFormatPass];
+    execute_passes(prog, current_mod, passes, cancel_token=prog.options.cancel_token);
     prog.reset_module_root(uni.ProgramModule(main_mod=current_mod));
     return prog;
 }
@@ -840,8 +772,10 @@ impl JacCompiler.jac_file_linter(file_path: str) -> JacProgram {
     if current_mod is None {
         return prog;
     }
-    import from jaclang.compiler.driver.pipeline { require }
-    require(prog, current_mod, CompilationProduct.LINT);
+    import from jaclang.compiler.driver.pipeline { execute_passes }
+    execute_passes(
+        prog, current_mod, [JacLintCheckPass], cancel_token=prog.options.cancel_token
+    );
     prog.reset_module_root(uni.ProgramModule(main_mod=current_mod));
     return prog;
 }
@@ -867,10 +801,6 @@ impl JacCompiler.ensure_client_codegen(
     }
     import from jaclang.compiler.driver.pipeline { require }
     return require(target_program, mod, CompilationProduct.CLIENT);
-}
-
-impl JacCompiler._cached_client_artifact(full_target: str) -> (ClientArtifact | None) {
-    return cached_client_artifact(full_target);
 }
 
 impl JacCompiler.last_client_artifact(
@@ -929,10 +859,9 @@ impl JacCompiler._get_client_artifact(
     full_target = JacProgram.hub_key(full_target);
     actual_program = self.selfhost.resolve(full_target, target_program);
     previous = actual_program.hub.client_artifacts.get(full_target);
-    if previous is None {
-        previous = self._cached_client_artifact(full_target);
-    }
-    if previous is not None and not JacCompiler._client_deps_fresh(previous) {
+    stored = cached_client_artifact(full_target) if previous is None else None;
+    seen = previous if previous is not None else stored;
+    if seen is not None and not JacCompiler._client_deps_fresh(seen) {
         actual_program.invalidate_module(full_target);
     }
     ready = self.client_codegen_target(full_target, actual_program);
@@ -953,28 +882,27 @@ impl JacCompiler._get_client_artifact(
         if not has_live_tree
         else None;
     if held is None and not has_live_tree {
-        held = self._cached_client_artifact(full_target);
+        held = stored if previous is None else cached_client_artifact(full_target);
     }
     if held is not None {
-        import from jaclang.compiler.backends.es.backends.registry {
-            resolve_active_backend
-        }
-        if (
-            held.framework == resolve_active_backend().name()
-            and JacCompiler._client_deps_fresh(held)
-        ) {
+        if client_artifact_current(held) {
             actual_program.hub.client_artifacts[full_target] = held;
             return held;
         }
         actual_program.hub.client_artifacts.pop(full_target, None);
     }
     mark = len(actual_program.errors_had);
+    held_errors = len(actual_program.diags.owned_errors(full_target));
     compiled = self.compile(
         file_path=full_target,
         target_program=actual_program,
         options=CompileOptions(no_cgen=True)
     );
     if len(actual_program.errors_had) > mark {
+        if len(actual_program.diags.owned_errors(full_target)) > held_errors {
+            import from jaclang.compiler.driver.pipeline { mark_failed }
+            mark_failed(actual_program, compiled, CompilationProduct.CLIENT);
+        }
         return None;
     }
     if not self.ensure_client_codegen(compiled, actual_program) {
@@ -996,8 +924,8 @@ impl JacCompiler.release_compile_state(target_program: JacProgram) -> None {
     owner = target_program.context_root or target_program;
     internal = self._selfhost.peek_program() if self._selfhost is not None else None;
     if self._reentrant_depth
-        or owner.scratch.compile_depth
-        or (internal is not None and internal.scratch.compile_depth) {
+        or owner.compile_depth
+        or (internal is not None and internal.compile_depth) {
         raise RuntimeError("Cannot release compiler state during compilation");
     }
     owner.release_compile_closure(collect=False, retain_stubs=False);
@@ -1068,16 +996,14 @@ impl cached_client_artifact(full_target: str) -> (ClientArtifact | None) {
     return client_artifact_from_bytes(raw);
 }
 
+impl client_artifact_current(artifact: ClientArtifact) -> bool {
+    return artifact.framework == resolve_active_backend().name()
+        and JacCompiler._client_deps_fresh(artifact);
+}
+
 impl cached_client_pulls(full_target: str) -> str {
     held = cached_client_artifact(full_target);
-    if held is None or not held.pulled {
-        return "";
-    }
-    import from jaclang.compiler.backends.es.backends.registry {
-        resolve_active_backend
-    }
-    if held.framework != resolve_active_backend().name()
-        or not JacCompiler._client_deps_fresh(held) {
+    if held is None or not held.pulled or not client_artifact_current(held) {
         return "";
     }
     return ",".join([str(index) for index in held.pulled]);
@@ -1096,13 +1022,10 @@ impl unit_sections(
     if products.interop {
         sections[SEC_INTEROP] = products.interop.encode("utf-8");
     }
-    if products.client {
-        artifact = client_artifact_from_json(products.client);
-        if artifact is not None {
-            sections[SEC_CLIENT] = client_artifact_bytes(
-                stamp_client_artifact(artifact)
-            );
-        }
+    if products.client is not None {
+        sections[SEC_CLIENT] = client_artifact_bytes(
+            stamp_client_artifact(products.client)
+        );
     }
     if products.placement {
         sections[SEC_PLACEMENT] = products.placement.encode("utf-8");
@@ -1112,7 +1035,7 @@ impl unit_sections(
         sections[SEC_CTDEPS] = ct_deps_section(
             products.ct_file_deps,
             products.ct_body_deps,
-            definitions=definition_deps(products)
+            definitions=products.ct_def_deps
         );
     }
     return sections;

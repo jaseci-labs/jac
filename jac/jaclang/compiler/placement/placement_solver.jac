@@ -111,13 +111,7 @@ def solve_program_placement(entry_mod: uni.Module, prog: JacProgram);
 
 walker PlacementApplyPass(CompilerPass) {
     static has contract: PassContract = PassContract(
-        requires=(AnalysisFact.SYM_OF, ),
-        provides=(
-            AnalysisFact.PLACED_IN,
-            AnalysisFact.DECIDED_CODESPACE,
-            AnalysisFact.CODESPACE_PULL,
-
-        )
+        requires=(AnalysisFact.SYM_OF, ), provides=(AnalysisFact.PLACED_IN, )
     );
 
     def _run_impl(ir_in: uni.Module) -> uni.Module;

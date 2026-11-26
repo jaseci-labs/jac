@@ -280,8 +280,6 @@ impl EsastGenPass.exit_jsx_comment with uni.JsxComment exit {
     here.gen.es_ast = None;
 }
 
-impl EsastGenPass.exit_jsx_normal_attribute with uni.JsxNormalAttribute exit {}
-
 impl EsastGenPass.exit_jsx_spread_attribute with uni.JsxSpreadAttribute exit {
     self.jsx_processor.spread_attribute(here);
 }

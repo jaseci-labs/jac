@@ -407,6 +407,20 @@ impl IdentityStorage.expire_legacy_credentials(
     return expired;
 }
 
+impl IdentityStorage.delete_provisioned_users -> dict[str, list[str]] {
+    deleted: list[str] = [];
+    kept: list[str] = [];
+    for record in self.list_provisioned_users() {
+        uid = str(record['user_id']);
+        if record.get('holds_data') {
+            kept.append(uid);
+        } elif self.delete_if_provisioned(uid) {
+            deleted.append(uid);
+        }
+    }
+    return {'deleted': deleted, 'kept_with_data': kept};
+}
+
 impl IdentityStorage.get_root_id(user_id: str) -> str | None {
     user = self.get_user_by_id(user_id);
     return (user.get('root_id') or None) if user else None;
