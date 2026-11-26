@@ -13155,7 +13155,6 @@ graph import scale {
         admin.k8s_ops { HAS_KUBERNETES, client, config },
         deploy.autoscale.autoscaler.Autoscaler.read_workload
             | deploy.target.kubernetes.ingress
-            | deploy.target.kubernetes.monitoring
             | deploy.target.kubernetes.target
             | deploy.target.kubernetes.utils.kubernetes_utils
             | injector.pvc_injector.PvcInjector.seed { ApiException, client },
@@ -13177,6 +13176,7 @@ graph import scale {
             config as k8s_cluster_config,
             stream
         },
+        deploy.target.kubernetes.monitoring { ApiException, HTTPError, client },
         tests.deploy.observer_transition_recorder { ApiException, config },
         tests.misc.test_optional_deps { HAS_KUBERNETES, client as k8s_client },
     ]
@@ -13279,6 +13279,7 @@ graph import scale {
             | tests.deploy.test_deploy_k8s
             | tests.deploy.test_dry_run_purity
             | tests.deploy.test_factories
+            | tests.deploy.test_monitoring_switch
             | tests.deploy.test_ops_rbac
             | tests.deploy.test_pdb_budget
             | tests.deploy.test_pod_env
@@ -14169,6 +14170,7 @@ graph import scale {
             in_cluster_namespace
         },
         deploy.target.kubernetes.database_provisioner
+            | deploy.target.kubernetes.monitoring
             | deploy.target.kubernetes.ops_rbac
             | sdk.client { k8s_safe_name },
         deploy.target.kubernetes.manifest_builder
@@ -14813,7 +14815,14 @@ graph import scale.deploy.target.kubernetes {
             in_cluster_kubectl,
             kubectl_cluster
         },
-        monitoring { FLEET_SELECTOR, delete_if_exists, delete_k8s_secret },
+        monitoring {
+            FLEET_SELECTOR,
+            delete_if_exists,
+            delete_k8s_secret,
+            parse_storage_quantity,
+            resize_pvc_if_needed,
+            wait_until_deleted
+        },
         target {
             FLEET_SELECTOR,
             PSS_ENFORCE_LABEL,

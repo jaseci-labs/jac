@@ -320,6 +320,18 @@ impl KubernetesTarget.deploy(app_config: AppConfig) -> DeploymentResult {
         );
     }
 
+    try {
+        storage_refusal = self._monitoring_storage_refusal(
+            app_name, check_cluster=not self.dry_run
+        );
+    } except Exception as e {
+        storage_refusal = f"monitoring storage check failed: {e}";
+    }
+    if storage_refusal {
+        self._emit("observability", "error", storage_refusal);
+        return DeploymentResult(success=False, message=storage_refusal);
+    }
+
     self._emit("config", "start", "Checking the config the pods load");
     try {
         self._manifest_builder(app_config).check_pod_config(
@@ -2135,7 +2147,9 @@ impl KubernetesTarget._foreign_app_resources(
             role == "bundle-store" and pvc.metadata.name != our_bundle
         );
         foreign_volume: bool = (
-            role == "shared-volume" and bool(volume_owner) and volume_owner != owner
+            role in ["shared-volume", "monitoring-data"]
+            and bool(volume_owner)
+            and volume_owner != owner
         );
         if foreign_bundle or foreign_volume {
             found.append(f"PersistentVolumeClaim/{pvc.metadata.name}");
@@ -2399,4 +2413,25 @@ impl KubernetesTarget._destroy_named_component(
     if self.logger {
         self.logger.info(f"Component '{component}' of '{app_name}' destroyed");
     }
+}
+
+impl KubernetesTarget._monitoring_storage_refusal(
+    app_name: str, check_cluster: bool = True
+) -> str {
+    if not self.k8s_config.monitoring_storage_enabled
+        or not self._observability_requested() {
+        return "";
+    }
+    obs_config = self._build_observability_config();
+    deployer = MonitoringDeployer(obs_config, self.logger);
+    problems: list[str] = deployer._storage_problems();
+    if check_cluster {
+        problem: str = deployer._cluster_storage_problem(
+            app_name, obs_config.namespace, client.CoreV1Api(), client.StorageV1Api()
+        );
+        if problem {
+            problems.append(problem);
+        }
+    }
+    return "; ".join(problems);
 }
