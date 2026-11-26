@@ -48,7 +48,14 @@ obj ScaleClient {
     ) -> DeploymentResult;
 
     def bundle_keys(app_name: str, namespace: str, target: str = 'auto') -> set[str];
-    def scale(app_name: str, namespace: str, replicas: int, target: str = 'auto');
+    def scale(
+        app_name: str,
+        namespace: str,
+        replicas: int,
+        target: str = 'auto',
+        service: str = ''
+    );
+
     def _emit(
         sink: EventSink,
         phase: str,

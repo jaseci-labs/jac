@@ -216,8 +216,35 @@ impl KubernetesTargetBase._apply_provider_service_account(
     }
 }
 
+impl KubernetesTargetBase._assert_own_app(app_name: str) {
+    mine = str(self.k8s_config.app_name or "");
+    if app_name and mine and str(app_name) != mine {
+        detail = f"configured for '{mine}', asked about '{app_name}'";
+        raise ValueError(
+            "This target cannot report on or change another app "
+                + f"({detail}). Build a target for that app."
+        );
+    }
+}
+
+impl KubernetesTargetBase._fleet_deployments(
+    apps_v1: any, namespace: str, app_name: str
+) -> list[any] {
+    legacy = f"managed=jac-scale,app={k8s_safe_name(app_name)},!jac-scale.role";
+    for selector in [FLEET_SELECTOR, legacy] {
+        listed = apps_v1.list_namespaced_deployment(
+            namespace=namespace, label_selector=selector
+        );
+        if listed.items {
+            return list(listed.items);
+        }
+    }
+    return [];
+}
+
 impl KubernetesTargetBase.get_status(app_name: str) -> ResourceStatusInfo {
     try {
+        self._assert_own_app(app_name);
         self._load_cluster_config();
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();
@@ -234,9 +261,11 @@ impl KubernetesTargetBase.get_status(app_name: str) -> ResourceStatusInfo {
     }
 }
 
-impl KubernetesTargetBase.scale(app_name: str, replicas: int) {
+impl KubernetesTargetBase.scale(app_name: str, replicas: int, service: str = "") {
+    self._assert_own_app(app_name);
+    member: str = k8s_safe_name(service or app_name);
     if self.logger {
-        self.logger.info(f"Scaling application '{app_name}' to {replicas} replicas");
+        self.logger.info(f"Scaling '{member}' to {replicas} replicas");
     }
 
     try {
@@ -244,19 +273,24 @@ impl KubernetesTargetBase.scale(app_name: str, replicas: int) {
         apps_v1 = client.AppsV1Api();
         namespace = self.k8s_config.namespace;
 
-        deployment = apps_v1.read_namespaced_deployment(
-            name=app_name, namespace=namespace
-        );
-        deployment.spec.replicas = replicas;
-
+        fleet = self._fleet_deployments(apps_v1, namespace, app_name);
+        labels: list[str] = [
+            str((d.metadata.labels or {}).get("app", "")) for d in fleet
+        ];
+        if member not in labels {
+            raise ValueError(
+                f"'{app_name}' has no fleet member '{member}' in namespace "
+                f"'{namespace}'; pass service as one of {sorted(labels)}"
+            );
+        }
         apps_v1.patch_namespaced_deployment(
-            name=app_name, namespace=namespace, body=deployment
+            name=fleet[labels.index(member)].metadata.name,
+            namespace=namespace,
+            body={"spec": {"replicas": replicas}}
         );
 
         if self.logger {
-            self.logger.info(
-                f"Successfully scaled '{app_name}' to {replicas} replicas"
-            );
+            self.logger.info(f"Successfully scaled '{member}' to {replicas} replicas");
         }
     } except Exception as e {
         if self.logger {
@@ -448,6 +482,7 @@ impl KubernetesTargetBase.enable_tls(app_name: str) {
 
 impl KubernetesTargetBase.get_full_status(app_name: str) -> dict[str, any] {
     try {
+        self._assert_own_app(app_name);
         self._load_cluster_config();
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();
