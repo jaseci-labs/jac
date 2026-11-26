@@ -437,22 +437,6 @@ test "abi64 adapter gap is reported against the floor, not the app" {
     }
 }
 
-test "every adapted libc name has a floor adapter" {
-    _require_libc();
-    import from jaclang.compiler.backends.native.wasm_build { _ABI64_ADAPTED }
-    import from jaclang.compiler.backends.native.floors { wasm_rt_src_dir }
-    src = os.path.join(wasm_rt_src_dir(), "jac_abi64.c");
-    text = Path(src).read_text();
-    missing = sorted(
-        [
-            nm
-            for nm in _ABI64_ADAPTED
-            if ("__jac64_" + nm) not in text
-        ]
-    );
-    assert not missing , f"_ABI64_ADAPTED names with no adapter in jac_abi64.c: {missing}";
-}
-
 """The built floor, not just its C source, defines every adapted symbol.
 
 This is the check that was missing when #7149 added __jac64_realloc: the

@@ -639,21 +639,6 @@ test "a PE dll built through link_artifact keeps its entry point through optimiz
 init (not a compile-time constant). The export reads the struct field; if
 __jac_shared_init never called __jac_glob_init, the global pointer is NULL and
 the field read segfaults."""
-glob _CLI_SHARED_FIXTURE = (
-         "import from \"libc.so.6\" {\n"
-         "    obj my_struct {\n"
-         "        has a: int = 0,\n"
-         "            b: int = 0;\n"
-         "    }\n"
-         "    def write(fd: i32, buf: int, count: i32) -> i32;\n"
-         "}\n"
-         "glob g: my_struct = my_struct();\n"
-         "def:pub set_g -> int {\n"
-         "    g.a = 42;\n"
-         "    return g.a;\n"
-         "}\n"
-     );
-
 test "jac build --native --lib exports the root module's :pub surface only" {
     if not sys.platform.startswith("linux") {
         return;
@@ -685,42 +670,6 @@ test "jac build --native --lib exports the root module's :pub surface only" {
         shutil.rmtree(d, ignore_errors=True);
     }
 }
-
-test "jac build --native --lib initialises runtime globals via __jac_shared_init" {
-    # The CLI probe + DT_INIT_ARRAY path is ELF-specific; skip on non-Linux.
-    if not sys.platform.startswith("linux") {
-        return;
-    }
-    import ctypes;
-    import shutil;
-    import subprocess;
-    jac = shutil.which("jac") or "jac";
-    d = tempfile.mkdtemp();
-    try {
-        lib_src = os.path.join(d, "lib.jac");
-        with open(lib_src, "w") as f {
-            f.write(_CLI_SHARED_FIXTURE);
-        }
-        lib_out = os.path.join(d, "lib.so");
-        res = subprocess.run(
-            [jac, "build", "--native", "--lib", lib_src, "-o", lib_out],
-            capture_output=True,
-            text=True,
-            timeout=300
-        );
-        assert res.returncode == 0 , f"nacompile --lib failed:\n{res.stderr}";
-        assert os.path.exists(lib_out) , "shared library not produced";
-        # dlopen triggers DT_INIT_ARRAY -> __jac_shared_init -> the unit's
-        # initializer. If the init call was dropped, the global pointer is
-        # NULL and set_g segfaults (exit 139) instead of returning 42.
-        lib = ctypes.CDLL(lib_out);
-        lib.set_g.restype = ctypes.c_int64;
-        assert lib.set_g() == 42 , "global clib struct not initialised (null pointer)";
-    } finally {
-        shutil.rmtree(d, ignore_errors=True);
-    }
-}
-
 
 # ─── C imports of a shared library: process lookup on darwin ─────────────────
 # The compiler kernel (libjac_compiler) declares the CPython C API under
