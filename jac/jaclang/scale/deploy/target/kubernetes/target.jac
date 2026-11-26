@@ -121,7 +121,6 @@ obj KubernetesTarget(KubernetesTargetBase) {
     ) -> list[any];
 
     def _revision_entries(strict: bool = False) -> list[dict[str, any]];
-    def _assert_own_app(app_name: str);
     def list_revisions(app_name: str) -> list[dict[str, any]];
     def referenced_bundle_keys(app_name: str) -> set[str];
     def _bundle_keep_set -> set[str];
