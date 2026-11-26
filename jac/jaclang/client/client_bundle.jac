@@ -58,11 +58,9 @@ glob STAGE_SHOWN_FROM_SECONDS: float = 0.1,
          'jac_build_stage_timing', `default=False
      );
 
-"""Turn on stage lines for one `jac build`; the dev server and the seal leave it off."""
 @contextmanager
 def timing_stages -> Iterator[None];
 
-"""Time a build stage and print its line, when timing is on and it took long enough."""
 @contextmanager
 def stage(done: str) -> Iterator[None];
 
