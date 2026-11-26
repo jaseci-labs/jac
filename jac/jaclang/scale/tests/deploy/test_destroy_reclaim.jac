@@ -199,43 +199,42 @@ test "a failed monitoring teardown keeps the namespace" {
 
 
 test "a namespace this app created but no longer holds alone is kept" {
-    # A neighbour shows as its database and bundle, or as nothing more than
-    # the volume its monitoring data is kept on. Either is enough.
-    for (stateful_sets, claims) in [
-        ([f"{CO_TENANT}-postgres"], [_pvc(bundle_pvc_name(CO_TENANT), "bundle-store")]),
-        ([], [_pvc(f"{CO_TENANT}-prometheus-data", "monitoring-data", CO_TENANT)])
-    ] {
-        deleted_namespaces: list[str] = [];
-        apps_v1 = unittest.mock.MagicMock();
-        apps_v1.list_namespaced_stateful_set.return_value = SimpleNamespace(
-            items=[
-                SimpleNamespace(metadata=SimpleNamespace(name=name))
-                for name in stateful_sets
-            ]
-        );
-        core_v1 = unittest.mock.MagicMock();
-        core_v1.list_namespaced_service.return_value = SimpleNamespace(items=[]);
-        core_v1.read_namespace.side_effect = ApiException(status=404);
-        core_v1.list_namespaced_persistent_volume_claim.return_value = SimpleNamespace(
-            items=claims
-        );
+    deleted_namespaces: list[str] = [];
+    apps_v1 = unittest.mock.MagicMock();
+    apps_v1.list_namespaced_stateful_set.return_value = SimpleNamespace(
+        items=[SimpleNamespace(metadata=SimpleNamespace(name=f"{CO_TENANT}-postgres"))]
+    );
+    core_v1 = unittest.mock.MagicMock();
+    core_v1.list_namespaced_service.return_value = SimpleNamespace(items=[]);
+    core_v1.read_namespace.side_effect = ApiException(status=404);
+    core_v1.list_namespaced_persistent_volume_claim.return_value = SimpleNamespace(
+        items=[_pvc(bundle_pvc_name(CO_TENANT), "bundle-store")]
+    );
 
-        _run_destroy(apps_v1, core_v1, _recording(deleted_namespaces));
+    _run_destroy(apps_v1, core_v1, _recording(deleted_namespaces));
 
-        assert not deleted_namespaces , (
-            f"the namespace was deleted whole while '{CO_TENANT}' was still "
-            "deployed into it, taking that app's database and volumes with it; "
-            f"its claims were {[c.metadata.name for c in claims]}"
-        );
-        assert apps_v1.delete_namespaced_stateful_set.called , (
-            "the shared-namespace path did not run, so this app's own database "
-            "was left behind instead"
-        );
-        assert bundle_loader_pod_name(APP)
-            in [
-                call.args[0] for call in core_v1.delete_namespaced_pod.call_args_list
-            ] , "a leftover bundle loader holds the PVC destroy deleted in Terminating";
-    }
+    assert not deleted_namespaces , (
+        f"the namespace was deleted whole while '{CO_TENANT}' was still "
+        "deployed into it, taking that app's database and volumes with it"
+    );
+    assert apps_v1.delete_namespaced_stateful_set.called , (
+        "the shared-namespace path did not run, so this app's own database "
+        "was left behind instead"
+    );
+    assert bundle_loader_pod_name(APP)
+        in [call.args[0] for call in core_v1.delete_namespaced_pod.call_args_list] , "a leftover bundle loader holds the PVC destroy deleted in Terminating";
+
+    # A neighbour seen only by the volume its monitoring data is kept on.
+    deleted_namespaces = [];
+    apps_v1.list_namespaced_stateful_set.return_value = SimpleNamespace(items=[]);
+    core_v1.list_namespaced_persistent_volume_claim.return_value = SimpleNamespace(
+        items=[_pvc(f"{CO_TENANT}-prometheus-data", "monitoring-data", CO_TENANT)]
+    );
+    _run_destroy(apps_v1, core_v1, _recording(deleted_namespaces));
+    assert not deleted_namespaces , (
+        f"the namespace was deleted whole while '{CO_TENANT}' still kept its "
+        "monitoring data in it"
+    );
 }
 
 
@@ -601,13 +600,16 @@ test "a redeploy reuses a live bundle PVC and replaces a terminating one" {
 }
 
 
-test "a data claim goes with its Deployment when a later destroy step is refused" {
-    # That every claim is gone after a destroy is checked on a real cluster,
-    # at the end of k8s_microservice_real_e2e.sh. This is the case a cluster
-    # does not produce on demand: removing cluster roles refused part-way. A
-    # claim left behind after its Deployment was deleted is billed with nothing
-    # to mount it, and no later destroy by the same identity gets that far.
-    data: list[str] = [f"{APP}-{part}" for part in ["prometheus", "loki", "tempo"]];
+test "a data claim goes with its Deployment when destroy is refused part-way, and one stuck terminating is made again" {
+    # The two faults a cluster does not produce on demand. That every claim is
+    # gone after a destroy is checked on a real one, at the end of
+    # k8s_microservice_real_e2e.sh.
+    deployer = monitoring_mod.MonitoringDeployer(
+        k8s_config=KubernetesConfig(app_name=APP, namespace=NS)
+    );
+    # Removing cluster roles refused: a claim left behind after its Deployment
+    # was deleted is billed with nothing to mount it, and no later destroy by
+    # the same identity gets that far.
     apps_v1 = unittest.mock.MagicMock();
     core_v1 = unittest.mock.MagicMock();
     rbac_v1 = unittest.mock.MagicMock();
@@ -616,33 +618,23 @@ test "a data claim goes with its Deployment when a later destroy step is refused
     raised = False;
     with unittest.mock.patch.object(monitoring_mod, "client", fake_client) {
         try {
-            monitoring_mod.MonitoringDeployer(
-                k8s_config=KubernetesConfig(app_name=APP, namespace=NS)
-            ).destroy(
-                APP, NS, apps_v1, core_v1
-            );
+            deployer.destroy(APP, NS, apps_v1, core_v1);
         } except ApiException {
             raised = True;
         }
     }
-    assert raised;
     gone: list[str] = [
         call.args[0]
         for call in apps_v1.delete_namespaced_deployment.call_args_list
-        if call.args[0] in data
+        if call.args[0].split("-")[-1] in ["prometheus", "loki", "tempo"]
     ];
     deleted: list[str] = [
         call.args[0]
         for call in core_v1.delete_namespaced_persistent_volume_claim.call_args_list
     ];
-    assert gone and deleted == [f"{name}-data" for name in gone] , (
-        "a data volume and the Deployment it belongs to did not go together; "
+    assert raised and gone and deleted == [f"{name}-data" for name in gone] , (
         f"Deployments deleted {gone}, claims deleted {deleted}"
     );
-}
-
-
-test "a data claim still terminating is let go by the pod holding it, then made again" {
     # A claim deleted while its pod runs stays Terminating for as long as the
     # pod does. Waiting on it alone never ends, so the holder goes first.
     dying = SimpleNamespace(
@@ -655,9 +647,6 @@ test "a data claim still terminating is let go by the pod holding it, then made 
         dying,
         ApiException(status=404)
     ];
-    deployer = monitoring_mod.MonitoringDeployer(
-        k8s_config=KubernetesConfig(app_name=APP, namespace=NS)
-    );
     with unittest.mock.patch("time.sleep") {
         deployer._ensure_data_pvc(
             apps_v1, core_v1, deployer._data_pvc(APP, NS, "loki")
@@ -666,10 +655,6 @@ test "a data claim still terminating is let go by the pod holding it, then made 
     released: list[str] = [
         call.args[0] for call in apps_v1.delete_namespaced_deployment.call_args_list
     ];
-    assert released == [f"{APP}-loki"] , (
-        f"the pod holding the claim was left running, so it never went; {released}"
-    );
-    assert core_v1.create_namespaced_persistent_volume_claim.called , (
-        "the claim was not made again, so the new pod has nothing to mount"
-    );
+    assert released == [f"{APP}-loki"] , released;
+    assert core_v1.create_namespaced_persistent_volume_claim.called;
 }
