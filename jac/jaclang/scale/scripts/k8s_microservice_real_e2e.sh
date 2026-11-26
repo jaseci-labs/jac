@@ -810,6 +810,39 @@ else
         "200|404|405|000" "${FIRST_SVC}-deployment" "" "5"
 fi
 
+echo "=== monitoring teardown leaves no data claim behind ==="
+# Destroy runs through the same target the deploy did, and before the cleanup
+# trap: deleting the namespace would hide a claim that destroy left behind.
+CLAIMS_BEFORE=$({ kubectl get pvc -n "${NAMESPACE}" -l jac-scale.role=monitoring-data -o name 2>/dev/null || true; } | wc -l | tr -d ' ')
+if [ "${E2E_MONITORING_STORAGE}" = "1" ] && [ "${CLAIMS_BEFORE}" -lt 2 ]; then
+    echo "FAIL: storage is on for this leg but ${CLAIMS_BEFORE} monitoring data claim(s) exist, expected Prometheus's and Loki's"
+    kubectl get pvc -n "${NAMESPACE}" || true
+    exit 1
+fi
+jac - <<PYEOF
+import jaclang  # noqa: F401
+from jaclang.scale.deploy.target.kubernetes.target import KubernetesTarget
+from jaclang.scale.deploy.target.kubernetes.kubernetes_config import KubernetesConfig
+
+KubernetesTarget(
+    config=KubernetesConfig(app_name="jac-e2e", namespace="${NAMESPACE}"),
+).destroy("jac-e2e", component="monitoring")
+PYEOF
+CLAIMS_LEFT=""
+for attempt in $(seq 1 36); do
+    CLAIMS_LEFT=$(kubectl get pvc -n "${NAMESPACE}" -l jac-scale.role=monitoring-data -o name 2>/dev/null || true)
+    if [ -z "${CLAIMS_LEFT}" ]; then
+        break
+    fi
+    sleep 5
+done
+if [ -n "${CLAIMS_LEFT}" ]; then
+    echo "FAIL: destroy left monitoring data claims behind: ${CLAIMS_LEFT}"
+    kubectl get pvc,pods -n "${NAMESPACE}" || true
+    exit 1
+fi
+echo "  destroy removed the monitoring stack and its ${CLAIMS_BEFORE} data claim(s)"
+
 _t "ALL DONE"
 print_timing_report
 echo "=== K8s microservice REAL e2e PASSED ==="
