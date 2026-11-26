@@ -7,6 +7,7 @@ handed the deployer, so a configured `false` was overridden and a configured
 import re;
 import tempfile;
 import yaml;
+import from kubernetes { client as k8s }
 
 def _target(
     monitoring: bool, logs: bool = False, tracing: bool = False
@@ -301,6 +302,13 @@ test "with storage on, Prometheus and Loki are bounded so the volume cannot fill
         "template"
     ]["spec"]["containers"][0]["args"];
     assert "--storage.tsdb.retention.size=8192MB" in on_old_volume , on_old_volume;
+    # The API server can write a capacity in thousandths of a byte. It is
+    # still the volume the claim has: 80% of about 1.1Gi, not of the 2Gi
+    # that was asked for.
+    odd = raised._prometheus_deployment("t", "t-ns", "1181116006400m")["spec"][
+        "template"
+    ]["spec"]["containers"][0]["args"];
+    assert "--storage.tsdb.retention.size=901MB" in odd , odd;
 
     loki = yaml.safe_load(deployer._loki_config());
     assert loki.get("compactor")
@@ -465,4 +473,46 @@ test "storage settings that cannot be applied refuse the deploy, instead of a wa
         assert result.success == False;
         assert "loki_retention" in str(result.message) , result.message;
     }
+}
+
+
+test "the size a data claim is taken to have is never more than its volume" {
+    # Prometheus is capped at a share of this. A resize that is asked for is
+    # not a resize that happened, so a capacity the claim reports always wins
+    # over a request, and without one the smaller request is the safe guess.
+    deployer = _stored(True);
+    for (capacity, requested, asked, want) in [
+        ("10Gi", "30Gi", "30Gi", "10Gi"),
+        ("1181116006400m", "2Gi", "2Gi", "1181116006400m"),
+        (None, "10Gi", "30Gi", "10Gi"),
+        (None, "30Gi", "10Gi", "10Gi"),
+        ("not-a-size", "2Gi", "4Gi", "2Gi"),
+        (None, None, "30Gi", "30Gi")
+    ] {
+        got = deployer._claim_size(capacity, requested, asked);
+        assert got == want , (capacity, requested, asked, got);
+    }
+}
+
+
+test "the storage class matters only for a claim that still has to be made, and only when it can be asked" {
+    deployer = _stored(True, {"tracing_enabled": False});
+    # A claim that exists is used as it is, so a later deploy does not depend
+    # on the class it came from.
+    assert deployer._claims_to_make("t", {"t-prometheus-data", "t-loki-data"}) == [];
+    assert deployer._claims_to_make("t", {"t-prometheus-data"}) == ["t-loki-data"];
+    assert deployer._claims_to_make("t", set()) == ["t-prometheus-data", "t-loki-data"];
+    # A cluster that cannot be reached raises from the HTTP layer, not from
+    # the API. Either way the question went unanswered, which is not a reason
+    # to refuse the deploy. Nothing listens on the port.
+    unreachable = k8s.Configuration();
+    unreachable.host = "http://127.0.0.1:1";
+    unreachable.retries = 0;
+    api = k8s.ApiClient(unreachable);
+    assert deployer._existing_data_claims(k8s.CoreV1Api(api), "t", "t-ns") is None;
+    assert deployer._storage_classes(k8s.StorageV1Api(api)) is None;
+    assert deployer._cluster_storage_problem(
+        "t", "t-ns", k8s.CoreV1Api(api), k8s.StorageV1Api(api)
+    )
+        == "";
 }
