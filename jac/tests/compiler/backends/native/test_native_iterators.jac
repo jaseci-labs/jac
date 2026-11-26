@@ -39,24 +39,20 @@ test "iter_adapters: map, filter, enumerate and zip drive for-loops" {
 test "iter_protocol: first-class iter() and next() over every iterable" {
     (eng, _) = compile_native("iter_protocol.jac");
     want = {
-        # list() consumes the remaining values with their element types
         "iterator_list_values": 25,
-        # #6403 phase 2: `it = iter(x); next(it)` and `for x in it` over a
-        # stored iterator, typed through the for-loop's __iter__/__next__
+        # iter() / next() over a stored iterator
         "iter_next_basic": 57,
         "for_over_iter": 10,
         "str_iter_next": 2,
-        "next_exhausted": 99,  # next() past the end raises StopIteration
-        # M1: iter() over range / dict / set
+        "next_exhausted": 99,  # StopIteration
+        # iter() over range / dict / set
         "for_over_range_iter": 10,
-        "next_range": 1013,  # stepped range
+        "next_range": 1013,
         "for_over_range_desc": 15,
-        "for_over_dict_iter": 3,  # yields keys
+        "for_over_dict_iter": 3,
         "for_over_set_iter": 12,
-        "map_over_stored": 12,  # an adapter over a stored iterator
-        # #6403: iter(it) returns the JacIter the variable owns; the loop's
-        # reference carries its own +1, so the source is not released twice
-        # (loop end + scope exit)
+        "map_over_stored": 12,
+        # iter(it) of a stored iterator is not released twice
         "for_over_iter_of_stored": 10,
         "assign_iter_of_stored": 10
     };
@@ -88,10 +84,6 @@ test "iter next keyword arg rejected" {
 }
 
 # --- #6403 M2: user-defined __iter__/__next__ bridged into the protocol ---
-# A user `obj` implementing the iterator protocol drives for-loops, works with
-# first-class iter()/next(), composes under map/filter/enumerate, and crosses
-# function boundaries — its `__next__`'s StopIteration becomes the protocol's
-# i1-0 exhaustion flag.
 test "iter_user: a user __iter__/__next__ drives the protocol" {
     (eng, _) = compile_native("iter_user.jac");
     want = {
