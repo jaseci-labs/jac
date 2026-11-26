@@ -280,10 +280,15 @@ impl _ws_stream_next(gen: any) -> any {
     }
 }
 
-impl _ws_close_stream(result: any, abandon: Callable[[], None]) -> None {
+impl _ws_close_stream(
+    result: any, abandon: Callable[[], None], stream_context: contextvars.Context
+) -> None {
     try {
         if isgenerator(result) {
-            await asyncio.get_running_loop().run_in_executor(None, result.close);
+            def close_in_context {
+                stream_context.run(result.close);
+            }
+            await asyncio.get_running_loop().run_in_executor(None, close_in_context);
         } else {
             await result.aclose();
         }
@@ -303,11 +308,15 @@ impl _ws_close_stream(result: any, abandon: Callable[[], None]) -> None {
 
 impl _ws_stream_result(send_result: any, result: any, abandon: Callable[[], None]) {
     stream_error: (str | None) = None;
+    stream_context = contextvars.copy_context();
     try {
         if isgenerator(result) {
             loop = asyncio.get_running_loop();
+            def next_in_context -> any {
+                return stream_context.run(_ws_stream_next, result);
+            }
             while True {
-                item = await loop.run_in_executor(None, _ws_stream_next, result);
+                item = await loop.run_in_executor(None, next_in_context);
                 if item is _WS_STREAM_STOP {
                     break;
                 }
@@ -324,7 +333,7 @@ impl _ws_stream_result(send_result: any, result: any, abandon: Callable[[], None
         logger.error(f"WS stream error: {e}");
         stream_error = str(e);
     } finally {
-        await _ws_close_stream(result, abandon);
+        await _ws_close_stream(result, abandon, stream_context);
     }
     if stream_error is None {
         await send_result({'ok': True, 'type': 'done'});

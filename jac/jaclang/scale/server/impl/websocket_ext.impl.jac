@@ -16,6 +16,7 @@ impl serve_ws_connection(
     rate_capacity = max(msgs_per_sec, 1.0);
     user_id: (str | None) = None;
     token_exp: (float | None) = None;
+    authorization: str = "";
     token_epoch: (int | None) = None;
     first_data: (dict[str, any] | None) = None;
     pre_auth: (dict[str, any] | None) = None;
@@ -31,6 +32,7 @@ impl serve_ws_connection(
         if pre_auth is not None {
             user_id = pre_auth.get('user_id');
             token_exp = pre_auth.get('exp');
+            authorization = pre_auth.get('authorization', '');
             token_epoch = pre_auth.get('session_epoch');
         } else {
             (auth_detail, first_data) = await ws_authenticate(
@@ -42,6 +44,7 @@ impl serve_ws_connection(
             }
             user_id = auth_detail.get('user_id');
             token_exp = auth_detail.get('exp');
+            authorization = auth_detail.get('authorization', '');
             token_epoch = auth_detail.get('session_epoch');
         }
     }
@@ -51,6 +54,7 @@ impl serve_ws_connection(
         target_name=target_name,
         user_id=user_id,
         exp=token_exp,
+        authorization=authorization,
         session_epoch=token_epoch,
         rate_tokens=rate_capacity
     );
@@ -131,29 +135,34 @@ impl serve_ws_connection(
                 );
                 continue;
             }
-            async with scope {
-                (ok, result) = await ws_execute_target(
-                    websocket,
-                    label,
-                    target_name,
-                    make_awaitable(data, (ctx.user_id or Con.GUEST.value)),
-                    target_timeout
-                );
-                if not ok {
-                    continue;
-                }
-                if isgenerator(result) or isinstance(result, AsyncGenerator) {
-                    await _ws_stream_result(send_result, result, scope.abort);
-                } elif isinstance(result, dict) and 'error' in result {
-                    await websocket.send_json(
-                        ws_error_frame(
-                            'EXECUTION_ERROR',
-                            result.get('error', f"{label} execution failed")
-                        )
+            auth_binding = set_current_auth(ctx.authorization);
+            try {
+                async with scope {
+                    (ok, result) = await ws_execute_target(
+                        websocket,
+                        label,
+                        target_name,
+                        make_awaitable(data, (ctx.user_id or Con.GUEST.value)),
+                        target_timeout
                     );
-                } else {
-                    await send_result({'ok': True, 'data': result});
+                    if not ok {
+                        continue;
+                    }
+                    if isgenerator(result) or isinstance(result, AsyncGenerator) {
+                        await _ws_stream_result(send_result, result, scope.abort);
+                    } elif isinstance(result, dict) and 'error' in result {
+                        await websocket.send_json(
+                            ws_error_frame(
+                                'EXECUTION_ERROR',
+                                result.get('error', f"{label} execution failed")
+                            )
+                        );
+                    } else {
+                        await send_result({'ok': True, 'data': result});
+                    }
                 }
+            } finally {
+                reset_current_auth(auth_binding);
             }
         }
     } except WebSocketDisconnect {

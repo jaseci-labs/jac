@@ -55,6 +55,14 @@ test "ws function streaming yields chunk frames then a done frame" {
             assert len(chunks) == 3 , f"expected 3 chunks, got {frames}";
             assert frames[-1] == {"ok": True, "type": "done"} , f"got {frames}";
         }
+        token = client.register_and_login("wsstream", "Secret123!");
+        with tc.websocket_connect(
+            f"/ws/function/ws_private_stream?token={token}"
+        ) as ws {
+            ws.send_json({"count": 2});
+            chunks = [ws.receive_json(), ws.receive_json()];
+            assert [c.get("data") for c in chunks] == [f"Bearer {token}"] * 2 , f"got {chunks}";
+        }
     } finally {
         client.close();
     }

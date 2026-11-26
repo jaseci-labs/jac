@@ -1,4 +1,5 @@
 import asyncio;
+import contextvars;
 import logging;
 import time;
 import uuid;
@@ -17,6 +18,7 @@ obj ConnectionContext {
         conn_id: str = uuid.uuid4().hex,
         user_id: (str | None) = None,
         exp: (float | None) = None,
+        authorization: str = "",
         session_epoch: (int | None) = None,
         session_checked_at: float = 0.0,
         rate_tokens: float = 0.0,
@@ -68,7 +70,9 @@ def consume_rate_token(
 
 def _ws_stream_next(gen: any) -> any;
 
-async def _ws_close_stream(result: any, abandon: Callable[[], None]) -> None;
+async def _ws_close_stream(
+    result: any, abandon: Callable[[], None], stream_context: contextvars.Context
+) -> None;
 
 async def _ws_stream_result(
     send_result: any, result: any, abandon: Callable[[], None]
