@@ -5,6 +5,7 @@ handed the deployer, so a configured `false` was overridden and a configured
 `gateway_config` is injected as a plain dict, which is the same seam
 `_gateway_cfg` reads in production."""
 import re;
+import tempfile;
 import yaml;
 
 def _target(
@@ -168,7 +169,14 @@ def _stored(on: bool, extra: (dict[str, any] | None) = None) -> MonitoringDeploy
     return MonitoringDeployer(
         k8s_config=KubernetesConfig.from_dict(
             KubernetesConfig,
-            {"app_name": "t", "namespace": "t-ns", "monitoring_storage_enabled": on}
+            {
+                "app_name": "t",
+                "namespace": "t-ns",
+                "monitoring_enabled": True,
+                "loki_enabled": True,
+                "tracing_enabled": True,
+                "monitoring_storage_enabled": on
+            }
                 | (extra or {})
         )
     );
@@ -325,10 +333,30 @@ test "storage settings that would take the stack down are refused before anythin
         ("prometheus_storage", "10 Gi"),
         ("tempo_storage", "1_0Gi"),
         ("loki_retention", "2h"),
-        ("loki_retention", "soon")
+        ("loki_retention", "soon"),
+        # Loki reads only ASCII digits and has an upper limit; a period it
+        # cannot parse crash-loops it after Recreate stopped the old pod.
+        ("loki_retention", "\u0661\u0666\u0668h"),
+        ("loki_retention", "9999999h"),
+        # jac.toml is not type-checked, so an unquoted number arrives as one.
+        ("prometheus_storage", 30),
+        ("loki_retention", 168)
     ] {
         problems = _stored(True, {key: bad})._storage_problems();
         assert len(problems) == 1 and key in problems[0] , (key, bad, problems);
+    }
+    # A part this deploy does not run is not this deploy's to refuse: a size
+    # left over for Tempo must not stop an app that has tracing off.
+    for (off, key, bad) in [
+        ("tracing_enabled", "tempo_storage", "500Mi"),
+        ("loki_enabled", "loki_storage", "ten"),
+        ("loki_enabled", "loki_retention", "2h"),
+        ("monitoring_enabled", "prometheus_storage", "10 Gi")
+    ] {
+        assert _stored(True, {off: False, key: bad})._storage_problems() == [] , (
+            off,
+            key
+        );
     }
     # A claim on a class the cluster does not have stays Pending. Recreate has
     # stopped the old pod by then, so the class is checked first.
@@ -385,20 +413,27 @@ test "each data claim is the app's own and asks for the configured size and clas
 
 
 def _storage_target(
-    extra: dict[str, any], monitoring: bool = True
+    extra: dict[str, any], observability: bool = True, dry_run: bool = False
 ) -> KubernetesTarget {
+    # The kubeconfig does not exist, so a deploy that got past the storage
+    # check would fail on its first cluster call instead of reaching one.
     return KubernetesTarget(
         config=KubernetesConfig.from_dict(
             KubernetesConfig,
             {
                 "app_name": "t",
                 "namespace": "t-ns",
-                "monitoring_enabled": monitoring,
-                "monitoring_storage_enabled": True
+                "monitoring_enabled": observability,
+                "monitoring_storage_enabled": True,
+                "kubeconfig": "/nonexistent/jac-10940-kubeconfig"
             }
                 | extra
         ),
-        gateway_config={}
+        gateway_config={
+            "logs": {"enabled": observability},
+            "tracing": {"enabled": observability}
+        },
+        dry_run=dry_run
     );
 }
 
@@ -409,16 +444,25 @@ test "storage settings that cannot be applied refuse the deploy, instead of a wa
     # that cannot be applied would then leave monitoring as it was under a
     # deploy that reports success, so the deploy asks first and stops.
     refusal = _storage_target({"loki_retention": "2h"})._monitoring_storage_refusal(
-        check_cluster=False
+        "t", check_cluster=False
     );
     assert "loki_retention" in refusal , refusal;
-    assert _storage_target({})._monitoring_storage_refusal(check_cluster=False) == "";
+    assert _storage_target({})._monitoring_storage_refusal("t", check_cluster=False)
+        == "";
     # No stack is deployed for an app that asked for none, so its storage
     # settings are not this deploy's to refuse.
     assert _storage_target(
-        {"loki_retention": "2h"}, monitoring=False
+        {"loki_retention": "2h"}, observability=False
     )._monitoring_storage_refusal(
-        check_cluster=False
+        "t", check_cluster=False
     )
         == "";
+    # The deploy itself returns the refusal, before it provisions anything.
+    with tempfile.TemporaryDirectory() as project {
+        result = _storage_target({"loki_retention": "2h"}, dry_run=True).deploy(
+            AppConfig(code_folder=project, file_name="main.jac")
+        );
+        assert result.success == False;
+        assert "loki_retention" in str(result.message) , result.message;
+    }
 }

@@ -602,26 +602,50 @@ test "a redeploy reuses a live bundle PVC and replaces a terminating one" {
 
 
 test "destroying monitoring deletes the volumes its data was kept on" {
-    core_v1 = unittest.mock.MagicMock();
-    fake_client = SimpleNamespace(
-        RbacAuthorizationV1Api=lambda { unittest.mock.MagicMock(); }
-    );
-    with unittest.mock.patch.object(monitoring_mod, "client", fake_client) {
-        monitoring_mod.MonitoringDeployer(
-            k8s_config=KubernetesConfig(app_name=APP, namespace=NS)
-        ).destroy(
-            APP, NS, unittest.mock.MagicMock(), core_v1
+    data: list[str] = [f"{APP}-{part}" for part in ["prometheus", "loki", "tempo"]];
+    # Removing cluster roles can be refused part-way through. A claim goes
+    # with its Deployment either way: one left behind after its Deployment
+    # was deleted is billed with nothing to mount it, and no later destroy by
+    # the same identity gets far enough to remove it.
+    for refused in [False, True] {
+        apps_v1 = unittest.mock.MagicMock();
+        core_v1 = unittest.mock.MagicMock();
+        rbac_v1 = unittest.mock.MagicMock();
+        if refused {
+            rbac_v1.delete_cluster_role.side_effect = ApiException(status=403);
+        }
+        fake_client = SimpleNamespace(RbacAuthorizationV1Api=lambda { rbac_v1; });
+        raised = False;
+        with unittest.mock.patch.object(monitoring_mod, "client", fake_client) {
+            try {
+                monitoring_mod.MonitoringDeployer(
+                    k8s_config=KubernetesConfig(app_name=APP, namespace=NS)
+                ).destroy(
+                    APP, NS, apps_v1, core_v1
+                );
+            } except ApiException {
+                raised = True;
+            }
+        }
+        assert raised == refused;
+        gone: list[str] = [
+            call.args[0]
+            for call in apps_v1.delete_namespaced_deployment.call_args_list
+            if call.args[0] in data
+        ];
+        deleted: list[str] = [
+            call.args[0]
+            for call in core_v1.delete_namespaced_persistent_volume_claim.call_args_list
+        ];
+        assert deleted == [f"{name}-data" for name in gone] , (
+            "a data volume and the Deployment it belongs to did not go together; "
+            f"Deployments deleted {gone}, claims deleted {deleted}"
         );
+        assert f"{APP}-prometheus-data" in deleted , deleted;
+        if not refused {
+            assert sorted(gone) == sorted(data) , gone;
+        }
     }
-    deleted: list[str] = [
-        call.args[0]
-        for call in core_v1.delete_namespaced_persistent_volume_claim.call_args_list
-    ];
-    assert sorted(deleted)
-        == sorted([f"{APP}-{part}-data" for part in ["prometheus", "loki", "tempo"]]) , (
-        "a data volume outlived the monitoring stack it belonged to and is "
-        f"billed with nothing mounting it; destroy deleted {deleted}"
-    );
 }
 
 
@@ -658,11 +682,11 @@ test "a data claim still terminating is let go by the pod holding it, then made 
 }
 
 
-def _claim(size: str) -> any {
+def _claim(size: str, capacity: str = "") -> any {
     return SimpleNamespace(
         metadata=SimpleNamespace(deletion_timestamp=None),
         spec=SimpleNamespace(resources=SimpleNamespace(requests={"storage": size})),
-        status=SimpleNamespace(capacity={"storage": size})
+        status=SimpleNamespace(capacity={"storage": capacity or size})
     );
 }
 
@@ -681,7 +705,10 @@ test "ensuring a data claim reports the size the volume really has" {
         (ApiException(status=404), None, "30Gi"),
         (_claim("10Gi"), ApiException(status=403, reason="Forbidden"), "10Gi"),
         (_claim("10Gi"), None, "10Gi"),
-        (_claim("30Gi"), None, "30Gi")
+        (_claim("30Gi"), None, "30Gi"),
+        # A capacity the size parser cannot read must not stop Prometheus
+        # deploying: the size the claim asked for stands in for it.
+        (_claim("2Gi", "1181116006400m"), None, "2Gi")
     ] {
         core_v1 = unittest.mock.MagicMock();
         if isinstance(found, ApiException) {
@@ -696,5 +723,52 @@ test "ensuring a data claim reports the size the volume really has" {
             deployer._data_pvc(APP, NS, "prometheus")
         );
         assert got == want , (found, resize, got);
+    }
+}
+
+
+test "the storage class is checked only for a claim that still has to be made" {
+    # A claim that exists is used as it is, so later deploys do not depend on
+    # the class it came from, and a cluster that cannot be asked is not a
+    # reason to refuse a deploy.
+    deployer = monitoring_mod.MonitoringDeployer(
+        k8s_config=KubernetesConfig.from_dict(
+            KubernetesConfig,
+            {
+                "app_name": APP,
+                "namespace": NS,
+                "monitoring_enabled": True,
+                "monitoring_storage_enabled": True
+            }
+        )
+    );
+    no_default = SimpleNamespace(
+        items=[SimpleNamespace(metadata=SimpleNamespace(name="gp3", annotations={}))]
+    );
+    for (claim, classes, refused) in [
+        (_claim("10Gi"), no_default, False),
+        (ApiException(status=404), no_default, True),
+        (ApiException(status=404), ApiException(status=500), False),
+        (ApiException(status=403), no_default, False)
+    ] {
+        core_v1 = unittest.mock.MagicMock();
+        storage_v1 = unittest.mock.MagicMock();
+        if isinstance(claim, ApiException) {
+            core_v1.read_namespaced_persistent_volume_claim.side_effect = claim;
+        } else {
+            core_v1.read_namespaced_persistent_volume_claim.return_value = claim;
+        }
+        if isinstance(classes, ApiException) {
+            storage_v1.list_storage_class.side_effect = classes;
+        } else {
+            storage_v1.list_storage_class.return_value = classes;
+        }
+        fake_client = SimpleNamespace(
+            CoreV1Api=lambda { core_v1; }, StorageV1Api=lambda { storage_v1; }
+        );
+        with unittest.mock.patch.object(monitoring_mod, "client", fake_client) {
+            problem = deployer._cluster_storage_problem(APP, NS);
+        }
+        assert bool(problem) == refused , (claim, classes, problem);
     }
 }

@@ -13273,6 +13273,7 @@ graph import scale {
             | tests.deploy.test_deploy_k8s
             | tests.deploy.test_dry_run_purity
             | tests.deploy.test_factories
+            | tests.deploy.test_monitoring_switch
             | tests.deploy.test_ops_rbac
             | tests.deploy.test_pdb_budget
             | tests.deploy.test_pod_env
