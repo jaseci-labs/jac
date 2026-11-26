@@ -26,6 +26,10 @@ walker BoundaryAnalysisPass(TreePass) {
         nd: Import, module_name: str, caller_ctx: InteropContext
     ) -> None;
 
+    def _bind_sv_import(
+        item: ModuleItem, local_name: str, binding: InteropBinding
+    ) -> None;
+
     def _register_na_client_import(nd: Import) -> None;
     def _register_client_bridged_import(nd: Import) -> None;
     def _register_type_import(

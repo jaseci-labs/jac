@@ -6217,6 +6217,7 @@ graph import compiler {
             W2020,
             W2021
         },
+        passes.boundary_analysis_pass.BoundaryAnalysisPass._bind_sv_import { E5118 },
         passes.boundary_analysis_pass.BoundaryAnalysisPass._check_app_cycle { E5104 },
         passes.boundary_analysis_pass.BoundaryAnalysisPass._check_provider_pub {
             E5106

@@ -38,12 +38,6 @@ def:pub app -> JsxElement {
         sum_val = await add_pair(**kw);
     }
 
-    async def call_other_greet {
-        # Another service's greet, bound in this scope only (#10756).
-        import from sv_import_kwargs_dup_server { greet }
-        result = await greet("World");
-    }
-
     return
         <div>
             <input

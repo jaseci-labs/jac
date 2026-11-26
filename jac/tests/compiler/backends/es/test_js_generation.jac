@@ -1025,9 +1025,6 @@ test "bridged call kwargs preserve names in jac call function" {
         "Bug regression: kwargs were dropped, emitting empty args object."
     );
 
-    # call_other_greet imports greet from another service in its own scope;
-    # both stubs hoist to one module, so the second is renamed (#10756).
-    assert "function greet(" in js_code and "function greet$1(" in js_code , js_code;
     assert_balanced_syntax(js_code, fixture);
 }
 
@@ -1189,6 +1186,21 @@ test "bridged call duplicate kwarg is a compile error" {
         + str([str(e) for e in prog.errors_had])
     );
     assert "name" in str(dup_errs[0]);
+}
+
+test "one name imported from two server modules is E5118" {
+    fixture = os.path.join(FIXTURES, "svc_kwargs/sv_import_name_clash.jac");
+    prog = JacProgram();
+    prog.compile(file_path=fixture, no_cgen=True);
+    # Only call_other clashes; the alias and the same-module import bind cleanly.
+    errs = [
+        str(e)
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == "E5118"
+    ];
+    assert len(errs) == 1 and "sv_import_kwargs_dup_server" in errs[0] , [
+        str(e) for e in prog.errors_had
+    ];
 }
 
 test "bridged import nested in a client block emits no dead import" {
