@@ -398,7 +398,7 @@ impl BoundaryAnalysisPass._register_sv_import(
                 kind='walker',
                 provider_app=provider_app
             );
-            self._bind_sv_import(item, local_name, binding);
+            manifest.bindings[local_name] = binding;
             continue;
         }
         ability_node: (Ability | None) = source_abilities.get(sym_name);
@@ -441,38 +441,12 @@ impl BoundaryAnalysisPass._register_sv_import(
                 sym_name
             )
         );
-        self._bind_sv_import(item, local_name, binding);
+        manifest.bindings[local_name] = binding;
     }
     if provider_app and provider_route {
         manifest.provider_routes[provider_app] = provider_route;
     }
     self._record_app_edge(nd);
-}
-
-impl BoundaryAnalysisPass._bind_sv_import(
-    item: ModuleItem, local_name: str, binding: InteropBinding
-) -> None {
-    bindings = self.module.gen.interop_manifest.bindings;
-    prior = bindings.get(local_name);
-    if prior is not None and prior.source_context == InteropContext.SERVER {
-        same = (
-            prior.ast_node is binding.ast_node
-                if prior.ast_node is not None and binding.ast_node is not None
-                else (prior.name, prior.source_module)
-                    == (binding.name, binding.source_module)
-        );
-        if not same {
-            self.ctx.emit(
-                E5118,
-                node_override=item,
-                name=local_name,
-                first=prior.source_module or '',
-                other=binding.source_module or ''
-            );
-            return;
-        }
-    }
-    bindings[local_name] = binding;
 }
 
 impl BoundaryAnalysisPass._register_na_client_import(nd: Import) -> None {
@@ -588,8 +562,18 @@ impl BoundaryAnalysisPass._register_client_bridged_import(nd: Import) -> None {
             }
             continue;
         }
+        prior = manifest.bindings.get(local_name);
+        if prior is not None and prior.ast_node is not ability {
+            self.ctx.emit(
+                E2036,
+                node_override=item,
+                name=local_name,
+                prior=f"import of '{prior.source_module}.{prior.name}'"
+            );
+            continue;
+        }
         (ret_type, param_types, param_names) = self._signature_of_decl(ability);
-        binding = InteropBinding(
+        manifest.bindings[local_name] = InteropBinding(
             name=sym_name,
             source_context=InteropContext.SERVER,
             callers={InteropContext.CLIENT},
@@ -601,7 +585,6 @@ impl BoundaryAnalysisPass._register_client_bridged_import(nd: Import) -> None {
             kind='function',
             provider_app=provider_app
         );
-        self._bind_sv_import(item, local_name, binding);
     }
     if provider_app and provider_route {
         manifest.provider_routes[provider_app] = provider_route;

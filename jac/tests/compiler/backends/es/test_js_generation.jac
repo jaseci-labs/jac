@@ -1186,13 +1186,6 @@ test "bridged call duplicate kwarg is a compile error" {
         + str([str(e) for e in prog.errors_had])
     );
     assert "name" in str(dup_errs[0]);
-    # One server name imported from two modules is E5118 (#10756).
-    clash = JacProgram();
-    clash.compile(
-        file_path=os.path.join(FIXTURES, "svc_kwargs/sv_import_name_clash.jac"),
-        no_cgen=True
-    );
-    assert any(e.code and e.code.code == "E5118" for e in clash.errors_had);
 }
 
 test "bridged import nested in a client block emits no dead import" {

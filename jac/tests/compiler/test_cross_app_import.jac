@@ -222,6 +222,9 @@ test "direct, aliased and re-imported client RPC calls retain the service route"
         "bridged names never become runtime imports of the provider entry; got "
         + str(mod.gen.client_manifest.runtime_imports)
     );
+    # One client name can't route to two server functions (#10756).
+    (clash, _) = compile_fixture(fixture("web", "bad_name_clash.jac"));
+    assert "E2036" in codes(clash) , str(clash.errors_had);
 }
 
 test "NATIVE_BIND wins for a client import recorded as a client-native edge" {
