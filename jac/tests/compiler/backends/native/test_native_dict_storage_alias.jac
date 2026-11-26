@@ -68,9 +68,6 @@ def probe -> int {
         options=native_force_opts()
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
-    assert not issues , "\n".join(issue.detail for issue in issues);
     engine = module.gen.native_engine;
     assert engine is not None;
     probe = ctypes.CFUNCTYPE(ctypes.c_int64)(
@@ -82,10 +79,7 @@ def probe -> int {
 
 test "object hash layouts stay distinct from strings and other object classes" {
     import from tests.support { compile_native, get_func }
-    import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
     (engine, module) = compile_native("object_hash_layouts.jac");
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
-    assert not issues , "\n".join(issue.detail for issue in issues);
     probe = get_func(engine, "probe", ctypes.c_int64);
     assert probe() == 157;
 }

@@ -22,8 +22,6 @@ print the same lines, and CPython's own answers for the same six calls are
 `2 1 25 4 rejected rejected 0`.
 """
 
-import contextlib;
-import io;
 import os;
 import subprocess;
 import tempfile;
@@ -62,15 +60,10 @@ def sv_lines(fixture: str) -> list[str] {
 
 
 """The seam report a build would show on stderr for a fixture."""
-def seam_report(fixture: str) -> str {
-    buf = io.StringIO();
+def refusals(fixture: str) -> str {
     prog = JacProgram();
-    with contextlib.redirect_stderr(buf) {
-        prog.compile(
-            file_path=os.path.join(FIXTURES, fixture), options=native_force_opts()
-        );
-    }
-    return buf.getvalue();
+    prog.compile(file_path=os.path.join(FIXTURES, fixture), options=native_force_opts());
+    return "\n".join(str(e) for e in prog.errors_had);
 }
 
 
@@ -138,12 +131,9 @@ test "declared and undeclared values answer as CPython does" {
 
 
 test "a noninteger input to an integer enum refuses by name" {
-    seams = seam_report("xmod_demote_dyn_lib.jac");
-    assert "enum constructor 'Hue'" in seams , (
-        f"the floating-point input lowered silently:\n{seams}"
-    );
-    assert "from_code" in seams , (
-        f"the refusal did not demote the callable that owns it:\n{seams}"
+    errors = refusals("enum_ctor_float_input.jac");
+    assert "enum constructor 'Hue'" in errors , (
+        f"the floating-point input lowered silently:\n{errors}"
     );
 }
 
@@ -175,12 +165,12 @@ test "a same-named local function is not read as the enum" {
 
 
 test "a non-integer argument or a computed enum target refuses" {
-    seams = seam_report("enum_ctor_bad_arg.jac");
-    assert "enum constructor 'Level'" in seams , (
-        f"a float argument was coerced into the member table:\n{seams}"
+    errors = refusals("enum_ctor_bad_arg.jac");
+    assert "enum constructor 'Level'" in errors , (
+        f"a float argument was coerced into the member table:\n{errors}"
     );
-    assert "demoting picked" in seams , (
-        f"the member lookup skipped evaluating its target:\n{seams}"
+    assert "subscript/index access" in errors , (
+        f"the member lookup skipped evaluating its target:\n{errors}"
     );
 }
 

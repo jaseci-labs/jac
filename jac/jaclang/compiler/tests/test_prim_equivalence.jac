@@ -49,30 +49,18 @@ test "native sort never silently orders object-returning keys" {
     );
 }
 
-test "native gradual object keys demote, never pointer-sort (#9158)" {
-    # A `-> any` key slips the checker's overloads, so only the native
-    # gate sees the danger: the erased i8* is indistinguishable from
-    # string data, and object pointers must never reach strcmp. The
-    # function demotes to its Python implementation instead, while a
-    # semantic `-> str` key in the same module stays natively lowered.
-    (eng, na_ir) = compile_native("prim_sort_key_gradual.jac");
+test "native gradual object keys are refused, never pointer-sorted (#9158)" {
+    # A `-> any` key slips the checker's overloads, so only the native gate
+    # sees the danger: the erased i8* is indistinguishable from string data,
+    # and object pointers must never reach strcmp. The function is a compile
+    # error instead.
+    errors = compile_native_errors("prim_sort_key_gradual.jac");
+    assert any("orderable key values" in e for e in errors) , errors;
+}
+
+test "a semantic str sort key lowers through the string comparator (#9158)" {
+    (eng, na_ir) = compile_native("prim_sort_key_semantic.jac");
     llvm_txt = str(na_ir.gen.llvm_ir);
-    issues = native_lowering_issues(llvm_txt);
-    demoted = [
-        i
-        for i in issues
-        if "grad_obj_na" in i.symbol
-    ];
-    assert len(demoted) == 1 , (
-        f"gradual object key function should demote exactly once: {issues}"
-    );
-    assert "orderable key values" in demoted[0].detail , demoted[0].detail;
-    kept = [
-        i
-        for i in issues
-        if "grad_str_na" in i.symbol
-    ];
-    assert len(kept) == 0 , f"semantic str key must lower natively: {kept}";
     assert "__jac_str_cmp" in llvm_txt , "str-key control should use the semantic string comparator";
     import re;
     assert re.search(r'\bcall\s+i32\s+@"?strcmp"?\(', llvm_txt) is None , (
