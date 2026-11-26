@@ -452,6 +452,8 @@ test "bytes membership is length-aware (#6749)" {
     assert get_func(eng, "in_true", ctypes.c_int64)() == 1;
     assert get_func(eng, "in_false", ctypes.c_int64)() == 0;
     assert get_func(eng, "in_nul", ctypes.c_int64)() == 1;
+    assert get_func(eng, "in_nul_absent", ctypes.c_int64)() == 0;
+    assert get_func(eng, "in_past_nul", ctypes.c_int64)() == 1;
     assert get_func(eng, "not_in_true", ctypes.c_int64)() == 1;
     assert get_func(eng, "in_empty", ctypes.c_int64)() == 1;
 }
