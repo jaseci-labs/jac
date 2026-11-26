@@ -2402,12 +2402,14 @@ impl MonitoringDeployer._storage_problems -> list[str] {
         ('loki_storage', cfg.loki_storage),
         ('tempo_storage', cfg.tempo_storage)
     ] {
-        try {
-            if parse_storage_quantity(size) < 1024 ** 3 {
-                problems.append(f"[scale.monitoring] {key} = '{size}' is below 1Gi");
-            }
-        } except ValueError as e {
-            problems.append(f"[scale.monitoring] {key}: {e}");
+        if re.fullmatch(r'[0-9]+(Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?', size.strip())
+            is None {
+            problems.append(
+                f"[scale.monitoring] {key} = '{size}' is not a whole-number "
+                "Kubernetes quantity such as 10Gi"
+            );
+        } elif parse_storage_quantity(size) < 1024 ** 3 {
+            problems.append(f"[scale.monitoring] {key} = '{size}' is below 1Gi");
         }
     }
     period = re.fullmatch(r'(\d+)([hdw])', cfg.loki_retention.strip());
@@ -2509,7 +2511,7 @@ impl MonitoringDeployer._data_pvc(
                     'prometheus': cfg.prometheus_storage,
                     'loki': cfg.loki_storage,
                     'tempo': cfg.tempo_storage
-                }[component]
+                }[component].strip()
             }
         }
     };
