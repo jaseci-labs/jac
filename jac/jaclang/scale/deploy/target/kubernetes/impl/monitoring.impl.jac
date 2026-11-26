@@ -175,7 +175,9 @@ impl MonitoringDeployer._prometheus_deployment(
             f"--storage.tsdb.retention.size={cap}MB"
         ];
     }
-    return self._apply_storage(deployment, 'prometheus-data');
+    return self._apply_requests(
+        self._apply_storage(deployment, 'prometheus-data'), 'prometheus'
+    );
 }
 
 impl MonitoringDeployer._deploy_prometheus(
@@ -1382,7 +1384,7 @@ impl MonitoringDeployer._tempo_deployment(
             }
         }
     };
-    return self._apply_storage(deployment, 'tempo-data');
+    return self._apply_requests(self._apply_storage(deployment, 'tempo-data'), 'tempo');
 }
 
 impl MonitoringDeployer._deploy_tempo(
@@ -1635,7 +1637,7 @@ impl MonitoringDeployer._loki_deployment(
             'checksum/config': hashlib.md5(self._loki_config().encode()).hexdigest()[:12]
         };
     }
-    return self._apply_storage(deployment, 'loki-data');
+    return self._apply_requests(self._apply_storage(deployment, 'loki-data'), 'loki');
 }
 
 impl MonitoringDeployer._deploy_loki(
@@ -2572,6 +2574,56 @@ impl MonitoringDeployer._claim_size(
         }
     }
     return smallest;
+}
+
+impl MonitoringDeployer._requests(part: str) -> dict[str, str] {
+    found: dict[str, str] = {};
+    for resource in ['cpu', 'memory'] {
+        value: any = getattr(self.k8s_config, f"{part}_{resource}_request");
+        text: str = '' if value is None else str(value).strip();
+        if text {
+            found[resource] = text;
+        }
+    }
+    return found;
+}
+
+impl MonitoringDeployer._request_problems -> list[str] {
+    forms: dict[str, tuple[str, str]] = {
+        'cpu': (
+            r'[0-9]+m|[0-9]+(\.[0-9]{1,3})?',
+            'cores or millicores, such as "100m" or "0.5"'
+        ),
+        'memory': (
+            r'[0-9]+(Ki|Mi|Gi|Ti|k|M|G|T)',
+            'a whole number with a unit in quotes, such as "768Mi"'
+        )
+    };
+    problems: list[str] = [];
+    for part in self._data_parts() {
+        for (resource, text) in self._requests(part).items() {
+            (form, wanted) = forms[resource];
+            if re.fullmatch(form, text) is None {
+                problems.append(
+                    f"[scale.monitoring] {part}_{resource}_request = {text!r} "
+                    f"must be {wanted}"
+                );
+            }
+        }
+    }
+    return problems;
+}
+
+impl MonitoringDeployer._apply_requests(
+    deployment: dict[str, any], part: str
+) -> dict[str, any] {
+    requests: dict[str, str] = self._requests(part);
+    if requests {
+        deployment['spec']['template']['spec']['containers'][0]['resources'] = {
+            'requests': requests
+        };
+    }
+    return deployment;
 }
 
 impl MonitoringDeployer._apply_storage(

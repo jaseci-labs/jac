@@ -195,7 +195,13 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, any
         'prometheus_storage',
         'loki_storage',
         'tempo_storage',
-        'loki_retention'
+        'loki_retention',
+        'prometheus_cpu_request',
+        'prometheus_memory_request',
+        'loki_cpu_request',
+        'loki_memory_request',
+        'tempo_cpu_request',
+        'tempo_memory_request'
     ] {
         k8s_config[key] = monitoring[key];
     }
@@ -326,7 +332,13 @@ impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, any
         'prometheus_storage': monitoring_config.get('prometheus_storage', '10Gi'),
         'loki_storage': monitoring_config.get('loki_storage', '10Gi'),
         'tempo_storage': monitoring_config.get('tempo_storage', '5Gi'),
-        'loki_retention': monitoring_config.get('loki_retention', '168h')
+        'loki_retention': monitoring_config.get('loki_retention', '168h'),
+        'prometheus_cpu_request': monitoring_config.get('prometheus_cpu_request'),
+        'prometheus_memory_request': monitoring_config.get('prometheus_memory_request'),
+        'loki_cpu_request': monitoring_config.get('loki_cpu_request'),
+        'loki_memory_request': monitoring_config.get('loki_memory_request'),
+        'tempo_cpu_request': monitoring_config.get('tempo_cpu_request'),
+        'tempo_memory_request': monitoring_config.get('tempo_memory_request')
     };
 }
 

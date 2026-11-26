@@ -725,6 +725,9 @@ Scale can deploy a full observability stack (Prometheus + Grafana + kube-state-m
 | `loki_storage` | `10Gi` | Size of the Loki claim |
 | `tempo_storage` | `5Gi` | Size of the Tempo claim |
 | `loki_retention` | `168h` | How long Loki keeps logs when `storage_enabled` is set |
+| `prometheus_cpu_request`, `prometheus_memory_request` | unset | CPU and memory requests for the Prometheus container. See [Monitoring resource requests](#monitoring-resource-requests) |
+| `loki_cpu_request`, `loki_memory_request` | unset | CPU and memory requests for the Loki container |
+| `tempo_cpu_request`, `tempo_memory_request` | unset | CPU and memory requests for the Tempo container |
 
 **Defaults (`[scale.kubernetes]`):**
 
@@ -788,6 +791,28 @@ Things to know before turning it on:
 - **Size Loki for its busiest week.** Loki and Tempo drop data by age only, so a volume that fills stays full until it is grown. Sizes are whole-number quantities of at least `1Gi`, and `loki_retention` is hours, days or weeks of at least `24h` (`168h`, `7d`, `1w`).
 - **Sizes can be raised, not lowered.** A larger value grows the claim on the next deploy. A smaller one is ignored with a warning, and so is a larger one on a class that cannot expand volumes: the claim keeps its size and Prometheus stays capped to the volume it has. After a size is raised, the cap follows on the next deploy, once the volume has grown. `storage_class` cannot be changed on a claim that exists.
 - **Turning it off leaves the claims in place.** The pods go back to `emptyDir`, and the claims keep their data until `jac scale destroy` deletes them, either in full or with `--component monitoring`.
+
+#### Monitoring resource requests
+
+Prometheus, Loki and Tempo are deployed with no CPU or memory request, so nothing is reserved for them and they are among the first pods evicted when a node runs short of memory. On `emptyDir` an evicted pod comes back with no history. Set requests to reserve room for them:
+
+```toml
+[scale.monitoring]
+enabled = true
+prometheus_cpu_request = "100m"
+prometheus_memory_request = "1Gi"
+loki_cpu_request = "50m"
+loki_memory_request = "1Gi"
+tempo_cpu_request = "25m"
+tempo_memory_request = "512Mi"
+```
+
+- **Nothing is set unless you set it.** There are no defaults, so an app that sets none of these keys is deployed exactly as before, and a request another tool put on the Deployment is left as it is. Each key is on its own: set only `loki_memory_request` and only that is sent. An empty string counts as unset.
+- **The memory request is the one that protects the pod.** Under memory pressure a node evicts the pods that use more than they requested, the furthest over first, and a pod with no request is always over. Set it near what the component really uses (`kubectl top pod`), not far below.
+- **Requests only.** No limit is set: a memory limit turns a spike into an out-of-memory kill and a restart, which on `emptyDir` is the data loss the request is there to prevent.
+- **Setting or changing a request replaces that pod once.** On `emptyDir` that loses its data one more time, so set requests and `storage_enabled` in the same deploy where you can.
+- **Removing a key leaves the old request in place.** The deploy stops sending it, and the Deployment keeps the value it has until you change it by hand or the stack is destroyed and deployed again.
+- **A value that cannot be applied refuses the deploy.** CPU is millicores or cores (`100m`, `1`, `0.5`). Memory is a whole number with a unit (`768Mi`, `1Gi`). The check runs before anything is applied, with `storage_enabled` on or off, and only for the parts a deploy runs.
 
 **Prometheus scrape targets:**
 
