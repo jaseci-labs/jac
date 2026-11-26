@@ -25,7 +25,7 @@ These tests pin:
 
 import os;
 import re;
-import from tests.support { JAC_ROOT }
+import from tests.support { JAC_ROOT, run_cases }
 import from jaclang.compiler.backends.es { EsastGenPass }
 import jaclang.compiler.backends.es.estree as es;
 import from jaclang.compiler.backends.es.backends.react { ReactBackend }
@@ -75,81 +75,113 @@ def function_body(js: str, name: str) -> str {
     return js[start:];
 }
 
-test "constructor kwarg key survives client state lowering" {
-    (es_pass, prog, js) = compile_fixture("kwarg_key_state_ctor.jac");
-    body = function_body(js, "use_thing");
+test "kwarg_key_state_ctor.jac cases" {
+    def check_constructor_kwarg_key_survives_client_state_lowe {
+        (es_pass, prog, js) = compile_fixture("kwarg_key_state_ctor.jac");
 
-    assert re.search(r"theme:\s*__jacS_theme\.val", body) , (
-        f"the kwarg key must stay the plain field name `theme`: {body}"
-    );
-    assert "__jacS_theme.val:" not in body , (
-        f"a state cell read is not parseable in key position: {body}"
+        body = function_body(js, "use_thing");
+
+        assert re.search(r"theme:\s*__jacS_theme\.val", body) , (
+            f"the kwarg key must stay the plain field name `theme`: {body}"
+        );
+        assert "__jacS_theme.val:" not in body , (
+            f"a state cell read is not parseable in key position: {body}"
+        );
+    }
+
+    def check_attribute_names_after_a_dot_are_never_rewritten {
+        (es_pass, prog, js) = compile_fixture("kwarg_key_state_ctor.jac");
+
+        body = function_body(js, "App");
+
+        assert "use_thing().theme" in body , (
+            f"an attribute name must be emitted verbatim after `.`: {body}"
+        );
+        assert ".__jacS_theme" not in js , (
+            f"no attribute may be rewritten into a state cell: {js}"
+        );
+    }
+    run_cases(
+        [
+            (
+                "constructor kwarg key survives client state lowering",
+                check_constructor_kwarg_key_survives_client_state_lowe
+            ),
+            (
+                "attribute names after a dot are never rewritten to state reads",
+                check_attribute_names_after_a_dot_are_never_rewritten
+            )
+        ]
     );
 }
 
-test "plain-function kwarg lands in its parameter slot, not a trailing spread" {
-    (es_pass, prog, js) = compile_fixture("kwarg_key_state_call.jac");
-    body = function_body(js, "use_thing");
+test "kwarg_key_state_call.jac cases" {
+    def check_plain_function_kwarg_lands_in_its_parameter_slot {
+        (es_pass, prog, js) = compile_fixture("kwarg_key_state_call.jac");
 
-    assert re.search(r"label\(\s*__jacS_theme\.val\s*,\s*2\s*\)", body) , (
-        f"the state read must fill `label`'s `theme` slot positionally: {body}"
-    );
-    assert "undefined" not in body , (
-        f"no parameter slot may be left as an `undefined` filler: {body}"
-    );
-    assert "..." not in body , (
-        f"a recognized kwarg must never be demoted to a trailing spread: {body}"
-    );
-}
+        body = function_body(js, "use_thing");
 
-test "attribute names after a dot are never rewritten to state reads" {
-    (es_pass, prog, js) = compile_fixture("kwarg_key_state_ctor.jac");
-    body = function_body(js, "App");
+        assert re.search(r"label\(\s*__jacS_theme\.val\s*,\s*2\s*\)", body) , (
+            f"the state read must fill `label`'s `theme` slot positionally: {body}"
+        );
+        assert "undefined" not in body , (
+            f"no parameter slot may be left as an `undefined` filler: {body}"
+        );
+        assert "..." not in body , (
+            f"a recognized kwarg must never be demoted to a trailing spread: {body}"
+        );
+    }
 
-    assert "use_thing().theme" in body , (
-        f"an attribute name must be emitted verbatim after `.`: {body}"
-    );
-    assert ".__jacS_theme" not in js , (
-        f"no attribute may be rewritten into a state cell: {js}"
-    );
-}
+    def check_an_unrecognized_kwarg_key_shape_is_a_hard_error {
+        (es_pass, prog, js) = compile_fixture("kwarg_key_state_call.jac");
 
-test "an unrecognized kwarg key shape is a hard error, not a silent spread" {
-    (es_pass, prog, js) = compile_fixture("kwarg_key_state_call.jac");
-    calls = [
-        nd
-        for nd in es_pass.module.get_all_sub_nodes(uni.FuncCall)
-        if isinstance(nd.target, uni.Name) and nd.target.sym_name == "label"
-    ];
-    assert calls , "fixture must contain a call to `label`";
+        calls = [
+            nd
+            for nd in es_pass.module.get_all_sub_nodes(uni.FuncCall)
+            if isinstance(nd.target, uni.Name) and nd.target.sym_name == "label"
+        ];
+        assert calls , "fixture must contain a call to `label`";
 
-    es_pass.ctx.errors_had.clear();
-    bogus = es.Property(
-        key=es.MemberExpression(
-            object=es.Identifier(name="__jacS_theme"),
-            property=es.Identifier(name="val"),
+        es_pass.ctx.errors_had.clear();
+        bogus = es.Property(
+            key=es.MemberExpression(
+                object=es.Identifier(name="__jacS_theme"),
+                property=es.Identifier(name="val"),
+                computed=False
+            ),
+            value=es.Identifier(name="x"),
+            kind='init',
+            method=False,
+            shorthand=False,
             computed=False
-        ),
-        value=es.Identifier(name="x"),
-        kind='init',
-        method=False,
-        shorthand=False,
-        computed=False
-    );
-    slots = es_pass._resolve_call_arg_slots(
-        calls[0], [], [bogus], ["theme", "size"], "label", None
-    );
+        );
+        slots = es_pass._resolve_call_arg_slots(
+            calls[0], [], [bogus], ["theme", "size"], "label", None
+        );
 
-    codes = [
-        alrt.code.code
-        for alrt in es_pass.ctx.errors_had
-        if alrt.code is not None
-    ];
-    assert "E5099" in codes , (
-        "an unrecognized kwarg key must raise E5099, got "
-        + str([str(e) for e in es_pass.ctx.errors_had])
-    );
-    assert not any(isinstance(slot.value, es.SpreadElement) for slot in slots) , (
-        "the failing kwarg must not be laundered into a spread argument"
+        codes = [
+            alrt.code.code
+            for alrt in es_pass.ctx.errors_had
+            if alrt.code is not None
+        ];
+        assert "E5099" in codes , (
+            "an unrecognized kwarg key must raise E5099, got "
+            + str([str(e) for e in es_pass.ctx.errors_had])
+        );
+        assert not any(isinstance(slot.value, es.SpreadElement) for slot in slots) , (
+            "the failing kwarg must not be laundered into a spread argument"
+        );
+    }
+    run_cases(
+        [
+            (
+                "plain-function kwarg lands in its parameter slot, not a trailing spread",
+                check_plain_function_kwarg_lands_in_its_parameter_slot
+            ),
+            (
+                "an unrecognized kwarg key shape is a hard error, not a silent spread",
+                check_an_unrecognized_kwarg_key_shape_is_a_hard_error
+            )
+        ]
     );
 }

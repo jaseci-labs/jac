@@ -9,7 +9,7 @@ SolidBackend and asserting on the emitted JS.
 
 import os;
 import from pathlib { Path }
-import from tests.support { JAC_ROOT }
+import from tests.support { JAC_ROOT, run_cases }
 import jaclang;
 import from jaclang.compiler.backends.es { EsastGenPass }
 import from jaclang.compiler.backends.es.backends.solid { SolidBackend }
@@ -163,13 +163,36 @@ test "solid aug-assign fixture emits functional updaters (fixture #3)" {
     assert "setCount((count() +" not in js;
 }
 
-test "solid sync effect lowers to createEffect (fixture #2)" {
-    js = compile_fixture_with_backend("reactive_effects_sync.jac", SolidBackend());
-    assert "createEffect(" in js;
-    assert "useEffect" not in js;
-    assert 'from "solid-js"' in js;
-    # Reactive read inside the effect body is an accessor call.
-    assert "document.title = title()" in js;
+test "solid sync effect lowers to createEffect (fixture #2), and related cases" {
+    def check_solid_sync_effect_lowers_to_createeffect_fixture {
+        js = compile_fixture_with_backend("reactive_effects_sync.jac", SolidBackend());
+        assert "createEffect(" in js;
+        assert "useEffect" not in js;
+        assert 'from "solid-js"' in js;
+        # Reactive read inside the effect body is an accessor call.
+        assert "document.title = title()" in js;
+    }
+
+    def check_solid_async_effect_keeps_the_iife_and_ignores_th {
+        js = compile_fixture_with_backend("reactive_effects_deps.jac", SolidBackend());
+        assert "createEffect(" in js;
+        assert "useEffect" not in js;
+        # Writes inside the async effect route through setters.
+        assert "setLoading(" in js;
+        assert "setUserData(" in js;
+    }
+    run_cases(
+        [
+            (
+                "solid sync effect lowers to createEffect (fixture #2)",
+                check_solid_sync_effect_lowers_to_createeffect_fixture
+            ),
+            (
+                "solid async effect keeps the IIFE and ignores the dep array",
+                check_solid_async_effect_keeps_the_iife_and_ignores_th
+            )
+        ]
+    );
 }
 
 test "solid cleanup effect lowers to onCleanup" {
@@ -178,14 +201,6 @@ test "solid cleanup effect lowers to onCleanup" {
     assert "useEffect" not in js;
 }
 
-test "solid async effect keeps the IIFE and ignores the dep array" {
-    js = compile_fixture_with_backend("reactive_effects_deps.jac", SolidBackend());
-    assert "createEffect(" in js;
-    assert "useEffect" not in js;
-    # Writes inside the async effect route through setters.
-    assert "setLoading(" in js;
-    assert "setUserData(" in js;
-}
 
 test "solid view seam emits un-thunked dynamic JSX, never wraps handlers (fixture #4/#6)" {
     js = compile_fixture_with_backend("reactive_view_audit.jac", SolidBackend());
@@ -202,47 +217,65 @@ test "solid view seam emits un-thunked dynamic JSX, never wraps handlers (fixtur
     assert "onClick={() => () =>" not in js , "handler must not be view-wrapped";
 }
 
-test "solid lifts a keyed comprehension to native <For> (Branch 4)" {
-    js = compile_fixture_with_backend("jsx_control_flow.jac", SolidBackend());
-    # A `[<li> for x in items]` comprehension lowers to native `<For each>`, NOT
-    # `.map()`; the `(item) => element` render callback supplies the body.
-    assert "<For each={items}>" in js , (
-        "keyed comprehension should lower to <For each={items}>:\n" + js
+test "solid lifts cases on jsx_control_flow.jac" {
+    def check_solid_lifts_a_keyed_comprehension_to_native_for {
+        js = compile_fixture_with_backend("jsx_control_flow.jac", SolidBackend());
+
+        # A `[<li> for x in items]` comprehension lowers to native `<For each>`, NOT
+        # `.map()`; the `(item) => element` render callback supplies the body.
+        assert "<For each={items}>" in js , (
+            "keyed comprehension should lower to <For each={items}>:\n" + js
+        );
+        # A comprehension `if` folds into the iterable, not a separate clause.
+        assert "<For each={items.filter(" in js , (
+            "a comprehension filter folds into <For each={coll.filter(...)}>:\n" + js
+        );
+        # The authored `key=` is dropped from the body — Solid's <For> keys by item
+        # identity, so the host element must not carry a stray `key` attribute.
+        assert "key=" not in js , (
+            "Solid <For> body must not carry the lifted React-style `key`:\n" + js
+        );
+        # `For` is auto-injected from the solid-js core.
+        for_import = `any(
+            ("For" in line and "solid-js" in line)
+            for line in js.split("\n")
+            if line.lstrip().startswith("import")
+        );
+        assert for_import , "`For` must be imported from solid-js:\n" + js;
+    }
+
+    def check_solid_lifts_a_view_shaped_ternary_to_native_show {
+        js = compile_fixture_with_backend("jsx_control_flow.jac", SolidBackend());
+
+        # `<A/> if cond else <B/>` lowers to `<Show when={cond} fallback={<B/>}>`.
+        assert "<Show when={flag}" in js , (
+            "a view-shaped ternary should lower to <Show when={...}>:\n" + js
+        );
+        # The two-armed ternary carries a fallback (the `else <p>` arm).
+        assert "fallback={" in js , "the `else <p>` arm becomes the Show fallback:\n"
+            + js;
+        # `Show` is auto-injected from the solid-js core.
+        show_import = `any(
+            ("Show" in line and "solid-js" in line)
+            for line in js.split("\n")
+            if line.lstrip().startswith("import")
+        );
+        assert show_import , "`Show` must be imported from solid-js:\n" + js;
+    }
+    run_cases(
+        [
+            (
+                "solid lifts a keyed comprehension to native <For> (Branch 4)",
+                check_solid_lifts_a_keyed_comprehension_to_native_for
+            ),
+            (
+                "solid lifts a view-shaped ternary to native <Show> (Branch 4)",
+                check_solid_lifts_a_view_shaped_ternary_to_native_show
+            )
+        ]
     );
-    # A comprehension `if` folds into the iterable, not a separate clause.
-    assert "<For each={items.filter(" in js , (
-        "a comprehension filter folds into <For each={coll.filter(...)}>:\n" + js
-    );
-    # The authored `key=` is dropped from the body — Solid's <For> keys by item
-    # identity, so the host element must not carry a stray `key` attribute.
-    assert "key=" not in js , (
-        "Solid <For> body must not carry the lifted React-style `key`:\n" + js
-    );
-    # `For` is auto-injected from the solid-js core.
-    for_import = `any(
-        ("For" in line and "solid-js" in line)
-        for line in js.split("\n")
-        if line.lstrip().startswith("import")
-    );
-    assert for_import , "`For` must be imported from solid-js:\n" + js;
 }
 
-test "solid lifts a view-shaped ternary to native <Show> (Branch 4)" {
-    js = compile_fixture_with_backend("jsx_control_flow.jac", SolidBackend());
-    # `<A/> if cond else <B/>` lowers to `<Show when={cond} fallback={<B/>}>`.
-    assert "<Show when={flag}" in js , (
-        "a view-shaped ternary should lower to <Show when={...}>:\n" + js
-    );
-    # The two-armed ternary carries a fallback (the `else <p>` arm).
-    assert "fallback={" in js , "the `else <p>` arm becomes the Show fallback:\n" + js;
-    # `Show` is auto-injected from the solid-js core.
-    show_import = `any(
-        ("Show" in line and "solid-js" in line)
-        for line in js.split("\n")
-        if line.lstrip().startswith("import")
-    );
-    assert show_import , "`Show` must be imported from solid-js:\n" + js;
-}
 
 test "JS family renders lifted control flow from the carried js_fallback (Branch 4)" {
     js = compile_fixture_with_backend("jsx_control_flow.jac", ReactBackend());
@@ -381,131 +414,142 @@ test "solid prepends only __jacSpawn (no __jacJsx factory)" {
     assert SolidBackend().required_globals() == ["__jacSpawn"];
 }
 
-test "solid runtime shim compiles and links its impl bodies" {
-    # Compile the real Solid runtime (shim + its `impl/` annex) the way the
-    # bundler does and assert the bodies actually link — a parse error or an
-    # unlinked impl would surface here as an empty `navigate` body, which the
-    # text-only purity scan above cannot catch.
-    rt = resolve_client_runtime_cl_path("solid");
-    prog = JacProgram();
-    ir = prog.compile(file_path=rt, no_cgen=True);
-    assert not prog.errors_had , (
-        f"Solid runtime failed to compile: {[str(e) for e in prog.errors_had]}"
-    );
-    has_impl_node = any(
-        st.loc.mod_path and st.loc.mod_path.endswith(".impl.jac") for st in ir.body
-    );
-    assert has_impl_node , "Solid runtime impl annex was not linked";
-    js = es_js_with_backend(ir, prog, SolidBackend());
-    # The dom-expressions (JSX) path: no __jacJsx hyperscript factory.
-    assert "function __jacJsx(" not in js , "Solid shim must not emit __jacJsx (dom-expressions path)";
-    assert "createElement" not in js , "Solid shim must not use React.createElement";
-    # Public surface forwards to the framework-agnostic core.
-    assert "_navigate(path)" in js , "navigate forwarder did not link";
-    assert "jacIsLoggedIn" in js;
-}
+test "solid runtime shim cases" {
+    def check_solid_runtime_shim_compiles_and_links_its_impl_b {
+        rt = resolve_client_runtime_cl_path("solid");
+        prog = JacProgram();
+        ir = prog.compile(file_path=rt, no_cgen=True);
 
-test "solid runtime shim reaches router/form parity with the React shim" {
-    # The Solid shim must expose the same router + form + error/async surface as
-    # the React shim, sourced from Solid-native libraries (no React ecosystem),
-    # so `@jac/runtime` stays framework-identical for app code. Compile the real
-    # shim and assert each ported body links.
-    rt = resolve_client_runtime_cl_path("solid");
-    prog = JacProgram();
-    ir = prog.compile(file_path=rt, no_cgen=True);
-    assert not prog.errors_had , (
-        f"Solid runtime failed to compile: {[str(e) for e in prog.errors_had]}"
-    );
-    js = es_js_with_backend(ir, prog, SolidBackend());
-    # Router adapters bridging react-router-dom's shape onto @solidjs/router.
-    for fn in [
-        "function Routes(",
-        "function Route(",
-        "function Link(",
-        "function Navigate(",
-        "function Outlet(",
-        "function useRouter(",
-        "function AuthGuard(",
-        "function __jacMakeLayoutRoot("
-    ] {
-        assert fn in js , f"router binding did not link: {fn}";
+        assert not prog.errors_had , (
+            f"Solid runtime failed to compile: {[str(e) for e in prog.errors_had]}"
+        );
+        has_impl_node = any(
+            st.loc.mod_path and st.loc.mod_path.endswith(".impl.jac") for st in ir.body
+        );
+        assert has_impl_node , "Solid runtime impl annex was not linked";
+        js = es_js_with_backend(ir, prog, SolidBackend());
+        # The dom-expressions (JSX) path: no __jacJsx hyperscript factory.
+        assert "function __jacJsx(" not in js , "Solid shim must not emit __jacJsx (dom-expressions path)";
+        assert "createElement" not in js , "Solid shim must not use React.createElement";
+        # Public surface forwards to the framework-agnostic core.
+        assert "_navigate(path)" in js , "navigate forwarder did not link";
+        assert "jacIsLoggedIn" in js;
     }
-    # Link maps `to`->`href` via @solidjs/router's `A`; Navigate maps `to`->`href`.
-    assert "SolidAnchor" in js , "Link adapter must delegate to @solidjs/router's A";
-    assert "SolidNavigate" in js;
-    # Forms: @tanstack/solid-form's createForm (Standard Schema, no resolver needed).
-    assert "function JacForm(" in js;
-    assert "function useJacForm(" in js;
-    assert "createForm(" in js , "useJacForm must build a tanstack/solid-form controller";
-    assert '"onTouched"' in js , "useJacForm must handle the default validateMode";
-    use_jac_form = js.split("function useJacForm(", 1)[1].split("function JacForm(", 1)[
-        0
-    ];
-    # Solid onTouched uses onChange only (stale onBlur errorMap across fields);
-    # error display is gated on isTouched in JacForm. onBlur mode still exists.
-    assert (
-        'validators["onBlur"] = schema;\n        validators["onChange"] = schema'
-        not in use_jac_form
-    ) , "Solid onTouched must not wire both onBlur and onChange validators";
-    assert (
-        'form_mode === "onTouched")) {\n    validators["onChange"] = schema;'
-        in use_jac_form
-    ) , "Solid onTouched must validate on change only";
-    # Error boundary + async boundary over solid-js primitives.
-    assert "function JacClientErrorBoundary(" in js;
-    # ErrorFallback is defined once in client_runtime_core and re-exported by
-    # both shims, so the shim js carries the binding rather than the function.
-    assert "ErrorFallback" in js;
-    assert "function JacAwaiting(" in js;
-    assert "SolidErrorBoundary" in js , "error boundary must use solid-js ErrorBoundary";
-    assert "SolidSuspense" in js , "JacAwaiting must use solid-js Suspense";
-    # Absolutely no React element factory leaks through the form/router JSX.
-    assert "createElement" not in js , "Solid parity surface must not use React.createElement";
-}
 
-test "solid runtime shim exports the full router/form surface" {
-    # The compiled shim's ES module must re-export every router/form/error name so
-    # `@jac/runtime` resolves them for app code (mirrors ROUTER_EXPORTS + the
-    # React shim's public surface).
-    rt = resolve_client_runtime_cl_path("solid");
-    prog = JacProgram();
-    ir = prog.compile(file_path=rt, no_cgen=True);
-    js = es_js_with_backend(ir, prog, SolidBackend());
-    export_line = "";
-    for ln in js.splitlines() {
-        if ln.strip().startswith("export {") {
-            export_line = ln;
+    def check_solid_runtime_shim_reaches_router_form_parity_wi {
+        rt = resolve_client_runtime_cl_path("solid");
+        prog = JacProgram();
+        ir = prog.compile(file_path=rt, no_cgen=True);
+
+        assert not prog.errors_had , (
+            f"Solid runtime failed to compile: {[str(e) for e in prog.errors_had]}"
+        );
+        js = es_js_with_backend(ir, prog, SolidBackend());
+        # Router adapters bridging react-router-dom's shape onto @solidjs/router.
+        for fn in [
+            "function Routes(",
+            "function Route(",
+            "function Link(",
+            "function Navigate(",
+            "function Outlet(",
+            "function useRouter(",
+            "function AuthGuard(",
+            "function __jacMakeLayoutRoot("
+        ] {
+            assert fn in js , f"router binding did not link: {fn}";
         }
+        # Link maps `to`->`href` via @solidjs/router's `A`; Navigate maps `to`->`href`.
+        assert "SolidAnchor" in js , "Link adapter must delegate to @solidjs/router's A";
+        assert "SolidNavigate" in js;
+        # Forms: @tanstack/solid-form's createForm (Standard Schema, no resolver needed).
+        assert "function JacForm(" in js;
+        assert "function useJacForm(" in js;
+        assert "createForm(" in js , "useJacForm must build a tanstack/solid-form controller";
+        assert '"onTouched"' in js , "useJacForm must handle the default validateMode";
+        use_jac_form = js.split("function useJacForm(", 1)[1].split(
+            "function JacForm(", 1
+        )[0];
+        # Solid onTouched uses onChange only (stale onBlur errorMap across fields);
+        # error display is gated on isTouched in JacForm. onBlur mode still exists.
+        assert (
+            'validators["onBlur"] = schema;\n        validators["onChange"] = schema'
+            not in use_jac_form
+        ) , "Solid onTouched must not wire both onBlur and onChange validators";
+        assert (
+            'form_mode === "onTouched")) {\n    validators["onChange"] = schema;'
+            in use_jac_form
+        ) , "Solid onTouched must validate on change only";
+        # Error boundary + async boundary over solid-js primitives.
+        assert "function JacClientErrorBoundary(" in js;
+        # ErrorFallback is defined once in client_runtime_core and re-exported by
+        # both shims, so the shim js carries the binding rather than the function.
+        assert "ErrorFallback" in js;
+        assert "function JacAwaiting(" in js;
+        assert "SolidErrorBoundary" in js , "error boundary must use solid-js ErrorBoundary";
+        assert "SolidSuspense" in js , "JacAwaiting must use solid-js Suspense";
+        # Absolutely no React element factory leaks through the form/router JSX.
+        assert "createElement" not in js , "Solid parity surface must not use React.createElement";
     }
-    assert export_line , "Solid shim emitted no export statement";
-    for name in [
-        "Router",
-        "Routes",
-        "Route",
-        "Link",
-        "Navigate",
-        "Outlet",
-        "useNavigate",
-        "useLocation",
-        "useParams",
-        "useRouter",
-        "AuthGuard",
-        "__jacMakeLayoutRoot",
-        "JacForm",
-        "useJacForm",
-        "JacSchema",
-        "JacClientErrorBoundary",
-        "ErrorFallback",
-        "errorOverlay",
-        "JacAwaiting",
-        "__jacReactErrorHandler"
-    ] {
-        assert name in export_line , f"@jac/runtime (solid) must export {name}";
+
+    def check_solid_runtime_shim_exports_the_full_router_form {
+        rt = resolve_client_runtime_cl_path("solid");
+        prog = JacProgram();
+        ir = prog.compile(file_path=rt, no_cgen=True);
+
+        js = es_js_with_backend(ir, prog, SolidBackend());
+        export_line = "";
+        for ln in js.splitlines() {
+            if ln.strip().startswith("export {") {
+                export_line = ln;
+            }
+        }
+        assert export_line , "Solid shim emitted no export statement";
+        for name in [
+            "Router",
+            "Routes",
+            "Route",
+            "Link",
+            "Navigate",
+            "Outlet",
+            "useNavigate",
+            "useLocation",
+            "useParams",
+            "useRouter",
+            "AuthGuard",
+            "__jacMakeLayoutRoot",
+            "JacForm",
+            "useJacForm",
+            "JacSchema",
+            "JacClientErrorBoundary",
+            "ErrorFallback",
+            "errorOverlay",
+            "JacAwaiting",
+            "__jacReactErrorHandler"
+        ] {
+            assert name in export_line , f"@jac/runtime (solid) must export {name}";
+        }
+        # Solid must NOT export React-only re-render hooks (it gets these from solid-js).
+        assert "useState" not in export_line , "Solid shim must not export useState";
+        assert "useEffect" not in export_line , "Solid shim must not export useEffect";
     }
-    # Solid must NOT export React-only re-render hooks (it gets these from solid-js).
-    assert "useState" not in export_line , "Solid shim must not export useState";
-    assert "useEffect" not in export_line , "Solid shim must not export useEffect";
+    run_cases(
+        [
+            (
+                "solid runtime shim compiles and links its impl bodies",
+                check_solid_runtime_shim_compiles_and_links_its_impl_b
+            ),
+            (
+                "solid runtime shim reaches router/form parity with the React shim",
+                check_solid_runtime_shim_reaches_router_form_parity_wi
+            ),
+            (
+                "solid runtime shim exports the full router/form surface",
+                check_solid_runtime_shim_exports_the_full_router_form
+            )
+        ]
+    );
 }
+
 
 test "solid runtime shim imports no react ecosystem package" {
     # The whole point of the runtime split: a Solid build must never resolve

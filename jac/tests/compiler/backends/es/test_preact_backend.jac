@@ -2,7 +2,7 @@
 
 import os;
 import from pathlib { Path }
-import from tests.support { JAC_ROOT }
+import from tests.support { JAC_ROOT, run_cases }
 import jaclang;
 import from jaclang.compiler.backends.es { EsastGenPass }
 import from jaclang.compiler.backends.es.backends.preact { PreactBackend }
@@ -205,61 +205,74 @@ test "react client runtime shim imports no solid ecosystem package" {
     }
 }
 
-test "preact runtime shim compiles JacForm and emits tanstack react-form" {
-    # Compile the shared React/Preact runtime with PreactBackend and verify
-    # JacForm / useJacForm are emitted and use @tanstack/react-form's useForm
-    # (not Solid's createForm).
-    rt = resolve_client_runtime_cl_path("preact");
-    prog = JacProgram();
-    ir = prog.compile(file_path=rt, no_cgen=True);
-    js = es_js_with_backend(ir, prog, PreactBackend());
-    assert "function JacForm(" in js;
-    assert "function useJacForm(" in js;
-    assert "useForm(" in js , "useJacForm must call @tanstack/react-form's useForm";
-    assert '"onTouched"' in js , "useJacForm must handle the default validateMode";
-    use_jac_form = js.split("function useJacForm(", 1)[1].split("function JacForm(", 1)[
-        0
-    ];
-    # onTouched wires onChange-only (mirrors Solid): stale onBlur entries in
-    # other fields' errorMap (TanStack #1784) are avoided; isTouched gates display.
-    # Narrow to just the onTouched block (from the condition guard to the next else).
-    # Use the comparison form `=== "onTouched"` to skip the default-param occurrence.
-    on_touched_idx = use_jac_form.find('=== "onTouched"');
-    assert on_touched_idx >= 0 , "onTouched condition must exist in useJacForm";
-    after_guard = use_jac_form[on_touched_idx:];
-    next_else_off = after_guard.find("} else");
-    on_touched_block = after_guard[:next_else_off]
-        if next_else_off >= 0
-        else after_guard;
-    assert 'validators["onChange"] = schema' in on_touched_block , (
-        "onTouched block must wire onChange"
-    );
-    assert 'validators["onBlur"] = schema' not in on_touched_block , (
-        "onTouched must not wire onBlur validator (TanStack #1784 stale errorMap)"
-    );
-    # Must NOT use Solid's createForm factory.
-    assert "createForm(" not in js , "Preact runtime must not reference @tanstack/solid-form";
-}
+test "preact runtime shim cases" {
+    def check_preact_runtime_shim_compiles_jacform_and_emits_t {
+        rt = resolve_client_runtime_cl_path("preact");
+        prog = JacProgram();
+        ir = prog.compile(file_path=rt, no_cgen=True);
 
-test "preact runtime shim exports form symbols" {
-    rt = resolve_client_runtime_cl_path("preact");
-    prog = JacProgram();
-    ir = prog.compile(file_path=rt, no_cgen=True);
-    js = es_js_with_backend(ir, prog, PreactBackend());
-    export_line = "";
-    for ln in js.splitlines() {
-        if ln.strip().startswith("export {") {
-            export_line = ln;
+        js = es_js_with_backend(ir, prog, PreactBackend());
+        assert "function JacForm(" in js;
+        assert "function useJacForm(" in js;
+        assert "useForm(" in js , "useJacForm must call @tanstack/react-form's useForm";
+        assert '"onTouched"' in js , "useJacForm must handle the default validateMode";
+        use_jac_form = js.split("function useJacForm(", 1)[1].split(
+            "function JacForm(", 1
+        )[0];
+        # onTouched wires onChange-only (mirrors Solid): stale onBlur entries in
+        # other fields' errorMap (TanStack #1784) are avoided; isTouched gates display.
+        # Narrow to just the onTouched block (from the condition guard to the next else).
+        # Use the comparison form `=== "onTouched"` to skip the default-param occurrence.
+        on_touched_idx = use_jac_form.find('=== "onTouched"');
+        assert on_touched_idx >= 0 , "onTouched condition must exist in useJacForm";
+        after_guard = use_jac_form[on_touched_idx:];
+        next_else_off = after_guard.find("} else");
+        on_touched_block = after_guard[:next_else_off]
+            if next_else_off >= 0
+            else after_guard;
+        assert 'validators["onChange"] = schema' in on_touched_block , (
+            "onTouched block must wire onChange"
+        );
+        assert 'validators["onBlur"] = schema' not in on_touched_block , (
+            "onTouched must not wire onBlur validator (TanStack #1784 stale errorMap)"
+        );
+        # Must NOT use Solid's createForm factory.
+        assert "createForm(" not in js , "Preact runtime must not reference @tanstack/solid-form";
+    }
+
+    def check_preact_runtime_shim_exports_form_symbols {
+        rt = resolve_client_runtime_cl_path("preact");
+        prog = JacProgram();
+        ir = prog.compile(file_path=rt, no_cgen=True);
+
+        js = es_js_with_backend(ir, prog, PreactBackend());
+        export_line = "";
+        for ln in js.splitlines() {
+            if ln.strip().startswith("export {") {
+                export_line = ln;
+            }
+        }
+        assert export_line , "Preact/React shim emitted no export statement";
+        for name in [
+            "JacForm",
+            "useJacForm",
+            "JacSchema",
+            "JacClientErrorBoundary",
+            "JacAwaiting"
+        ] {
+            assert name in export_line , f"@jac/runtime (preact) must export {name}";
         }
     }
-    assert export_line , "Preact/React shim emitted no export statement";
-    for name in [
-        "JacForm",
-        "useJacForm",
-        "JacSchema",
-        "JacClientErrorBoundary",
-        "JacAwaiting"
-    ] {
-        assert name in export_line , f"@jac/runtime (preact) must export {name}";
-    }
+    run_cases(
+        [
+            (
+                "preact runtime shim compiles JacForm and emits tanstack react-form",
+                check_preact_runtime_shim_compiles_jacform_and_emits_t
+            ),
+            (
+                "preact runtime shim exports form symbols",
+                check_preact_runtime_shim_exports_form_symbols
+            )
+        ]
+    );
 }

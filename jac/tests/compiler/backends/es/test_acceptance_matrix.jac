@@ -27,7 +27,7 @@ Two invariants this matrix protects:
 """
 
 import os;
-import from tests.support { JAC_ROOT }
+import from tests.support { JAC_ROOT, run_cases }
 import jaclang;
 import from jaclang.compiler.backends.es { EsastGenPass }
 import from jaclang.compiler.backends.es.backends.react { ReactBackend }
@@ -138,18 +138,42 @@ test "matrix #4/#6 solid: dynamic positions un-thunked, handler never view-wrapp
     assert "onClick={() => () =>" not in js , "handler must not be view-wrapped";
 }
 
-# --- #5 Block / scope shadowing — KNOWN LIMITATION -----------------------------
-test "matrix #5 react: shadowing param is WRONGLY treated as reactive (pinned bug)" {
-    js = compile_fixture_with_backend("reactive_shadow.jac", ReactBackend());
-    # Same §4.3 known limitation as Solid, now uniform across backends: the
-    # shadowing `count` parameter still lowers through `lower_state_read`,
-    # so the nested read hits the outer cell instead of the local param.
-    # Under the old bare-identifier lowering React happened to be correct
-    # here; the store lowering makes the limitation visible. Do NOT "fix"
-    # this pin without landing contract §4.3 (block-scoped tracking).
-    assert "const __jacS_count = useJacState(0)" in js;
-    assert 'return __jacJsx("span", {}, [__jacS_count.val])' in js;
-    assert "count()" not in js;
+test "matrix #5 react: shadowing param is WRONGLY treated as reactive (pinned bug), and related cases" {
+    # --- #5 Block / scope shadowing — KNOWN LIMITATION -----------------------------
+    def check_matrix_5_react_shadowing_param_is_wrongly_treate {
+        js = compile_fixture_with_backend("reactive_shadow.jac", ReactBackend());
+        # Same §4.3 known limitation as Solid, now uniform across backends: the
+        # shadowing `count` parameter still lowers through `lower_state_read`,
+        # so the nested read hits the outer cell instead of the local param.
+        # Under the old bare-identifier lowering React happened to be correct
+        # here; the store lowering makes the limitation visible. Do NOT "fix"
+        # this pin without landing contract §4.3 (block-scoped tracking).
+        assert "const __jacS_count = useJacState(0)" in js;
+        assert 'return __jacJsx("span", {}, [__jacS_count.val])' in js;
+        assert "count()" not in js;
+    }
+
+    # --- #7 has r: Ref[T] ----------------------------------------------------------
+    def check_matrix_7_react_ref_t_field_lowers_to_useref {
+        js = compile_fixture_with_backend(
+            "slot_extensions/has_ref.jac", ReactBackend()
+        );
+        assert "useRef" in js;
+        assert "buttonRef" in js;
+        assert "createSignal" not in js;
+    }
+    run_cases(
+        [
+            (
+                "matrix #5 react: shadowing param is WRONGLY treated as reactive (pinned bug)",
+                check_matrix_5_react_shadowing_param_is_wrongly_treate
+            ),
+            (
+                "matrix #7 react: Ref[T] field lowers to useRef",
+                check_matrix_7_react_ref_t_field_lowers_to_useref
+            )
+        ]
+    );
 }
 
 test "matrix #5 solid: shadowing param is WRONGLY treated as reactive (pinned bug)" {
@@ -167,13 +191,6 @@ test "matrix #5 solid: shadowing param is WRONGLY treated as reactive (pinned bu
     );
 }
 
-# --- #7 has r: Ref[T] ----------------------------------------------------------
-test "matrix #7 react: Ref[T] field lowers to useRef" {
-    js = compile_fixture_with_backend("slot_extensions/has_ref.jac", ReactBackend());
-    assert "useRef" in js;
-    assert "buttonRef" in js;
-    assert "createSignal" not in js;
-}
 
 test "matrix #7 solid: Ref[T] field is deferred to a plain let binding" {
     js = compile_fixture_with_backend("slot_extensions/has_ref.jac", SolidBackend());

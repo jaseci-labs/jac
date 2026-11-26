@@ -9,6 +9,8 @@ import from jaclang.compiler.driver.pass_driver { run_pass }
 import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
 import shutil;
 import subprocess;
+import from tests.support { run_cases }
+
 
 def compile_client(source: str) -> str {
     program = JacProgram();
@@ -58,9 +60,10 @@ def string_value(value: any) -> str { return String(value); }
     }
 }
 
-test "coercions and aliases return primitives and preserve JavaScript truthiness" {
-    run_client(
-        """
+test "coercions and aliases return primitives and preserve JavaScript truthiness, and related cases" {
+    def check_coercions_and_aliases_return_primitives_and_pres {
+        run_client(
+            """
 def boolean_value(value: any) -> bool { return Boolean(value) as bool; }
 def boolean_alias(value: any) -> bool { convert = Boolean; return convert(value); }
 def number_value(value: any) -> float { convert = Number; return convert(value); }
@@ -73,7 +76,7 @@ def helpers -> list[bool | float | str] {
             text.fromCharCode(65), text.fromCodePoint(66)];
 }
 """,
-        """
+            """
 for (const value of [false, 0, "", null, undefined, NaN]) {
     assert.equal(boolean_value(value), false);
     assert.equal(boolean_alias(value), false);
@@ -89,12 +92,12 @@ assert.equal(string_value(12), "12");
 assert.deepEqual(defaults(), [false, 0, ""]);
 assert.deepEqual(helpers(), [true, true, 12, "A", "B"]);
 """
-    );
-}
+        );
+    }
 
-test "classes shadowing coercion names remain constructors" {
-    run_client(
-        """
+    def check_classes_shadowing_coercion_names_remain_construc {
+        run_client(
+            """
 obj Boolean { has value: int; }
 obj Number { has value: int; }
 obj String { has value: int; }
@@ -103,9 +106,23 @@ def construct -> list[int] {
     return [boolean_class(1).value, Number(2).value, String(3).value];
 }
 """,
-        'assert.deepEqual(construct(), [1, 2, 3]);'
+            'assert.deepEqual(construct(), [1, 2, 3]);'
+        );
+    }
+    run_cases(
+        [
+            (
+                "coercions and aliases return primitives and preserve JavaScript truthiness",
+                check_coercions_and_aliases_return_primitives_and_pres
+            ),
+            (
+                "classes shadowing coercion names remain constructors",
+                check_classes_shadowing_coercion_names_remain_construc
+            )
+        ]
     );
 }
+
 
 """A u64 literal past the signed 64-bit top becomes a BigInt spelled from its
 source text: the compiler, which may run as the native kernel, holds no wider

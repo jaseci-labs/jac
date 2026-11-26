@@ -718,3 +718,25 @@ def unit_source(path: Path | str) -> str {
     files = [str(path)] + discover_annex_files(str(path), ".impl.jac");
     return "\n".join(Path(f).read_text() for f in files);
 }
+
+# Run each named check and fail once, listing every case that failed.
+# A skipped case is not a failure; the test skips only when every case skipped.
+def run_cases(cases: list[tuple[str, Callable]]) {
+    import unittest;
+    failed: list[str] = [];
+    skipped: list[str] = [];
+    for (label, check_fn) in cases {
+        try {
+            check_fn();
+        } except unittest.SkipTest as why {
+            skipped.append(f"{label}: {why}");
+        } except Exception as err {
+            failed.append(f"{label}: {type(err).__name__}: {err}");
+        }
+    }
+    assert not failed , f"{len(failed)} of {len(cases)} cases failed:\n"
+        + "\n".join(failed);
+    if skipped and len(skipped) == len(cases) {
+        raise unittest.SkipTest("\n".join(skipped));
+    }
+}
