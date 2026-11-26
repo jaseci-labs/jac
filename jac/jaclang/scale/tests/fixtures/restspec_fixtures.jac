@@ -115,16 +115,10 @@ walker:pub ReportWalker {
     }
 }
 
-"""Function whose JSON body keys are Python reserved words; `run_async` is also
-the request key for `label`."""
-@restspec(
-    method=HTTPMethod.POST,
-    params={"kind": "class", "run_async": "async", "label": "run_async"}
-)
-def:pub reserved_keys_func(
-    kind: str, run_async: bool = False, label: str = ""
-) -> dict[str, any] {
-    return {"kind": kind, "run_async": run_async, "label": label};
+"""Function whose JSON body keys are Python reserved words."""
+@restspec(method=HTTPMethod.POST, params={"kind": "class", "run_async": "async"})
+def:pub reserved_keys_func(kind: str, run_async: bool = False) -> dict[str, any] {
+    return {"kind": kind, "run_async": run_async};
 }
 
 # ============================================================================

@@ -264,7 +264,8 @@ test "webhook - payment received with fields" {
                 "payment_id": "PAY-12345",
                 "order_id": "ORD-67890",
                 "amount": 99.99,
-                "currency.code": "EUR"
+                "currency.code": "EUR",
+                "currency": "USD"
             }
         );
         payload_bytes = payload.encode("utf-8");

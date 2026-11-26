@@ -428,17 +428,11 @@ impl _validate_restspec_target(spec: any, target: any) {
             f"@restspec params on '{name}' maps {unknown}, which is not a {owner}."
         );
     }
-    taken = sorted(
-        {
-            key
-            for key in request_keys.values()
-            if key in names and key not in request_keys
-        }
-    );
+    taken = sorted(set(request_keys.values()) & names);
     if taken {
         raise ValueError(
             f"@restspec params on '{name}' uses {taken} as a request key, but it "
-            f"is also a {owner}; map it to another request key as well."
+            f"is also a {owner}."
         );
     }
 }

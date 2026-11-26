@@ -3026,7 +3026,6 @@ graph import {
         runtime.source_app.main | scale.tests.data.test_identity_fail_loud {
             JacAPIServer
         },
-        scale.tests.server.test_restspec { fields_from_request_keys },
         scale.tests.support { EndpointHost },
     ]
     type server.server ++> [

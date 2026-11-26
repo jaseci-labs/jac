@@ -167,16 +167,28 @@ test "get walker with params" {
         assert data["reports"][0]["age"] == 30;
 
         # Query values are text, so they are parsed into the declared type.
+        # A restspec params= request key binds the field it maps to (#10750).
         base = "/walker/GetWalkerWithParams?name=Alice&age=30";
-        for (query, want) in [
-            ("&tags=a&tags=b&flag=", {"tags": ["a", "b"], "flag": False}),
-            ("&tags=a", {"tags": ["a"]})
+        reports = "/reports/2024-01-01";
+        for (url, want) in [
+            (base + "&tags=a&tags=b&flag=", {"tags": ["a", "b"], "flag": False}),
+            (base + "&tags=a", {"tags": ["a"]}),
+            (
+                reports + "?class=premium&hub.mode=subscribe",
+                {
+                    "from_date": "2024-01-01",
+                    "class_name": "premium",
+                    "hub_mode": "subscribe"
+                }
+            ),
+            (reports + "?class_name=gold", {"class_name": "gold"}),
+            (reports + "?class=premium&class_name=gold", {"class_name": "premium"})
         ] {
-            response = client.get(base + query);
-            assert response.status_code == 200 , f"{query}: {response.text}";
+            response = client.get(url);
+            assert response.status_code == 200 , f"{url}: {response.text}";
             got = extract_data(response.json())["reports"][0];
             for (name, value) in want.items() {
-                assert got[name] == value , f"{query}: {name}={got[name]!r}";
+                assert got[name] == value , f"{url}: {name}={got[name]!r}";
             }
         }
         for url in [
@@ -263,59 +275,6 @@ test "undeclared query params ignored on walker" {
         assert data["reports"][0]["age"] == 30;
     } finally {
         client.close();
-    }
-}
-
-test "a request key that is not a Jac name binds the field it maps to (#10750)" {
-    import from jaclang.server.server { fields_from_request_keys }
-
-    client = make_client("restspec_fixtures.jac");
-    try {
-        base = "/reports/2024-01-01";
-        for (query, want) in [
-            (
-                "?class=premium&hub.mode=subscribe",
-                {
-                    "from_date": "2024-01-01",
-                    "class_name": "premium",
-                    "hub_mode": "subscribe"
-                }
-            ),
-            ("?class_name=gold", {"class_name": "gold"}),
-            ("?class=premium&class_name=gold", {"class_name": "premium"})
-        ] {
-            response = client.get(base + query);
-            assert response.status_code == 200 , f"{query}: {response.text}";
-            got = extract_data(response.json())["reports"][0];
-            for (name, value) in want.items() {
-                assert got[name] == value , f"{query}: {name}={got[name]!r}";
-            }
-        }
-
-        for (body, want) in [
-            (
-                {"class": "a", "async": True},
-                {"kind": "a", "run_async": True, "label": ""}
-            ),
-            ({"kind": "b"}, {"kind": "b", "run_async": False, "label": ""}),
-            (
-                {"class": "c", "run_async": "x"},
-                {"kind": "c", "run_async": False, "label": "x"}
-            )
-        ] {
-            response = client.post("/function/reserved_keys_func", json=body);
-            assert response.status_code == 200 , f"{body}: {response.text}";
-            assert extract_data(response.json())["result"] == want , response.text;
-        }
-    } finally {
-        client.close();
-    }
-
-    for (request_keys, data, want) in [
-        ({"kind": "class"}, {"class": "y", "kind": "x", "n": 1}, {"kind": "y", "n": 1}),
-        ({"a": "b", "b": "a"}, {"a": 1, "b": 2}, {"a": 2, "b": 1})
-    ] {
-        assert fields_from_request_keys(request_keys, data) == want , f"{request_keys} {data}";
     }
 }
 
@@ -558,6 +517,16 @@ test "a field named request reaches the walker and the function" {
         r = client.post("/orders/echo", json=body);
         assert r.status_code == 200 , r.text;
         assert extract_data(r.json())["result"] == body;
+
+        # A params= request key that is a keyword binds its parameter (#10750).
+        for (sent, want) in [
+            ({"class": "a", "async": True}, {"kind": "a", "run_async": True}),
+            ({"kind": "b"}, {"kind": "b", "run_async": False})
+        ] {
+            r = client.post("/function/reserved_keys_func", json=sent);
+            assert r.status_code == 200 , f"{sent}: {r.text}";
+            assert extract_data(r.json())["result"] == want , f"{sent}: {r.text}";
+        }
     } finally {
         client.close();
     }
@@ -1088,15 +1057,17 @@ test "restspec decoration-time validation rejects bad specs (#8000 f3)" {
         ({"kind": ""}, "its own request key"),
         ({"kind": "class", "run_async": "class"}, "its own request key"),
         ({"missing": "x"}, "not a parameter of the function"),
-        ({"kind": "run_async"}, "is also a parameter of the function")
+        ({"kind": "run_async"}, "is also a parameter of the function"),
+        (
+            {"kind": "run_async", "run_async": "kind"},
+            "is also a parameter of the function"
+        )
     ] {
         with testraises(ValueError) as bad {
             blt.restspec(params=params)(keyed_fn);
         }
         assert fragment in str(bad.value) , f"{params}: {bad.value}";
     }
-    swapped = blt.restspec(params={"kind": "run_async", "run_async": "kind"})(keyed_fn);
-    assert swapped.restspec.params == {"kind": "run_async", "run_async": "kind"};
 }
 
 
