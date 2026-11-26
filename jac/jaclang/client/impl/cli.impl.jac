@@ -132,13 +132,19 @@ impl run_client_build(
         import from jaclang.runtime.runtime { JacRuntime as Jac }
         Jac.set_full_target_path(str(entry_path));
         build_platform = platform or app.platform or None;
-        target.ensure_ready(project_dir, platform=build_platform);
-        bundle_path = target.build(entry_path, project_dir, build_platform);
+        import time;
+        began = time.monotonic();
+        with timing_stages() {
+            target.ensure_ready(project_dir, platform=build_platform);
+            bundle_path = target.build(entry_path, project_dir, build_platform);
+        }
         if output {
             bundle_path = _place_bundle(Path(bundle_path), Path(output));
         }
 
-        console.success(f"Build complete: {bundle_path}");
+        console.success(
+            f"Build complete: {bundle_path} ({time.monotonic() - began:.1f}s)"
+        );
         return 0;
     } except NotImplementedError as e {
         console.error(f"Client '{target.name}' is not yet implemented.");

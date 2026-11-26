@@ -166,6 +166,28 @@ impl ClientBundleBuilder._signature(paths: Iterable[Path]) -> str {
     return hashlib.sha256('|'.join(parts).encode('utf-8')).hexdigest();
 }
 
+impl timing_stages -> Iterator[None] {
+    token = _stage_timing.set(True);
+    try {
+        yield ;
+    } finally {
+        _stage_timing.reset(token);
+    }
+}
+
+impl stage(done: str) -> Iterator[None] {
+    if not _stage_timing.get() {
+        yield ;
+        return;
+    }
+    began = time.monotonic();
+    yield ;
+    took = time.monotonic() - began;
+    if took >= STAGE_SHOWN_FROM_SECONDS {
+        console.print(f"  ✔ {done} ({took:.1f}s)");
+    }
+}
+
 impl client_source_root(project_dir: Path, entry_path: Path) -> Path {
     project_root = project_dir.resolve();
     entry_root = entry_path.resolve().parent;
