@@ -4209,11 +4209,8 @@ graph import client {
             ClientBundleError
         },
         jac_client_compiler.JacClientCompiler._route_exports_of { ClientCompileError },
-        jac_client_compiler.JacClientCompiler.compile { client_source_root },
-        targets.web_target.WebTarget.build {
-            client_context_program,
-            client_source_root
-        },
+        jac_client_compiler.JacClientCompiler.compile
+            | targets.web_target.WebTarget.build { client_source_root },
         vite_client_bundle {
             ClientBuildInputs,
             ClientBundle,
