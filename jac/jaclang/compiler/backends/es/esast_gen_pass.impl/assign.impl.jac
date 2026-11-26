@@ -344,9 +344,10 @@ impl EsastGenPass._convert_assignment_target(
             linked = self._pass_link_ref(link, target);
             return (linked, linked, None);
         }
-        name = self._import_js_name(target);
-        identifier = self.sync_loc(es.Identifier(name=name), jac_node=target);
-        return (identifier, identifier, name);
+        identifier = self.sync_loc(
+            es.Identifier(name=target.sym_name), jac_node=target
+        );
+        return (identifier, identifier, target.sym_name);
     }
     if (
         isinstance(target, uni.UnaryExpr)
