@@ -185,6 +185,8 @@ test "direct, aliased and re-imported client RPC calls retain the service route"
             + js
         );
     }
+    ticked = re.findall(r'__jacCallFunction\("tick",[^\n]+', js);
+    assert len(ticked) == 2 and all('"app": "feed"' in c for c in ticked) , js;
     relayed = re.findall(r'__jacCallFunction\("relay",[^\n]+', js);
     assert len(relayed) >= 2 , js;
     assert '__jacCallFunction("relay_alias"' not in js , (

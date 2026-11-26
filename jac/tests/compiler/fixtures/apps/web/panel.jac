@@ -36,5 +36,11 @@ def:pub Panel -> JsxElement {
         label = medal.label;
     }
 
+    async def refresh {
+        # `relay` from another app in this scope only (#10756).
+        import from ..feed_app { tick as relay }
+        label = await relay(label);
+    }
+
     <div>{label}</div>
 }

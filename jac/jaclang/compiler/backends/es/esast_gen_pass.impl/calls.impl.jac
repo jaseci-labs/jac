@@ -215,6 +215,13 @@ impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None
             return ability_node;
         }
 
+        item = self._import_item_named(nd.target.sym_name, nd);
+        if item is not None {
+            facts = item.from_parent.boundary_facts;
+            if facts is not None and item.name.value in facts.bridged_decls {
+                return facts.bridged_decls[item.name.value];
+            }
+        }
         manifest = self.module.gen.interop_manifest;
         binding = manifest.bindings.get(nd.target.sym_name) if manifest else None;
         if binding and isinstance(binding.ast_node, uni.Ability) {
@@ -959,7 +966,14 @@ impl EsastGenPass._try_lower_server_rpc_call(
         ]
     );
     manifest = self.module.gen.interop_manifest;
-    binding = manifest.bindings.get(func_name) if manifest else None;
+    matched = [
+        b
+        for b in (manifest.bindings.values() if manifest else [])
+        if b.ast_node is ability_node
+    ];
+    binding = matched[0]
+        if matched
+        else (manifest.bindings.get(func_name) if manifest else None);
     if binding and binding.provider_app {
         for (key, value) in [
             ("app", binding.provider_app),

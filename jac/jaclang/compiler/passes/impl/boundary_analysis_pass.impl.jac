@@ -563,17 +563,21 @@ impl BoundaryAnalysisPass._register_client_bridged_import(nd: Import) -> None {
             continue;
         }
         prior = manifest.bindings.get(local_name);
+        key = local_name;
         if prior is not None and prior.ast_node is not ability {
-            self.ctx.emit(
-                E2036,
-                node_override=item,
-                name=local_name,
-                prior=f"import of '{prior.source_module}.{prior.name}'"
-            );
-            continue;
+            if prior.provider_app == provider_app {
+                self.ctx.emit(
+                    E2036,
+                    node_override=item,
+                    name=local_name,
+                    prior=f"import of '{prior.source_module}.{prior.name}'"
+                );
+                continue;
+            }
+            key = f"{local_name}@{provider_app or module_name}";
         }
         (ret_type, param_types, param_names) = self._signature_of_decl(ability);
-        manifest.bindings[local_name] = InteropBinding(
+        manifest.bindings[key] = InteropBinding(
             name=sym_name,
             source_context=InteropContext.SERVER,
             callers={InteropContext.CLIENT},
