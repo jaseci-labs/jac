@@ -104,6 +104,7 @@ def _sdk_client {
 test "a command that installs the kubernetes client uses it in the same run" {
     for (label, run) in [
         ("deploy", lambda { _scale_command("deploy"); }),
+        ("build", lambda { _scale_command("build"); }),
         ("status", lambda { _scale_command("status"); }),
         ("destroy", lambda { _scale_command("destroy"); }),
         ("sdk", _sdk_client)
