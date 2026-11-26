@@ -13149,7 +13149,6 @@ graph import scale {
         admin.k8s_ops { HAS_KUBERNETES, client, config },
         deploy.autoscale.autoscaler.Autoscaler.read_workload
             | deploy.target.kubernetes.ingress
-            | deploy.target.kubernetes.monitoring
             | deploy.target.kubernetes.target
             | deploy.target.kubernetes.utils.kubernetes_utils
             | injector.pvc_injector.PvcInjector.seed { ApiException, client },
@@ -13171,6 +13170,7 @@ graph import scale {
             config as k8s_cluster_config,
             stream
         },
+        deploy.target.kubernetes.monitoring { ApiException, HTTPError, client },
         tests.deploy.observer_transition_recorder { ApiException, config },
         tests.misc.test_optional_deps { HAS_KUBERNETES, client as k8s_client },
     ]

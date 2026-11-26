@@ -54,7 +54,20 @@ obj MonitoringDeployer {
     def _data_parts -> list[str];
     def _storage_problems -> list[str];
     def _storage_class_problem(classes: dict[str, bool]) -> str;
-    def _cluster_storage_problem(app_name: str, namespace: str) -> str;
+    def _claims_to_make(app_name: str, existing: set[str]) -> list[str];
+    def _storage_unchecked(reason: any) -> None;
+    def _existing_data_claims(
+        core_v1: any, app_name: str, namespace: str
+    ) -> (set[str] | None);
+
+    def _storage_classes(storage_v1: any) -> (dict[str, bool] | None);
+    def _cluster_storage_problem(
+        app_name: str, namespace: str, core_v1: any, storage_v1: any
+    ) -> str;
+
+    def _claim_size(
+        capacity: (str | None), requested: (str | None), asked: str
+    ) -> str;
     def _apply_storage(deployment: dict[str, any], volume: str) -> dict[str, any];
     def _data_pvc(app_name: str, namespace: str, component: str) -> dict[str, any];
     def _ensure_data_pvc(apps_v1: any, core_v1: any, manifest: dict[str, any]) -> str;

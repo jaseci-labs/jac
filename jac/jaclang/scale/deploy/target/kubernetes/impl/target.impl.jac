@@ -2427,7 +2427,7 @@ impl KubernetesTarget._monitoring_storage_refusal(
     problems: list[str] = deployer._storage_problems();
     if check_cluster {
         problem: str = deployer._cluster_storage_problem(
-            app_name, obs_config.namespace
+            app_name, obs_config.namespace, client.CoreV1Api(), client.StorageV1Api()
         );
         if problem {
             problems.append(problem);

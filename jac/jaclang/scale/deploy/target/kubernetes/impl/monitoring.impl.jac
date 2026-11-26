@@ -2471,27 +2471,57 @@ impl MonitoringDeployer._storage_class_problem(classes: dict[str, bool]) -> str 
     return "";
 }
 
-impl MonitoringDeployer._cluster_storage_problem(app_name: str, namespace: str) -> str {
+impl MonitoringDeployer._claims_to_make(
+    app_name: str, existing: set[str]
+) -> list[str] {
+    return [
+        f"{app_name}-{part}-data"
+        for part in self._data_parts()
+        if f"{app_name}-{part}-data" not in existing
+    ];
+}
+
+impl MonitoringDeployer._storage_unchecked(reason: any) -> None {
+    if self.logger {
+        self.logger.warn(
+            "Could not check the monitoring storage class before deploying "
+            f"({reason}). A claim on a class the cluster does not have stays Pending."
+        );
+    }
+}
+
+impl MonitoringDeployer._existing_data_claims(
+    core_v1: any, app_name: str, namespace: str
+) -> (set[str] | None) {
+    found: set[str] = set();
     try {
-        core_v1 = client.CoreV1Api();
-        to_make: bool = False;
         for part in self._data_parts() {
+            name: str = f"{app_name}-{part}-data";
             try {
                 core_v1.read_namespaced_persistent_volume_claim(
-                    name=f"{app_name}-{part}-data", namespace=namespace
+                    name=name, namespace=namespace
                 );
+                found.add(name);
             } except ApiException as e {
                 if e.status != 404 {
                     raise;
                 }
-                to_make = True;
             }
         }
-        if not to_make {
-            return "";
-        }
-        classes: dict[str, bool] = {};
-        for sc in client.StorageV1Api().list_storage_class().items {
+    } except ApiException as e {
+        self._storage_unchecked(e.reason);
+        return None;
+    } except HTTPError as e {
+        self._storage_unchecked(e);
+        return None;
+    }
+    return found;
+}
+
+impl MonitoringDeployer._storage_classes(storage_v1: any) -> (dict[str, bool] | None) {
+    classes: dict[str, bool] = {};
+    try {
+        for sc in storage_v1.list_storage_class().items {
             notes: dict[str, str] = sc.metadata.annotations or {};
             classes[sc.metadata.name] = 'true'
                 in [
@@ -2499,17 +2529,49 @@ impl MonitoringDeployer._cluster_storage_problem(app_name: str, namespace: str) 
                     notes.get('storageclass.beta.kubernetes.io/is-default-class')
                 ];
         }
-        return self._storage_class_problem(classes);
     } except ApiException as e {
-        if self.logger {
-            self.logger.warn(
-                "Could not check the monitoring storage class before deploying "
-                f"({e.reason}). A claim on a class the cluster does not have stays "
-                "Pending."
-            );
-        }
+        self._storage_unchecked(e.reason);
+        return None;
+    } except HTTPError as e {
+        self._storage_unchecked(e);
+        return None;
+    }
+    return classes;
+}
+
+impl MonitoringDeployer._cluster_storage_problem(
+    app_name: str, namespace: str, core_v1: any, storage_v1: any
+) -> str {
+    existing = self._existing_data_claims(core_v1, app_name, namespace);
+    if existing is None or not self._claims_to_make(app_name, existing) {
         return "";
     }
+    classes = self._storage_classes(storage_v1);
+    return "" if classes is None else self._storage_class_problem(classes);
+}
+
+impl MonitoringDeployer._claim_size(
+    capacity: (str | None), requested: (str | None), asked: str
+) -> str {
+    readable: dict[str, int] = {};
+    for size in [capacity, requested, asked] {
+        try {
+            readable[str(size)] = parse_storage_quantity(str(size));
+        } except ValueError {
+            continue;
+        }
+    }
+    if str(capacity) in readable {
+        return str(capacity);
+    }
+    smallest: str = asked;
+    for size in [str(requested), asked] {
+        if size in readable
+            and (smallest not in readable or readable[size] < readable[smallest]) {
+            smallest = size;
+        }
+    }
+    return smallest;
 }
 
 impl MonitoringDeployer._apply_storage(
@@ -2635,16 +2697,7 @@ impl MonitoringDeployer._ensure_data_pvc(
         );
     }
     capacity: dict[str, str] = (claim.status.capacity if claim.status else None) or {};
-    for size in [
-        capacity.get('storage'),
-        claim.spec.resources.requests.get('storage')
-    ] {
-        try {
-            parse_storage_quantity(str(size));
-            return str(size);
-        } except ValueError {
-            continue;
-        }
-    }
-    return asked;
+    return self._claim_size(
+        capacity.get('storage'), claim.spec.resources.requests.get('storage'), asked
+    );
 }
