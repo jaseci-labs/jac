@@ -1,7 +1,7 @@
 {
   "summary": {
-    "same": 51,
-    "refused": 77,
+    "same": 52,
+    "refused": 76,
     "fails": 0,
     "differs": 1,
     "hangs": 0,
@@ -252,8 +252,7 @@
       "reason": "E5092 Native lowering failed for tuple unpacking 'TupleVal'"
     },
     "tests/language/fixtures/chandra_bugs2.jac": {
-      "class": "refused",
-      "reason": "E5090 Native pathway does not yet support Python module import 're'"
+      "class": "same"
     },
     "tests/language/fixtures/check_diag_brackets_e0049.jac": {
       "class": "skipped",
