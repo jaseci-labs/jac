@@ -4,6 +4,7 @@ import logging;
 import os;
 import shutil;
 import subprocess;
+import threading;
 import from pathlib { Path }
 import from typing { Optional }
 
@@ -15,6 +16,8 @@ glob logger = logging.getLogger(__name__),
      VITE_URL_PATTERNS = ['localhost', 'Local:', 'Network:'],
      CONFIG_META_KEYS = frozenset({'extension'}),
      CLIENT_EVENT_PREFIX = '@@jac-client-event ',
+     DEV_COMMAND_PREFIX = '@@jac-dev-command ',
+     DEV_COMMANDS_ENV = 'JAC_DEV_COMMANDS',
      DEV_PROXY_PREFIXES: list[str] = [
          '/api',
          '/walker',
@@ -45,12 +48,29 @@ def _forward_vite_output(
     closed_event: any = None
 ) -> None;
 
+obj DevCommandPipe {
+    has _stream: any = None,
+        _status: (dict[str, any] | None) = None,
+        _pending: list[dict[str, any]] = [],
+        _wake: any = None,
+        _writer: any = None,
+        _lock: threading.Lock = threading.Lock();
+
+    def send(command: dict[str, any]) -> None;
+    def attach(stream: any) -> None;
+    def detach(stream: any) -> None;
+    def _write(stream: any, wake: any) -> None;
+}
+
 class ViteBundler {
     has dev_server_port: int = 0,
         on_client_event: any = None,
-        build_dir: Path | None = None;
+        build_dir: Path | None = None,
+        dev_commands: any = None;
 
     def _dispatch_client_event(self: ViteBundler, line: str) -> None;
+    def publish_dev_status(self: ViteBundler, status: dict[str, any]) -> None;
+    def request_dev_reload(self: ViteBundler) -> None;
     def init(
         self: ViteBundler,
         project_dir: Path,

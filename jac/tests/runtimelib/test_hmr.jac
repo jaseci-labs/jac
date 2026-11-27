@@ -13,6 +13,7 @@ import from unittest.mock { MagicMock, patch }
 import watchdog;
 
 import from jaclang.server.hmr { HotReloader }
+import from tests.support { RecordingDevServer }
 import from jaclang.server.build_status { get_build_status }
 import from jaclang.server.watcher {
     ChangeType,
@@ -891,7 +892,7 @@ test "extract js exports reads the compiled export list" {
     }
 }
 
-test "signal full reload bumps the watched nonce file" {
+test "signal full reload asks the dev server for a reload" {
     with tempfile.TemporaryDirectory() as tmp {
         temp_dir = Path(tmp);
         client_dir = temp_dir / ".jac" / "client";
@@ -900,12 +901,15 @@ test "signal full reload bumps the watched nonce file" {
         reloader = HotReloader(
             base_path=str(temp_dir), module_name="test", watcher=watcher
         );
-        signal = client_dir / ".jac-force-reload";
+        # With no dev server attached there is nobody to ask
         reloader._signal_full_reload();
-        first = signal.read_text();
-        # Each signal writes a distinct value so the Vite watcher sees a change
+        dev = RecordingDevServer();
+        reloader.attach_client_bundler(dev);
         reloader._signal_full_reload();
-        assert signal.read_text() != first;
+        reloader._signal_full_reload();
+        assert dev.reloads == 2;
+        # The request is a message, never a file in the folder Vite serves
+        assert not (client_dir / ".jac-force-reload").exists();
     }
 }
 
@@ -949,20 +953,20 @@ test "recompile signals a full reload only when the export set changes" {
             watcher=watcher,
             client_compiler=_FakeCompiler(jac_client_compiler=jcc)
         );
-        signal = compiled.parent / ".jac-force-reload";
+        dev = RecordingDevServer();
+        reloader.attach_client_bundler(dev);
         # An edit that leaves the export set alone stays hot-swappable
         reloader._recompile_client_unified(str(src));
-        assert not signal.exists() , "a body-only edit must not force a reload";
+        assert dev.reloads == 0 , "a body-only edit must not force a reload";
         # Dropping `:pub` removes the export: importers hold a stale reference,
         # so the reloader must force a reload for the error to surface
         jcc.next_code = "function Widget() {}\n";
         reloader._recompile_client_unified(str(src));
-        assert signal.exists() , "a removed export must force a reload";
+        assert dev.reloads == 1 , "a removed export must force a reload";
         # Renaming the component is a removal plus an addition
-        signal.unlink();
         jcc.next_code = "function Renamed() {}\nexport {Renamed};\n";
         reloader._recompile_client_unified(str(src));
-        assert signal.exists() , "a renamed export must force a reload";
+        assert dev.reloads == 2 , "a renamed export must force a reload";
     }
 }
 

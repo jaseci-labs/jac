@@ -17,6 +17,7 @@ import from tempfile { TemporaryDirectory }
 
 import from jaclang.server.hmr { HotReloader }
 import from jaclang.server.watcher { JacFileWatcher }
+import from tests.support { RecordingDevServer }
 
 
 obj _FakeJacClientCompiler {
@@ -54,8 +55,9 @@ obj _FakeViteCompiler {
 }
 
 
-def _reload_signal(project_dir: str) -> Path {
-    return Path(project_dir) / ".jac" / "client" / ".jac-force-reload";
+"""How many full reloads the reloader has asked the dev server for."""
+def _reloads(reloader: any) -> int {
+    return reloader._dev_bundler.reloads;
 }
 
 
@@ -97,6 +99,7 @@ def _make_reloader(tmp: str, succeeds: bool = True) -> tuple[any, ...] {
         client_compiler=compiler
     );
     reloader._running = True;
+    reloader.attach_client_bundler(RecordingDevServer());
     return (na_file, reloader, compiler);
 }
 
@@ -121,7 +124,7 @@ test "re-emitting wasm asks the browser to reload" {
     with TemporaryDirectory() as tmp {
         (na_file, reloader, compiler) = _make_reloader(tmp);
         reloader._process_change(str(na_file));
-        existed = _reload_signal(tmp).exists();
+        existed = _reloads(reloader) > 0;
     }
     assert existed , (
         "a fresh wasm binary is only picked up on a full page load, so the "
@@ -216,12 +219,9 @@ test "an untracked native module is left alone" {
 test "a failed wasm emit does not reload the page" {
     with TemporaryDirectory() as tmp {
         (na_file, reloader, compiler) = _make_reloader(tmp, succeeds=False);
-        signal = _reload_signal(tmp);
-        if signal.exists() {
-            signal.unlink();
-        }
+        before = _reloads(reloader);
         reloader._process_change(str(na_file));
-        raised = signal.exists();
+        raised = _reloads(reloader) > before;
     }
     assert not raised , (
         "reloading on a failed emit swaps in nothing and hides the error"
