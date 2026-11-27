@@ -596,3 +596,103 @@ test "the client reuses a connection only after a complete keep-alive reply" {
     }
     assert not failures , "\n".join(failures);
 }
+
+
+glob _OK: bytes = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+
+
+def _answer_then(action: str, listener: list[any]) -> any {
+    def handle(conn: any) {
+        if conn.recv(65536) and action != "drop fresh" {
+            conn.sendall(_OK);
+            if conn.recv(65536) and action == "stall" {
+                conn.recv(65536);
+            }
+        }
+        if action == "refuse" {
+            listener[0].close();
+        }
+        conn.close();
+    }
+    return handle;
+}
+
+
+async def _outcomes(port: int, methods: list[str]) -> list[any] {
+    outcomes: list[any] = [];
+    for method in methods {
+        try {
+            resp: any = await arequest(
+                method, f"http://127.0.0.1:{port}/x", timeout=1.0, keep_alive=True
+            );
+            outcomes.append(resp.body);
+        } except ClientConnectionError as e {
+            outcomes.append(type(e));
+        }
+    }
+    for conn in _idle_pool().pop(("http", "127.0.0.1", port), []) {
+        conn.writer.close();
+    }
+    return outcomes;
+}
+
+
+test "a dead pooled connection is retried only for safe methods" {
+    cases: list[tuple[str, list[str], str, list[any], int]] = [
+        ("GET is retried", ["GET", "GET"], "drop", [b"ok", b"ok"], 2),
+        (
+            "POST is not replayed",
+            ["GET", "POST"],
+            "drop",
+            [b"ok", ClientRequestSent],
+            1
+        ),
+        ("PUT is not replayed", ["GET", "PUT"], "drop", [b"ok", ClientRequestSent], 1),
+        (
+            "DELETE is not replayed",
+            ["GET", "DELETE"],
+            "drop",
+            [b"ok", ClientRequestSent],
+            1
+        ),
+        (
+            "GET whose retry cannot reconnect",
+            ["GET", "GET"],
+            "refuse",
+            [b"ok", ClientRequestSent],
+            1
+        ),
+        (
+            "GET dropped on a fresh connection",
+            ["GET"],
+            "drop fresh",
+            [ClientRequestSent],
+            1
+        ),
+        (
+            "pooled GET that times out",
+            ["GET", "GET"],
+            "stall",
+            [b"ok", ClientReadTimeout],
+            1
+        )
+    ];
+    failures: list[str] = [];
+    for (name, methods, action, expected, connections) in cases {
+        listener: list[any] = [];
+        (srv, held, port) = _start_server(_answer_then(action, listener));
+        listener.append(srv);
+        try {
+            outcomes = asyncio.run(_outcomes(port, methods));
+            if outcomes != expected or len(held) != connections {
+                failures.append(
+                    f"{name}: outcomes={outcomes!r} connections={len(held)}, "
+                    f"expected {expected!r} over {connections}"
+                );
+            }
+        } finally {
+            _stop_server(srv, held);
+        }
+    }
+    assert not failures , "\n".join(failures);
+}

@@ -228,6 +228,26 @@ impl _read_response_head(reader: any, timeout: float) -> tuple[str, int, str, He
     }
 }
 
+impl _exchange(
+    conn: _PooledConn, payload: bytes, timeout: float
+) -> tuple[str, int, str, Headers] {
+    try {
+        conn.writer.write(payload);
+        await conn.writer.drain();
+        return await _read_response_head(conn.reader, timeout);
+    } except ClientRequestSent {
+        try {
+            conn.writer.close();
+        } except Exception {}
+        raise;
+    } except (ConnectionError, OSError, asyncio.IncompleteReadError) as e {
+        try {
+            conn.writer.close();
+        } except Exception {}
+        raise ClientRequestSent(detail=f"connection lost during or after send: {e!r}");
+    }
+}
+
 impl arequest(
     method: str,
     url: str,
@@ -271,7 +291,6 @@ impl arequest(
     origin = (scheme, host, port);
     idle = _take_idle(origin) if keep_alive else None;
     conn: _PooledConn = idle if idle is not None else await _connect(origin, timeout);
-    (reader, writer) = (conn.reader, conn.writer);
     lines = [f"{method.upper()} {path} HTTP/1.1"];
     if 'host' not in seen {
         default_port = 443 if scheme == 'https' else 80;
@@ -287,22 +306,25 @@ impl arequest(
     }
     blob = ('\r\n'.join(lines) + '\r\n\r\n').encode('latin-1');
     try {
-        writer.write(blob + body);
-        await writer.drain();
-        (version, status, reason, resp_headers) = await _read_response_head(
-            reader, timeout
+        (version, status, reason, resp_headers) = await _exchange(
+            conn, blob + body, timeout
         );
-    } except ClientRequestSent {
+    } except ClientRequestSent as e {
+        if idle is None
+            or isinstance(e, ClientReadTimeout)
+            or method.upper() not in _SAFE_METHODS {
+            raise;
+        }
         try {
-            writer.close();
-        } except Exception {}
-        raise;
-    } except (ConnectionError, OSError, asyncio.IncompleteReadError) as e {
-        try {
-            writer.close();
-        } except Exception {}
-        raise ClientRequestSent(detail=f"connection lost during or after send: {e!r}");
+            conn = await _connect(origin, timeout);
+        } except ClientRequestNotSent as reconnect {
+            raise e from reconnect;
+        }
+        (version, status, reason, resp_headers) = await _exchange(
+            conn, blob + body, timeout
+        );
     }
+    (reader, writer) = (conn.reader, conn.writer);
     transfer = (resp_headers.get('Transfer-Encoding') or '').lower();
     chunked = 'chunked' in transfer;
     closing = any('close' in v.lower() for v in resp_headers.getlist('Connection'));
