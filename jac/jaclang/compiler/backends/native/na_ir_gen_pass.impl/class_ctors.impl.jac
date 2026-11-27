@@ -69,15 +69,35 @@ impl NaIRGenPass._is_runtime_class_value(target: (uni.UniNode | None)) -> bool {
     return self._class_expr_bound(target, unbounded="type") is not None;
 }
 
-impl NaIRGenPass._class_value_ctor_bound(target: (uni.UniNode | None)) -> (str | None) {
-    if not self._is_runtime_class_value(target) {
+impl NaIRGenPass._class_value_ctor_bound(
+    target: (uni.UniNode | None), direct: bool = False
+) -> (str | None) {
+    runtime = self._is_runtime_class_value(target);
+    if not direct and not runtime {
         return None;
     }
     bound = self._class_expr_bound(target);
-    if bound is None or bound not in self.struct_types or self._is_enum_arch(bound) {
+    if bound is None
+        or bound not in self.struct_types
+        or self._is_enum_arch(bound)
+        or (not runtime and self._demoted_init_of(bound) is not None) {
         return None;
     }
     return bound;
+}
+
+impl NaIRGenPass._has_kw_spread(nd: uni.FuncCall) -> bool {
+    for arg in nd.params or [] {
+        if (isinstance(arg, uni.KWPair) and arg.key is None)
+            or (
+                isinstance(arg, uni.UnaryExpr)
+                and isinstance(arg.op, uni.Token)
+                and arg.op.name == Tok.STAR_POW
+            ) {
+            return True;
+        }
+    }
+    return False;
 }
 
 impl NaIRGenPass._class_ancestors(type_name: str) -> list[str] {
@@ -321,7 +341,9 @@ impl NaIRGenPass._codegen_class_value_call(
     }
     i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
-    cls = self._codegen_expr(target);
+    cls = self._codegen_expr(target)
+        if self._is_runtime_class_value(target)
+        else self._emit_class_name_const(bound);
     if cls is None or not isinstance(cls.type, ir.PointerType) {
         return None;
     }
