@@ -1341,7 +1341,7 @@ graph import {
             | server.server
             | server.session.Session._expired
             | studio.session { Serializer },
-        server.session { frozen_fields },
+        server.session { baseline_holds, field_baseline, frozen_fields, runs_getters },
         server.session.Session._load_edges { Serializer },
         server.session.Session._materialize { Serializer },
         server.session.Session._serialize { Serializer },
@@ -11986,6 +11986,7 @@ graph import data {
         },
         serializer.Serializer.register { collect_rules },
         serializer.Serializer.repair { apply_rules, merged_rules_for, repair_mode },
+        serializer._stored_field { ATTIC_KEY },
     ]
     schema_rules --> [
         serializer.Serializer._serialize_attrs { merged_rules_for, repair_mode },
