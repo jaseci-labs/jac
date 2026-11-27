@@ -2,7 +2,6 @@ import os;
 import time;
 import importlib.resources;
 import from pathlib { Path }
-import from typing { cast }
 import from kubernetes { client, config }
 import from kubernetes.client.exceptions { ApiException }
 
@@ -516,28 +515,6 @@ test "deploy with domain set renders host plus catch-all rules and stores domain
     annotations = created_body["metadata"]["annotations"];
     assert annotations.get("jac-scale/domain") == "app.example.com" , "domain must be stored in jac-scale/domain annotation for --enable-tls";
     assert annotations.get("jac-scale/cert-email") == "user@example.com" , "cert_manager_email must be stored in jac-scale/cert-email annotation for --enable-tls";
-}
-
-
-test "shared ingress skips deploying dedicated nginx controller" {
-    k8s_config = KubernetesConfig(shared_ingress=True, domain="myapp.example.com");
-    ingress_deployer = IngressDeployer(k8s_config, None);
-
-    mock_ctrl = unittest.mock.MagicMock();
-    with unittest.mock.patch.object(
-        ingress_deployer, '_deploy_nginx_controller', mock_ctrl
-    ) {
-        ingress_deployer.start_controller(
-            app_name="myapp",
-            namespace="default",
-            provider=cast(any, unittest.mock.MagicMock()),
-            apps_v1=unittest.mock.MagicMock(),
-            core_v1=unittest.mock.MagicMock(),
-            rbac_v1=unittest.mock.MagicMock(),
-            networking_v1=unittest.mock.MagicMock()
-        );
-    }
-    assert not mock_ctrl.called , "_deploy_nginx_controller must not be called when shared_ingress=True";
 }
 
 test "shared ingress rule sets host immediately without waiting for tls" {

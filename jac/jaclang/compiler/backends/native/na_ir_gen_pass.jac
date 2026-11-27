@@ -972,8 +972,13 @@ walker NaIRGenPass(CompilerPass) {
         spread: ir.Value,
         helpers: dict[str, any],
         bind_records: list[dict[str, any]],
-        loc: str
+        loc: str,
+        deferred: (list[tuple[ir.Value, str]] | None) = None
     ) -> ir.Value;
+
+    def _kw_spread_fail(
+        is_error: ir.Value, msg: str, deferred: (list[tuple[ir.Value, str]] | None)
+    ) -> None;
 
     def _kw_spread_value_fits(value_type: ir.Type, slot_type: ir.Type) -> bool;
     def _consume_kw_spreads(
@@ -1525,6 +1530,7 @@ walker NaIRGenPass(CompilerPass) {
     def _box_to_jacval(value: ir.Value) -> ir.Value;
     def _ellipsis_jacval -> (ir.Value | None);
     def _jacval_pointer_tag(pointer_type: ir.Type) -> int;
+    def _reject_any_key(nd: uni.UniNode, key: ir.Value, key_type: ir.Type) -> bool;
     def _unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Value;
     def _any_view_target(target_type: ir.Type) -> (tuple[str, str] | None);
     def _typed_container_target(target_type: ir.Type) -> (tuple[str, str, str] | None);
@@ -2411,7 +2417,11 @@ walker NaIRGenPass(CompilerPass) {
     def _class_ctor_params(type_name: str) -> (list[NativeCtorParam] | None);
     def _class_ctor_fn_type(params: list[NativeCtorParam]) -> ir.FunctionType;
     def _is_runtime_class_value(target: (uni.UniNode | None)) -> bool;
-    def _class_value_ctor_bound(target: (uni.UniNode | None)) -> (str | None);
+    def _class_value_ctor_bound(
+        target: (uni.UniNode | None), direct: bool = False
+    ) -> (str | None);
+
+    def _has_kw_spread(nd: uni.FuncCall) -> bool;
     def _codegen_class_value_call(
         nd: uni.FuncCall,
         target: uni.Expr,
@@ -2424,15 +2434,17 @@ walker NaIRGenPass(CompilerPass) {
         args: list[uni.Expr | uni.KWPair],
         params: list[NativeCtorParam],
         bound: str
-    ) -> (tuple[list[tuple[int, uni.Expr]], uni.Expr | None] | None);
+    ) -> (list[tuple[int, uni.Expr]] | None);
 
     def _bind_class_ctor_spread(
         nd: uni.FuncCall,
         mapping: ir.Value,
         params: list[NativeCtorParam],
         values: dict[int, ir.Value],
+        explicit: set[int],
         mask: ir.Value,
-        bound: str
+        bound: str,
+        deferred: list[tuple[ir.Value, str]]
     ) -> (ir.Value | None);
 
     def _class_record_type -> ir.LiteralStructType;
@@ -3768,6 +3780,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> None;
 
     def _emit_cstr_hash_fn -> ir.Function;
+    def _jacval_hash_fn -> ir.Function;
     def _is_runtime_class_tuple(t: any) -> bool;
     def _runtime_class_value(expr: (uni.UniNode | None)) -> (ir.Value | None);
     def _runtime_class_arms(

@@ -1762,6 +1762,10 @@ impl NaIRGenPass._codegen_instantiation(
     if self._reject_scalar_type_args(nd, type_name) {
         return None;
     }
+    if isinstance(nd, uni.FuncCall) and self._has_kw_spread(nd) {
+        self._emit_kw_spread_refusal(nd);
+        return None;
+    }
     struct_type = self.struct_types[type_name];
     struct_ptr_type = struct_type.as_pointer();
 

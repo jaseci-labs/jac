@@ -14,24 +14,24 @@ def:pub app -> JsxElement {
         result: str = "",
         sum_val: int = 0;
 
-    async def call_greet -> None {
+    async def call_greet {
         # Kwargs form — the case the bug was about.
         response = await greet(name=input_text);
         result = str(response);
     }
 
-    async def call_add_kw_only -> None {
+    async def call_add_kw_only {
         # Both args by name, written out-of-source-order to confirm the
         # generated object keys come from the kwarg names, not call order.
         sum_val = await add_pair(b=2, a=1);
     }
 
-    async def call_add_mixed -> None {
+    async def call_add_mixed {
         # Positional + kwarg — first param goes positional, second by name.
         sum_val = await add_pair(1, b=2);
     }
 
-    async def call_add_kw_spread -> None {
+    async def call_add_kw_spread {
         # ``**dict`` spread — unknown keys at compile time, must be carried
         # through as an ObjectExpression spread element.
         kw: dict[any, any] = {"a": 1, "b": 2};
@@ -42,7 +42,7 @@ def:pub app -> JsxElement {
         <div>
             <input
                 value={input_text}
-                onChange={lambda (e: any) -> None { input_text = e.target.value; }}
+                onChange={lambda (e: any) { input_text = e.target.value; }}
             />
             <button onClick={call_greet}>Greet</button>
             <button onClick={call_add_kw_only}>Add KW</button>

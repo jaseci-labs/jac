@@ -69,15 +69,35 @@ impl NaIRGenPass._is_runtime_class_value(target: (uni.UniNode | None)) -> bool {
     return self._class_expr_bound(target, unbounded="type") is not None;
 }
 
-impl NaIRGenPass._class_value_ctor_bound(target: (uni.UniNode | None)) -> (str | None) {
-    if not self._is_runtime_class_value(target) {
+impl NaIRGenPass._class_value_ctor_bound(
+    target: (uni.UniNode | None), direct: bool = False
+) -> (str | None) {
+    runtime = self._is_runtime_class_value(target);
+    if not direct and not runtime {
         return None;
     }
     bound = self._class_expr_bound(target);
-    if bound is None or bound not in self.struct_types or self._is_enum_arch(bound) {
+    if bound is None
+        or bound not in self.struct_types
+        or self._is_enum_arch(bound)
+        or (not runtime and self._demoted_init_of(bound) is not None) {
         return None;
     }
     return bound;
+}
+
+impl NaIRGenPass._has_kw_spread(nd: uni.FuncCall) -> bool {
+    for arg in nd.params or [] {
+        if (isinstance(arg, uni.KWPair) and arg.key is None)
+            or (
+                isinstance(arg, uni.UnaryExpr)
+                and isinstance(arg.op, uni.Token)
+                and arg.op.name == Tok.STAR_POW
+            ) {
+            return True;
+        }
+    }
+    return False;
 }
 
 impl NaIRGenPass._class_ancestors(type_name: str) -> list[str] {
@@ -201,7 +221,7 @@ impl NaIRGenPass._bind_class_ctor_args(
     args: list[uni.Expr | uni.KWPair],
     params: list[NativeCtorParam],
     bound: str
-) -> (tuple[list[tuple[int, uni.Expr]], uni.Expr | None] | None) {
+) -> (list[tuple[int, uni.Expr]] | None) {
     positional = [
         i
         for (i, p) in enumerate(params)
@@ -223,6 +243,7 @@ impl NaIRGenPass._bind_class_ctor_args(
                     break;
                 }
                 spread = arg.value;
+                bound_args.append((-1, spread));
                 continue;
             }
             for (i, p) in enumerate(params) {
@@ -245,6 +266,7 @@ impl NaIRGenPass._bind_class_ctor_args(
                 break;
             }
             spread = arg.operand;
+            bound_args.append((-1, spread));
             continue;
         } elif isinstance(arg, uni.UnaryExpr)
             and isinstance(arg.op, uni.Token)
@@ -294,7 +316,7 @@ impl NaIRGenPass._bind_class_ctor_args(
         );
         return None;
     }
-    return (bound_args, spread);
+    return bound_args;
 }
 
 impl NaIRGenPass._codegen_class_value_call(
@@ -313,44 +335,50 @@ impl NaIRGenPass._codegen_class_value_call(
         );
         return None;
     }
-    binding = self._bind_class_ctor_args(nd, args, params, bound);
-    if binding is None {
+    bound_args = self._bind_class_ctor_args(nd, args, params, bound);
+    if bound_args is None {
         return None;
     }
-    (bound_args, spread) = binding;
     i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
-    cls = self._codegen_expr(target);
+    cls = self._codegen_expr(target)
+        if self._is_runtime_class_value(target)
+        else self._emit_class_name_const(bound);
     if cls is None or not isinstance(cls.type, ir.PointerType) {
         return None;
     }
     cls = self._coerce_type(cls, i8p);
     values: dict[int, ir.Value] = {};
-    mask = 0;
+    explicit = {
+        i
+        for (i, _) in bound_args
+        if i >= 0
+    };
+    mask_value: ir.Value = ir.Constant(i64, sum(1 << i for i in explicit));
+    mapping: (ir.Value | None) = None;
+    deferred: list[tuple[ir.Value, str]] = [];
     for (index, expr) in bound_args {
         value = self._codegen_expr(expr);
         if value is None {
             return None;
         }
+        if index < 0 {
+            mapping = value;
+            spread_mask = self._bind_class_ctor_spread(
+                nd, mapping, params, values, explicit, mask_value, bound, deferred
+            );
+            if spread_mask is None {
+                return None;
+            }
+            mask_value = spread_mask;
+            continue;
+        }
         values[index] = self._coerce_type(value, params[index].type);
-        mask |= 1 << index;
     }
     owned = list(values.values());
-    mask_value: ir.Value = ir.Constant(i64, mask);
-    mapping: (ir.Value | None) = None;
-    if spread is not None {
-        mapping = self._codegen_expr(spread);
-        if mapping is None {
-            return None;
-        }
-        spread_mask = self._bind_class_ctor_spread(
-            nd, mapping, params, values, mask_value, bound
-        );
-        if spread_mask is None {
-            return None;
-        }
-        mask_value = spread_mask;
-        owned = list(values.values());
+    release = owned + ([mapping] if mapping is not None else []);
+    for (is_error, msg) in deferred {
+        self._emit_runtime_raise(is_error, "TypeError", msg, release_on_error=release);
     }
     ctor_entry = self.builder.call(
         self._emit_class_ctor_lookup_fn(),
@@ -369,7 +397,7 @@ impl NaIRGenPass._codegen_class_value_call(
         f"class is not constructible with the {self._arch_display(
             bound
         )} constructor arguments",
-        release_on_error=owned
+        release_on_error=release
     );
     fnty = self._class_ctor_fn_type(params);
     call_args: list[ir.Value] = [mask_value];
@@ -389,7 +417,10 @@ impl NaIRGenPass._codegen_class_value_call(
     if mapping is not None {
         self._release_owned_args([mapping], op="class_ctor_kwargs");
     }
-    for (_, expr) in bound_args {
+    for (index, expr) in bound_args {
+        if index < 0 {
+            continue;
+        }
         self._nogc_consume_local(expr);
     }
     self._emit_pending_error_check();
@@ -405,8 +436,10 @@ impl NaIRGenPass._bind_class_ctor_spread(
     mapping: ir.Value,
     params: list[NativeCtorParam],
     values: dict[int, ir.Value],
+    explicit: set[int],
     mask: ir.Value,
-    bound: str
+    bound: str,
+    deferred: list[tuple[ir.Value, str]]
 ) -> (ir.Value | None) {
     helpers = self._str_dict_helpers_of(mapping);
     if helpers is None {
@@ -428,14 +461,16 @@ impl NaIRGenPass._bind_class_ctor_spread(
             p.name,
             p.type,
             i,
-            values[i] if i in values else self._default_arg_fallback(p.type),
-            "kw" if i in values else None,
+            self._default_arg_fallback(p.type),
+            "kw" if i in explicit else None,
             None
         );
         rec["dup_msg"] = f"{self._arch_display(bound)}() {rec['dup_msg']}";
         records.append((i, rec));
     }
-    matched = self._bind_kw_spread(mapping, helpers, [r for (_, r) in records], "");
+    matched = self._bind_kw_spread(
+        mapping, helpers, [r for (_, r) in records], "", deferred=deferred
+    );
     for (i, rec) in records {
         if rec["alloca"] is None {
             continue;
@@ -455,15 +490,16 @@ impl NaIRGenPass._bind_class_ctor_spread(
             name="kwargs.mask"
         );
     }
-    self._emit_runtime_raise(
-        self.builder.icmp_signed(
-            "!=",
-            self.builder.call(helpers["len"], [mapping], name="kwargs.len"),
-            matched,
-            name="kwargs.extra"
-        ),
-        "TypeError",
-        f"{self._arch_display(bound)}() got an unexpected keyword argument"
+    deferred.append(
+        (
+            self.builder.icmp_signed(
+                "!=",
+                self.builder.call(helpers["len"], [mapping], name="kwargs.len"),
+                matched,
+                name="kwargs.extra"
+            ),
+            f"{self._arch_display(bound)}() got an unexpected keyword argument"
+        )
     );
     return mask;
 }

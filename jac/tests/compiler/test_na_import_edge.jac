@@ -173,18 +173,27 @@ test "plain import of a native module from client code takes the na edge" {
     with open(os.path.join(tmp, "kernel.jac"), "w") as f {
         f.write(KERNEL_SRC);
     }
+    with open(os.path.join(tmp, "other.jac"), "w") as f {
+        f.write("def fib(n: int) -> int {\n    return n;\n}\n");
+    }
     host_path = os.path.join(tmp, "host.jac");
     with open(host_path, "w") as f {
         f.write(
-            "import from .kernel { fib }\n"
+            "import from .other { fib }\n"
             "\n"
             "async def:pub show -> int {\n"
+            "    import from .kernel { fib }\n"
             "    return await fib(10);\n"
+            "}\n"
+            "\n"
+            "async def:pub again -> int {\n"
+            "    import from .kernel { fib }\n"
+            "    return await fib(3);\n"
             "}\n"
         );
     }
     with open(os.path.join(tmp, "jac.toml"), "w") as f {
-        f.write(PIN_HOST_CLIENT);
+        f.write(PIN_HOST_CLIENT + "other = \"client\"\n");
     }
     prog = JacProgram();
     mod = prog.compile(host_path);
@@ -195,6 +204,8 @@ test "plain import of a native module from client code takes the na edge" {
     js = mod.gen.js;
     assert '__na_bind' in js , "plain native import must bind the wasm stub";
     assert '"kernel"' in js , "expected the module stem in the bind call";
+    # Both functions bind kernel's fib once, under a name apart from other's (#10756).
+    assert js.count("__jac_na_bind(\"kernel\"") == 1 and "{fib: fib$1}" in js , js;
     targets = sorted(
         {str(b.source_module) for b in mod.gen.interop_manifest.client_native_imports}
     );
