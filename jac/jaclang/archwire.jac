@@ -14775,10 +14775,11 @@ graph import scale.deploy.target {
 }
 
 graph import scale.deploy.target.kubernetes {
-    cluster_provider ++> [
-        ingress { ClusterProvider },
-        utils.kubernetes_utils { AWSProvider, ClusterProvider, LocalProvider },
-    ]
+    cluster_provider ++> utils.kubernetes_utils {
+        AWSProvider,
+        ClusterProvider,
+        LocalProvider
+    }
     database_provisioner ++> target { DatabaseProvisioner }
     ingress ++> kubernetes_target { IngressDeployer }
     kubernetes_config ++> ingress
