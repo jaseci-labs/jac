@@ -1,4 +1,5 @@
 import logging;
+import os;
 import secrets;
 import from contextvars { ContextVar }
 import from datetime { UTC, datetime, timedelta }
@@ -6,6 +7,8 @@ import from datetime { UTC, datetime, timedelta }
 glob logger = logging.getLogger(__name__),
      SYSTEM_USER: str = '__system__',
      SESSION_EPOCH_CLAIM: str = 'sep',
+     ISSUER_CLAIM: str = 'iss',
+     GATEWAY_ISSUER: str = '__gateway__',
      LOGIN_SCOPE: str = 'login-attempt',
      RETIRED_ADMIN_PASSWORD: str = 'changeme',
      PROVISIONED_HERE: str = 'This app provisions accounts on its own store, where blank records are expected; run the clean-up on the gateway',
@@ -26,6 +29,7 @@ obj SessionGrant {
 obj UserManager {
     has base_path: str = '',
         provision_unknown_users: bool = False,
+        issuer: str = '',
         ADMIN_USER_ID: str = '00000000-0000-0000-0000-000000000000',
         _identity_storage: IdentityStorage postinit;
 

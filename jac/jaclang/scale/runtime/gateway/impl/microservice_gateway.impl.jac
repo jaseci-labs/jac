@@ -8,6 +8,10 @@ def _install_ws_catchall(gw: MicroserviceGateway);
 def _session_refused(gw: MicroserviceGateway, token: str) -> bool;
 
 
+"""An unknown subject on a token of this process's identity store: the account is gone."""
+def _minted_here_for_unknown(manager: any, detail: dict[str, any]) -> bool;
+
+
 def _without_refused_credentials(
     gw: MicroserviceGateway, headers: dict[str, str]
 ) -> dict[str, str];
@@ -1341,7 +1345,14 @@ impl _session_refused(gw: MicroserviceGateway, token: str) -> bool {
         return False;
     }
     detail = gw.user_manager.validate_jwt_token_detail(token, check_existence=False);
-    return detail['status'] == 'revoked';
+    return detail['status'] == 'revoked'
+        or _minted_here_for_unknown(gw.user_manager, detail);
+}
+
+impl _minted_here_for_unknown(manager: any, detail: dict[str, any]) -> bool {
+    return detail['status'] == 'unknown_user'
+        and bool(detail.get('iss'))
+        and detail.get('iss') == getattr(manager, 'issuer', None);
 }
 
 impl _without_refused_credentials(
@@ -1450,7 +1461,9 @@ impl GatewaySessionGuard.allow(
             (detail.get('subject') if status == 'unknown_user' else detail['user_id'])
                 or ''
         );
-        if status == 'revoked' or (self.user_id and owner and owner != self.user_id) {
+        if status == 'revoked'
+            or _minted_here_for_unknown(self.manager, detail)
+            or (self.user_id and owner and owner != self.user_id) {
             self.refused = True;
             return False;
         }

@@ -9,6 +9,13 @@ impl UserManager.postinit -> None {
         );
     }
     self._identity_storage = PgIdentityStorage(store=store);
+    if not self.issuer {
+        # `iss` names the identity store that holds the account: an app's own
+        # store, or the fleet's (the gateway's), which every other process uses.
+        name = os.environ.get('JAC_SV_NAME', '').strip();
+        own_store = os.environ.get('JAC_SV_OWN_STORE') == '1';
+        self.issuer = name if name and own_store else GATEWAY_ISSUER;
+    }
 }
 
 impl UserManager.create_user_with_identities(
@@ -354,7 +361,8 @@ impl UserManager.create_jwt_token(
         'user_id': user_id,
         'exp': (now + timedelta(days=token_ttl_days())),
         'iat': now.timestamp(),
-        SESSION_EPOCH_CLAIM: epoch
+        SESSION_EPOCH_CLAIM: epoch,
+        ISSUER_CLAIM: self.issuer
     };
     username = self.get_username(user_id);
     if username {
@@ -449,13 +457,25 @@ impl UserManager.validate_jwt_token_detail(
             'reason': 'Token has a malformed session epoch'
         };
     }
+    issuer = decoded.get(ISSUER_CLAIM);
     if self.provision_unknown_users {
         if check_existence and not self.user_exists(user_id) {
+            if issuer is not None and issuer != GATEWAY_ISSUER {
+                return {
+                    'status': 'unknown_user',
+                    'user_id': None,
+                    'subject': str(user_id),
+                    'exp': decoded.get('exp'),
+                    'iss': issuer,
+                    'reason': 'Only a session the gateway started is provisioned here'
+                };
+            }
             if not self.ensure_user_root(user_id) {
                 return {
                     'status': 'unknown_user',
                     'user_id': None,
                     'exp': decoded.get('exp'),
+                    'iss': issuer,
                     'reason': 'User associated with token no longer exists'
                 };
             }
@@ -471,6 +491,7 @@ impl UserManager.validate_jwt_token_detail(
             'reason': None,
             'root_id': None,
             'session_epoch': token_epoch,
+            'iss': issuer,
             'claims': decoded
         };
     }
@@ -493,6 +514,7 @@ impl UserManager.session_detail(
             'user_id': None,
             'subject': user_id,
             'exp': claims.get('exp'),
+            'iss': claims.get(ISSUER_CLAIM),
             'reason': 'User associated with token no longer exists'
         };
     }
@@ -507,6 +529,7 @@ impl UserManager.session_detail(
             'status': 'revoked',
             'user_id': None,
             'exp': claims.get('exp'),
+            'iss': claims.get(ISSUER_CLAIM),
             'reason': 'Session has ended'
         };
     }
@@ -524,6 +547,7 @@ impl UserManager.session_detail(
         'reason': None,
         'root_id': root_id,
         'session_epoch': stored,
+        'iss': claims.get(ISSUER_CLAIM),
         'claims': claims
     };
 }

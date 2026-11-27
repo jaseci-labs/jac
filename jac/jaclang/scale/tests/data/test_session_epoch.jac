@@ -535,6 +535,39 @@ test "the gateway leaves a service's own accounts to the service" {
 }
 
 
+test "the gateway stops its own session for a deleted account, and forwards an app's" {
+    manager = _manager();
+    (user_id, password) = _account(manager);
+    token = _sign_in(manager, user_id, password);
+    gw = MicroserviceGateway(registry=ServiceRegistry(), user_manager=manager);
+    def forwarded(bearer: str) -> dict[str, str] {
+        request = Request();
+        request.headers.set("Authorization", f"Bearer {bearer}");
+        request.headers.set("Cookie", f"jac_session={bearer}; theme=dark");
+        return {k.lower(): v for (k, v) in gw.build_forward_headers(request).items()};
+    }
+    assert forwarded(token)["authorization"] == f"Bearer {token}";
+    deleted = manager.delete_user(user_id);
+    assert "error" not in deleted , deleted;
+    assert _status(manager, token) == "unknown_user";
+    gone = forwarded(token);
+    assert "authorization" not in gone , "the gateway's own token for a deleted account must not reach a service";
+    assert gone["cookie"] == "theme=dark" , gone;
+
+    sibling = _signed({"sub": uuid.uuid4().hex, "iss": "orders_app"});
+    assert _status(manager, sibling) == "unknown_user";
+    assert forwarded(sibling)["authorization"] == f"Bearer {sibling}";
+
+    async def verify {
+        assert not await GatewaySessionGuard(manager=manager, token=token).allow();
+        opened = GatewaySessionGuard(manager=manager);
+        assert not await opened.allow({"text": json.dumps({"token": token})});
+        assert await GatewaySessionGuard(manager=manager, token=sibling).allow();
+    }
+    asyncio.run(verify());
+}
+
+
 test "the gateway leaves an app's own socket tokens alone" {
     manager = _manager();
     async def verify {
