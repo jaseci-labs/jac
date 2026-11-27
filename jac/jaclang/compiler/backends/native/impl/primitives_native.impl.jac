@@ -6046,6 +6046,7 @@ impl NativeBuiltinEmitter.emit_int(
     if p._is_jacval_ty(arg_val.type) {
         return self._int_from_boxed(ctx, arg_val);
     }
+    decoded: (ir.Value | None) = None;
     if p._is_bytes_type(arg_val.type) {
         decoded = p._emit_bytes_decode(arg_val, [], {}, None);
         if decoded is None {
@@ -6059,7 +6060,11 @@ impl NativeBuiltinEmitter.emit_int(
             if args[1].type.width > 32
             else args[1];
     }
-    return self._int_from_c_string(ctx, arg_val, base);
+    parsed = self._int_from_c_string(ctx, arg_val, base);
+    if decoded is not None {
+        p._release_owned_args([decoded], op="int_bytes");
+    }
+    return parsed;
 }
 
 impl NativeBuiltinEmitter._int_from_c_string(

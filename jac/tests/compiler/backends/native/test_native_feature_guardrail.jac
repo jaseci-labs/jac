@@ -926,26 +926,6 @@ test "guardrail: open() with a non-string (POSIX flags) mode is a clean diagnost
     }
 }
 
-test "guardrail: a dict comprehension with untyped keys or always-None values is refused, not an emitter crash" {
-    for (label, value, refusal) in [
-        ("any_key", "1", "dict with mixed key types"),
-        ("none_value", "None", "dict with mixed key types"),
-        ("str_key_none_value", "None", "dict whose values are always None")
-    ] {
-        elem = "str" if label == "str_key_none_value" else "any";
-        (prog, ir, log) = compile_na_inline_demote(
-            f"dcompr_{label}",
-            f"def build(xs: list[{elem}]) -> int {{\n"
-            f"    d = {{x: {value} for x in xs}};\n"
-            "    return len(d);\n"
-            "}\n"
-        );
-        seen = fmt_errors(prog) + log;
-        assert refusal in seen , f"{label}: expected the '{refusal}' refusal, got: {seen}";
-        assert "E9003" not in seen , f"{label}: emitter crash leaked: {seen}";
-    }
-}
-
 # A backend exception is a compiler defect: it is reported as E9003, it is never
 # absorbed as an E5092 refusal, and the module keeps nothing it could run in
 # place of the native code -- not the bytecode the host assembles and not the

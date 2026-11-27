@@ -1,7 +1,7 @@
 {
   "summary": {
-    "same": 50,
-    "refused": 78,
+    "same": 51,
+    "refused": 77,
     "fails": 0,
     "differs": 1,
     "hangs": 0,
@@ -439,8 +439,7 @@
       "class": "same"
     },
     "tests/language/fixtures/hash_init_check.jac": {
-      "class": "refused",
-      "reason": "E5092 Native lowering failed for constructor '_'"
+      "class": "same"
     },
     "tests/language/fixtures/hashcheck.jac": {
       "class": "refused",

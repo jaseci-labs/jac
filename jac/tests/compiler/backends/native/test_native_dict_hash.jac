@@ -135,4 +135,6 @@ test "an any-keyed dict hashes and compares keys by value across kinds" {
     (eng, _) = compile_native("any_key_dict.jac");
     mixed_count = get_func(eng, "mixed_count", ctypes.c_int64);
     assert mixed_count() == 511111 , mixed_count();
+    built_count = get_func(eng, "built_count", ctypes.c_int64);
+    assert built_count() == 3222 , built_count();
 }

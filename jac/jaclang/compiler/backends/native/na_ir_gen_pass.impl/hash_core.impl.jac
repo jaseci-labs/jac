@@ -81,6 +81,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
         self._emit_rc_helpers();
     }
     _hl = self._nogc_headerless();
+    _jv_key = self?.jacval_type is not None and key_type == self.jacval_type;
     _free_hl = self._heap_extern("free") if _hl else None;
 
     hash_fnty = ir.FunctionType(i64, [key_type]);
@@ -599,6 +600,8 @@ impl NaIRGenPass._emit_hash_core_helpers(
     } else {
         if isinstance(key_type, ir.PointerType) {
             bi.call(self.rc_retain_fn, [bi.bitcast(k_s, i8p, name="kc")]);
+        } elif _jv_key {
+            self._emit_elem_retain(bi, key_type, k_s);
         }
         if has_vals {
             self._emit_elem_retain(bi, _vt, v_s);
@@ -703,6 +706,10 @@ impl NaIRGenPass._emit_hash_core_helpers(
         bdel.store(
             ir.Constant(key_type, None), bdel.gep(ka_rm, [res_rm], name="kclear")
         );
+    } elif _jv_key and not _hl {
+        self._emit_elem_release(
+            bdel, key_type, bdel.load(bdel.gep(ka_rm, [res_rm], name="kvp"), name="kv")
+        );
     }
     if has_vals and self._elem_kind(_vt) != "raw" {
         va_rm = bdel.load(
@@ -776,6 +783,10 @@ impl NaIRGenPass._emit_hash_core_helpers(
             }
             bdp.store(
                 ir.Constant(key_type, None), bdp.gep(ka_p, [res_p], name="kclear")
+            );
+        } elif _jv_key and not _hl {
+            self._emit_elem_release(
+                bdp, key_type, bdp.load(bdp.gep(ka_p, [res_p], name="kvp"), name="kv")
             );
         }
         bdp.store(
@@ -863,6 +874,12 @@ impl NaIRGenPass._emit_hash_core_helpers(
         }
         blv_cl.store(
             ir.Constant(key_type, None), blv_cl.gep(ka_cl, [si_v_cl], name="kclear")
+        );
+    } elif _jv_key and not _hl {
+        self._emit_elem_release(
+            blv_cl,
+            key_type,
+            blv_cl.load(blv_cl.gep(ka_cl, [si_v_cl], name="kvp"), name="kv")
         );
     }
     if has_vals and self._elem_kind(_vt) != "raw" {

@@ -836,6 +836,9 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
         and self._reject_ptr_into_raw_slot(nd, first_val, val_type, "dict value") {
         return dict_val;
     }
+    if self._reject_any_key(nd, first_key, key_type) {
+        return dict_val;
+    }
     first_store_key = self._coerce_type(first_key, key_type);
     first_store_val = self._coerce_type(first_val, val_type);
     (_set_fn, _kh) = self._static_key_op(helpers, "set", first_pair.key);
@@ -862,6 +865,9 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
             }
             if not use_jacval
                 and self._reject_ptr_into_raw_slot(nd, v, val_type, "dict value") {
+                return dict_val;
+            }
+            if self._reject_any_key(nd, k, key_type) {
                 return dict_val;
             }
             k = self._coerce_type(k, key_type);

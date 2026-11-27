@@ -20,3 +20,17 @@ def mixed_count -> int {
     }
     return len(d) * 100000 + hits;
 }
+
+
+
+def built_count -> int {
+    xs: list[any] = [1, "a", 1.0, True, None, "a"];
+    seen = {x: None for x in xs};
+    zeros: dict[any, int] = {0.0: 1};
+    zeros[-0.0] = 2;
+    owned: dict[any, int] = {};
+    for n in ["ab", "cde"] {
+        owned[n + "!"] = len(n);
+    }
+    return len(seen) * 1000 + zeros[0] * 100 + owned["ab!"] * 10 + len(owned);
+}

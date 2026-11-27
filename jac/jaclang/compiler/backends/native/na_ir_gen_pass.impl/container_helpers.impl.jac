@@ -228,6 +228,35 @@ impl NaIRGenPass._emit_elem_slot_drop(
     return ir.IRBuilder(_done_bb);
 }
 
+impl NaIRGenPass._reject_any_key(
+    nd: uni.UniNode, key: ir.Value, key_type: ir.Type
+) -> bool {
+    if self?.jacval_type is None or key_type != self.jacval_type {
+        return False;
+    }
+    kt = key.type;
+    if isinstance(kt, ir.LiteralStructType) {
+        if kt == self.jacval_type
+            or (self._str_desc_ty is not None and kt == self._str_desc_ty)
+            or self._opt_payload_of(kt) is not None {
+            return False;
+        }
+    } elif not isinstance(kt, ir.PointerType)
+        or isinstance(kt.pointee, ir.FunctionType)
+        or kt == ir.IntType(8).as_pointer()
+        or self._jacval_pointer_tag(kt) != 2 {
+        return False;
+    }
+    self.emit(
+        E5092,
+        node_override=nd,
+        kind="expression",
+        name="bytes or tuple key in a dict keyed on any",
+        help_text="A dict whose keys are typed any hashes ints, floats, bools, None, strings and objects. A bytes or tuple key needs a dict whose key type is that type."
+    );
+    return True;
+}
+
 impl NaIRGenPass._reject_ptr_into_raw_slot(
     nd: (uni.UniNode | None), value: ir.Value, elem_type: ir.Type, what: str
 ) -> bool {
