@@ -511,10 +511,16 @@ def _large -> str {
 }
 
 
+def _ticks -> Iterator[str] {
+    yield "ok";
+}
+
+
 def _app -> ServingApp {
     app = ServingApp();
     app.add_endpoint(JEndPoint(method=HTTPMethod.GET, path="/ping", callback=_pong));
     app.add_endpoint(JEndPoint(method=HTTPMethod.GET, path="/large", callback=_large));
+    app.add_endpoint(JEndPoint(method=HTTPMethod.GET, path="/ticks", callback=_ticks));
     return app;
 }
 
@@ -563,6 +569,7 @@ test "the client reuses a connection only after a complete keep-alive reply" {
         ("body read in full", "GET", "/ping", "body", 0, [[0], [0]]),
         ("HEAD reply", "HEAD", "/ping", "body", 0, [[0], [0]]),
         ("stream read to the end", "GET", "/ping", "stream", 0, [[0], [0]]),
+        ("chunked stream read to the end", "GET", "/ticks", "stream", 0, [[0], [0]]),
         ("stream closed early", "GET", "/large", "partial", 0, [[], []]),
         ("server closes at its budget", "GET", "/ping", "body", 2, [[0], []]),
         ("caller asks to close", "GET", "/ping", "close", 0, [[0], [0]]),

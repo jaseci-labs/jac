@@ -43,6 +43,11 @@ impl ClientResponse.aiter_raw -> AsyncIterator[bytes] {
                 break;
             }
             if size == 0 {
+                trailer: bytes = await self.reader.readline();
+                while trailer not in (b'\r\n', b'\n', b'') {
+                    trailer = await self.reader.readline();
+                }
+                self._drained = True;
                 break;
             }
             chunk: bytes = await self.reader.readexactly(size);

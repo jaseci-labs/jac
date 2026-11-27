@@ -94,53 +94,66 @@ namespace = "production"
 
 Controls how the application is exposed inside the cluster and externally.
 
-By default, jac-scale deploys a **dedicated NGINX Ingress controller per app**. The controller listens on one NodePort and routes requests to the correct ClusterIP service based on path. Individual services (app, Grafana, dashboards) are all ClusterIP and not directly reachable from outside the cluster.
+Every deploy puts a gateway in front of the app. It is reached through the `gateway-service` Service, a ClusterIP Service on `container_port`. Like every other Service jac-scale creates (Grafana, Prometheus, the database), it has no address outside the cluster.
 
-To use a pre-existing shared controller instead, see [Shared Ingress](#shared-ingress) below.
+jac-scale does not install an ingress controller. With no ingress configured, the deploy prints a port-forward command instead of a URL:
+
+```bash
+kubectl -n default port-forward svc/gateway-service 8080:8000
+# then open http://localhost:8080
+```
+
+To give the app an external address, run an ingress controller in the cluster (for example ingress-nginx installed with Helm, the MicroK8s or minikube `ingress` addon, or the AWS Load Balancer Controller), then point an Ingress at the gateway in one of two ways:
+
+- [Shared Ingress](#shared-ingress): set `shared_ingress = true` and `domain` under `[scale.kubernetes]`.
+- `[scale.gateway.ingress]`: emit an Ingress for the gateway with your own host, class and annotations.
+
+Either way the deploy creates one Ingress, `gateway-ingress`, in the app's namespace, routing `/` to `gateway-service`.
 
 **Defaults:**
 
 | TOML Key | Default | Description |
 |----------|---------|-------------|
 | `container_port`| `8000` | Port your app listens on inside the pod |
-| `ingress_node_port` | `30080` | NodePort for the NGINX Ingress controller (all external traffic enters here) |
+| `ingress_node_port` | `30080` | Port in the URL jac-scale reports and checks after deploying to a local cluster with an Ingress. It does not open a port: set it to the port your ingress controller listens on |
 
-**Access URLs (local cluster):**
+**`[scale.gateway.ingress]` keys:**
 
-| Path | Destination |
-|------|-------------|
-| `http://localhost:30080/` | Jaseci application |
-| `http://localhost:30080/grafana` | Grafana dashboard (if monitoring enabled) |
-
-**To change in `jac.toml`:**
+| TOML Key | Default | Description |
+|----------|---------|-------------|
+| `enabled` | `false` | Emit the `gateway-ingress` Ingress |
+| `host` | none | Host rule. Leave it unset to match any host |
+| `ingress_class_name` | none | IngressClass of your controller, e.g. `nginx`, `alb`, `gce` |
+| `annotations` | `{}` | Controller-specific annotations |
 
 ```toml
-[scale.kubernetes]
-container_port = 8000
-ingress_node_port = 30080
+[scale.gateway.ingress]
+enabled = true
+host = "myapp.local"
+ingress_class_name = "nginx"
 ```
 
 ---
 
 ### Shared Ingress
 
-By default each app deploys its own NGINX controller (one Deployment, one NodePort/NLB, one IngressClass). Set `shared_ingress = true` to skip that and attach the app's routing rules to a pre-existing shared NGINX controller in your cluster instead.
+Set `shared_ingress = true` to attach the app's routing rules to an ingress controller that already runs in your cluster, with the app's `domain` as the host.
 
 **When to use shared ingress:**
 
-- You already run a cluster-wide `ingress-nginx` controller (e.g. installed via Helm) and don't want a separate controller per app
-- You are deploying multiple apps to the same cluster and want to reduce resource overhead
+- You run a cluster-wide controller (for example `ingress-nginx` installed with Helm, or the AWS Load Balancer Controller) and want the app reachable at its own domain
+- You deploy several apps to the same cluster and want them behind one controller, told apart by host
 
 **Requirements:**
 
-- An `IngressClass` named `shared_ingress_class` must already exist in the cluster (jac-scale validates the class at deploy time; it does not check that the controller behind it is running, and the controller does not have to be NGINX -- see below)
+- An `IngressClass` named `shared_ingress_class` must already exist in the cluster. jac-scale does not check that it exists or that a controller is running behind it, so a wrong class leaves the app unreachable. The controller does not have to be NGINX (see below)
 - `domain` **must** be set. The shared controller sees Ingress resources from all namespaces, so host-based routing is the only way to differentiate two apps. jac-scale raises an error at deploy time if `domain` is empty when `shared_ingress = true`
 
 **Configuration:**
 
 | TOML Key | Default | Description |
 |----------|---------|-------------|
-| `shared_ingress` | `false` | Use a pre-existing shared controller instead of deploying a dedicated one |
+| `shared_ingress` | `false` | Attach the app's Ingress to an existing controller, with `domain` as the host |
 | `shared_ingress_class` | `"nginx"` | IngressClass name of the shared controller |
 | `shared_ingress_annotations` | `{}` | Extra annotations merged onto the Ingress. Required to drive non-nginx controllers (AWS ALB, Traefik, GKE). Caller-supplied values take precedence |
 | `shared_ingress_tls` | `false` | Set when the controller terminates TLS out-of-band (e.g. ALB via an ACM cert) so the reported URL uses `https`. nginx+cert-manager (`spec.tls`) is detected automatically. When cert-manager issuer annotations and `domain` are present, this also emits a `spec.tls` block on the shared Ingress |
@@ -155,7 +168,7 @@ domain = "myapp.example.com"          # required: used as the Ingress host field
 # shared_ingress_class = "nginx"
 ```
 
-**Non-nginx controllers (e.g. AWS ALB).** `shared_ingress_class` may name any controller; nginx-specific tuning is emitted only when the class is `nginx`. Supply controller-specific settings via `shared_ingress_annotations` so jac-scale stays cloud-agnostic:
+**Non-nginx controllers (e.g. AWS ALB).** `shared_ingress_class` may name any controller. jac-scale adds no controller-specific settings of its own, so supply them via `shared_ingress_annotations`:
 
 ```toml
 [scale.kubernetes]
@@ -173,15 +186,15 @@ domain = "linkedin.jaseci.app"
 "alb.ingress.kubernetes.io/ssl-redirect" = "443"
 ```
 
-**What changes in shared mode:**
+**What the deploy creates in shared mode:**
 
-| Behaviour | Dedicated (default) | Shared |
-|-----------|---------------------|--------|
-| Controller deployed | Yes (one per app) | No (uses existing controller) |
-| IngressClass | `{namespace}-{app_name}-nginx` | Value of `shared_ingress_class` |
-| Routing rules | Wildcard, plus a host rule for `domain` when it is set | Host set immediately to `domain` |
-| On destroy | Removes controller, RBAC, IngressClass, Ingress rules, and TLS material (TLS secret, cert-manager Certificate and Issuer) | Removes Ingress rules and TLS material only; controller is untouched |
-| TLS (`--enable-tls`) | Works (cert-manager Issuer uses app-specific class) | Works (cert-manager Issuer uses shared class) |
+| Behaviour | Shared |
+|-----------|--------|
+| Controller | None; the existing controller is used and never modified |
+| Ingress | `gateway-ingress` in the app's namespace, routing `/` to `gateway-service` |
+| IngressClass | Value of `shared_ingress_class` |
+| Routing rules | Host set to `domain` |
+| On destroy | Removes the app's Ingress; the controller is untouched |
 
 !!! note
     Because the shared controller routes by the `Host:` header, each app in the cluster must have a unique domain. Two apps named `jaseci` in `dev` and `prod` namespaces are fully isolated as long as they have different domains (`dev.example.com` vs `prod.example.com`).
@@ -705,7 +718,7 @@ Scale can deploy a full observability stack (Prometheus + Grafana + kube-state-m
 | Component | Purpose |
 |-----------|---------|
 | **Prometheus** | Collects and stores metrics (ClusterIP - internal only; Grafana queries it as a datasource) |
-| **Grafana** | Dashboard UI - served via NGINX Ingress at `/grafana` (NodePort locally, NLB on AWS) |
+| **Grafana** | Dashboard UI, served at `/grafana` (ClusterIP - reach it with `kubectl port-forward`) |
 | **kube-state-metrics** | K8s object state: pod counts, replica health, restart counts |
 | **node-exporter** | Host-level metrics: CPU, memory, disk, network per node |
 | **Loki** *(optional)* | Log store - receives logs from Alloy (ClusterIP; data is ephemeral unless `storage_enabled` is set) |
@@ -753,11 +766,13 @@ loki_enabled = true
 tracing_enabled = true
 ```
 
-After deployment, access:
+After deployment, reach Grafana through a port-forward:
 
-- **Grafana:** `http://localhost:<ingress_node_port>/grafana` - log in with `admin` / `<prometheus_admin_password>`
+```bash
+kubectl -n <namespace> port-forward svc/<app_name>-grafana-service 3000:3000
+```
 
-On AWS clusters, the NGINX Ingress controller is exposed via a Network Load Balancer (NLB). Grafana is accessible at `<nlb-url>/grafana`.
+Then open `http://localhost:3000/grafana` and log in with `admin` / `<prometheus_admin_password>`. The app's Ingress routes only to the gateway, so Grafana is not exposed outside the cluster.
 
 #### Monitoring data storage
 
@@ -1461,9 +1476,9 @@ mkdir -p ~/.kube && microk8s config > ~/.kube/config
 chmod 600 ~/.kube/config
 ```
 
-The last two steps are required, not cosmetic: `jac scale deploy` reads `~/.kube/config` to reach the cluster and shells out to a real `kubectl` binary to seed the source bundle. A shell alias (`alias kubectl='microk8s kubectl'`) is not enough because subprocesses cannot see it. You do not need the MicroK8s `ingress` addon -- the deploy ships its own NGINX ingress controller.
+The last two steps are required, not cosmetic: `jac scale deploy` reads `~/.kube/config` to reach the cluster and shells out to a real `kubectl` binary to seed the source bundle. A shell alias (`alias kubectl='microk8s kubectl'`) is not enough because subprocesses cannot see it.
 
-After `jac scale deploy`, the app is reachable at `http://localhost:30080` (see [Ports](#ports)).
+After `jac scale deploy`, reach the app with the port-forward command the deploy prints (see [Ports](#ports)). To serve it through an Ingress instead, run `microk8s enable ingress` and set `[scale.gateway.ingress]`; the addon's controller then answers on `http://localhost` for the configured `host`.
 
 ### Docker Desktop
 
@@ -1478,12 +1493,12 @@ After `jac scale deploy`, the app is reachable at `http://localhost:30080` (see 
 # Install -- see https://minikube.sigs.k8s.io/docs/start/
 brew install minikube  # macOS
 
-# Start cluster with the ingress addon
 minikube start
+# Optional: an ingress controller for [scale.gateway.ingress]
 minikube addons enable ingress
 ```
 
-With minikube the ingress NodePort is reachable on the VM's address, not localhost: use `http://$(minikube ip):30080`.
+The `ingress` addon is only needed if you set `[scale.gateway.ingress]`. Its controller answers on the VM's address, not localhost: use `http://$(minikube ip)` with the configured `host`.
 
 ---
 
@@ -1498,8 +1513,9 @@ kubectl get pods
 # Check service
 kubectl get svc
 
-# Default local ingress access (minikube: http://$(minikube ip):30080)
-# http://localhost:30080
+# Without an Ingress, the app is reached through the gateway Service
+kubectl port-forward svc/gateway-service 8080:8000
+# then open http://localhost:8080
 ```
 
 ### Database Connection Issues
