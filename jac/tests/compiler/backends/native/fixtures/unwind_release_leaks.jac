@@ -84,8 +84,7 @@ def run -> int {
 }
 
 with entry {
-    print(run());
-    print(spread_fails(Holder));
+    print(run(), spread_fails(Holder));
     __rc_collect_cycles();
     __rc_debug_enable();
 }
