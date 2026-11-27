@@ -845,6 +845,22 @@ impl Store.txn_serial -> int {
 }
 
 
+impl Store.park_idle -> None {}
+
+
+impl PgStore.park_idle -> None {
+    idle: any = None;
+    with self._lock {
+        if self._in_txn or self._conn is None {
+            return;
+        }
+        idle = self._conn;
+        self._conn = None;
+    }
+    _park_conn(self.conninfo, idle, False, False);
+}
+
+
 impl PgStore.txn_serial -> int {
     return self._txn_serial;
 }

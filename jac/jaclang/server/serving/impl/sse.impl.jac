@@ -43,6 +43,8 @@ impl _sse_frame_stream_inner(source: any) -> AsyncIterator[str] {
             ),
             event='error'
         );
+    } finally {
+        await close_stream(source);
     }
 }
 
