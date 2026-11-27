@@ -2519,7 +2519,10 @@ graph import {
     runtime.preparation_lock ++> [
         compiler.driver.application._check { BuildFailed },
         compiler.driver.application._prepare_revision { SourcesChanged },
-        server.hmr.HotReloader._reload_server_module { PREPARATION_LOCK },
+        server.hmr.HotReloader._reload_server_module {
+            PREPARATION_LOCK,
+            SourcesChanged
+        },
         server.server.JacAPIServer._refresh_dev_endpoints {
             BuildFailed,
             PREPARATION_LOCK,
