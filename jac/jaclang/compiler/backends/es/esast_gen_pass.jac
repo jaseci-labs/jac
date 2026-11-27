@@ -311,7 +311,10 @@ walker EsastGenPass(TreePass) {
         nd: uni.BinaryExpr, left_expr: es.Expression, right_expr: es.Expression
     ) -> (SpawnCallParts | None);
 
-    def _import_item_named(name: str) -> (uni.ModuleItem | None);
+    def _import_item_named(
+        name: str, near: (uni.UniNode | None) = None
+    ) -> (uni.ModuleItem | None);
+
     def _build_spawn_runtime_call(
         nd: uni.BinaryExpr, parts: SpawnCallParts
     ) -> es.AwaitExpression;

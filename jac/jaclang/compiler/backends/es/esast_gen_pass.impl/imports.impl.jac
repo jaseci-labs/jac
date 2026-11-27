@@ -340,7 +340,15 @@ impl EsastGenPass._generate_sv_import_stubs(
         func_name = item.name.sym_name;
         local_name = item.alias.sym_name if item.alias else func_name;
 
-        binding = manifest.bindings.get(local_name);
+        ability = nd.boundary_facts.bridged_decls.get(func_name)
+            if nd.boundary_facts
+            else None;
+        matched = [
+            b
+            for b in manifest.bindings.values()
+            if ability is not None and b.ast_node is ability
+        ];
+        binding = matched[0] if matched else manifest.bindings.get(local_name);
         if binding is not None and binding.kind != 'function' {
             continue;
         }
@@ -594,22 +602,36 @@ impl EsastGenPass.exit_sub_tag with uni.SubTag exit {
     }
 }
 
-impl EsastGenPass._import_item_named(name: str) -> (uni.ModuleItem | None) {
+impl EsastGenPass._import_item_named(
+    name: str, near: (uni.UniNode | None) = None
+) -> (uni.ModuleItem | None) {
+    scopes: list[uni.UniNode] = [];
+    at = near;
+    while at is not None {
+        scopes.append(at);
+        at = at.parent;
+    }
+    (best, best_depth) = (None, len(scopes) + 1);
     for imp in self.module.get_all_sub_nodes(uni.Import) {
         if imp.from_loc is None {
             continue;
         }
+        owner = imp.find_parent_of_type(uni.Ability) or self.module;
+        depth = scopes.index(owner) if owner in scopes else len(scopes);
         for item in imp.items {
             if not isinstance(item, uni.ModuleItem) {
                 continue;
             }
             local = item.alias.value if item.alias is not None else item.name.value;
-            if local == name {
+            if local == name and near is None {
                 return item;
+            }
+            if local == name and depth < best_depth {
+                (best, best_depth) = (item, depth);
             }
         }
     }
-    return None;
+    return best;
 }
 
 impl EsastGenPass._finalize_runtime_imports(program: es.Program) -> None {

@@ -2,6 +2,10 @@
 
 import from .shared_fmt { stamp }
 
+def:pub tick(name: str) -> str {
+    return stamp(name);
+}
+
 obj Item {
     has text: str;
 }
