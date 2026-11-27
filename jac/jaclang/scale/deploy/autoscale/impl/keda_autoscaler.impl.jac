@@ -40,31 +40,35 @@ impl KEDAAutoscaler.preflight {
         "Install KEDA from the official docs, then redeploy: "
         "https://keda.sh/docs/latest/deploy/"
     ];
-    cluster_key = self._get_cluster_key();
-    if cluster_key in KEDAAutoscaler._preflight_cache {
-        if KEDAAutoscaler._preflight_cache[cluster_key] {
+    cache_key = f"{self._get_cluster_key()}::{namespace}";
+    if cache_key in KEDAAutoscaler._preflight_cache {
+        if KEDAAutoscaler._preflight_cache[cache_key] {
             return [];
         }
         return install_warning;
     }
     api = self._custom_api or client.CustomObjectsApi();
     try {
-        api.list_cluster_custom_object(
-            group="keda.sh", version="v1alpha1", plural="scaledobjects"
+        api.list_namespaced_custom_object(
+            group="keda.sh",
+            version="v1alpha1",
+            namespace=namespace,
+            plural="scaledobjects",
+            limit=1
         );
-        KEDAAutoscaler._preflight_cache[cluster_key] = True;
+        KEDAAutoscaler._preflight_cache[cache_key] = True;
         return [];
     } except ApiException as e {
         if e.status in [404, 422] {
-            KEDAAutoscaler._preflight_cache[cluster_key] = False;
+            KEDAAutoscaler._preflight_cache[cache_key] = False;
             return install_warning;
         }
         if e.status == 403 {
-            return [
+            raise ValueError(
                 "Permission denied (403) discovering KEDA core "
-                "(keda.sh/v1alpha1 ScaledObject). Grant RBAC list/get on "
-                "this resource to the jac-scale service account."
-            ];
+                f"(keda.sh/v1alpha1 ScaledObject) in namespace '{namespace}'. "
+                "Grant the deploying identity list on scaledobjects there."
+            );
         }
         raise;
     }
@@ -251,7 +255,7 @@ impl KEDAAutoscaler._apply_custom_object {
 impl KEDAAutoscaler.apply {
     app_name = spec.app_name or spec.scale_target_name;
     manifests = self._build_manifests(spec);
-    warnings = self.preflight();
+    warnings = self.preflight(spec.namespace);
     if warnings {
         if self.logger {
             self.logger.warn(warnings[0]);
@@ -717,7 +721,7 @@ impl KEDAAutoscaler.http_scaled_object_name_for {
 impl KEDAAutoscaler.apply_http_activation {
     self._validate_http_activation_spec(spec);
 
-    caps = self.discover_capabilities();
+    caps = self.discover_capabilities(namespace=spec.namespace);
     if caps.errors {
         raise ValueError(
             "KEDA HTTP Add-on capability check failed:\n" + "\n".join(caps.errors)
@@ -1147,9 +1151,11 @@ impl KEDAAutoscaler._capabilities_cache_key {
 }
 
 impl KEDAAutoscaler.discover_capabilities {
-    cluster_key = self._capabilities_cache_key();
-    if not refresh and cluster_key in self._capabilities_cache {
-        return self._capabilities_cache[cluster_key];
+    cached: dict[str, any] = self._capabilities_cache.setdefault(
+        self._capabilities_cache_key(), {}
+    );
+    if not refresh and namespace in cached {
+        return cached[namespace];
     }
 
     api = self._custom_api or client.CustomObjectsApi();
@@ -1173,16 +1179,20 @@ impl KEDAAutoscaler.discover_capabilities {
     );
 
     try {
-        api.list_cluster_custom_object(
-            group="keda.sh", version="v1alpha1", plural="scaledobjects"
+        api.list_namespaced_custom_object(
+            group="keda.sh",
+            version="v1alpha1",
+            namespace=namespace,
+            plural="scaledobjects",
+            limit=1
         );
         caps.core_available = True;
     } except ApiException as e {
         if e.status == 403 {
             caps.errors.append(
                 "Permission denied (403) discovering KEDA core "
-                "(keda.sh/v1alpha1 ScaledObject). Grant RBAC list/get on "
-                "this resource to the jac-scale service account."
+                f"(keda.sh/v1alpha1 ScaledObject) in namespace '{namespace}'. "
+                "Grant the deploying identity list on scaledobjects there."
             );
         } elif e.status in [404, 422] {
             caps.warnings.append(
@@ -1196,8 +1206,12 @@ impl KEDAAutoscaler.discover_capabilities {
     http_addon_status: (int | None) = None;
     for version in SUPPORTED_HTTP_INTERCEPTOR_API_VERSIONS {
         try {
-            api.list_cluster_custom_object(
-                group="http.keda.sh", version=version, plural="interceptorroutes"
+            api.list_namespaced_custom_object(
+                group="http.keda.sh",
+                version=version,
+                namespace=namespace,
+                plural="interceptorroutes",
+                limit=1
             );
             caps.http_addon_available = True;
             caps.interceptor_route_api_version = version;
@@ -1207,8 +1221,9 @@ impl KEDAAutoscaler.discover_capabilities {
             if e.status == 403 {
                 caps.errors.append(
                     "Permission denied (403) discovering the KEDA HTTP Add-on "
-                    f"(http.keda.sh/{version} InterceptorRoute). Grant RBAC "
-                    "list/get on this resource to the jac-scale service account."
+                    f"(http.keda.sh/{version} InterceptorRoute) in namespace "
+                    f"'{namespace}'. Grant the deploying identity list on "
+                    "interceptorroutes there."
                 );
                 break;
             } elif e.status not in [404, 422] {
@@ -1219,8 +1234,12 @@ impl KEDAAutoscaler.discover_capabilities {
 
     if not caps.http_addon_available and http_addon_status in [404, 422] {
         try {
-            api.list_cluster_custom_object(
-                group="http.keda.sh", version="v1alpha1", plural="httpscaledobjects"
+            api.list_namespaced_custom_object(
+                group="http.keda.sh",
+                version="v1alpha1",
+                namespace=namespace,
+                plural="httpscaledobjects",
+                limit=1
             );
             caps.warnings.append(
                 "Legacy KEDA HTTP Add-on detected (http.keda.sh/v1alpha1 "
@@ -1232,9 +1251,9 @@ impl KEDAAutoscaler.discover_capabilities {
                 caps.errors.append(
                     "Permission denied (403) probing the legacy KEDA HTTP "
                     "Add-on API (http.keda.sh/v1alpha1 HTTPScaledObject) "
-                    "while checking for an outdated install. Grant RBAC "
-                    "list/get on this resource to the jac-scale service "
-                    "account."
+                    f"in namespace '{namespace}' while checking for an "
+                    "outdated install. Grant the deploying identity list on "
+                    "httpscaledobjects there."
                 );
             } elif e.status in [404, 422] {
                 caps.warnings.append(
@@ -1261,7 +1280,7 @@ impl KEDAAutoscaler.discover_capabilities {
         }
     }
 
-    self._capabilities_cache[cluster_key] = caps;
+    cached[namespace] = caps;
     return caps;
 }
 

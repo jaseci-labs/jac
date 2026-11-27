@@ -57,7 +57,7 @@ def default_http_activation_config(**overrides: any) -> dict[str, any] {
 }
 
 # KEDAAutoscaler wired to MagicMock clients, with the HTTP Add-on preflight
-# check (list_cluster_custom_object) pre-configured as installed by default.
+# check (list_namespaced_custom_object) pre-configured as installed by default.
 # Pass a pre-configured apps_api/core_api/custom_api to control target,
 # Service, or route/ScaledObject existence for a specific test. Returns the
 # mocks alongside the instance since KEDAAutoscaler's api fields are typed
@@ -71,9 +71,9 @@ def mocked_keda_autoscaler(
     KEDAAutoscaler._preflight_cache.clear();
     custom_api = custom_api or unittest.mock.MagicMock();
     if http_addon_installed {
-        custom_api.list_cluster_custom_object.return_value = {};
+        custom_api.list_namespaced_custom_object.return_value = {};
     } else {
-        custom_api.list_cluster_custom_object.side_effect = ApiException(status=404);
+        custom_api.list_namespaced_custom_object.side_effect = ApiException(status=404);
     }
     apps_api = apps_api or unittest.mock.MagicMock();
     core_api = core_api or unittest.mock.MagicMock();

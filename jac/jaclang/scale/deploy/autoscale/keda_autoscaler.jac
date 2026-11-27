@@ -45,7 +45,7 @@ obj KEDAAutoscaler(Autoscaler) {
     ) -> None;
 
     def _build_manifests(spec: AutoscalerSpec) -> list[dict[str, any]];
-    def preflight -> list[str];
+    def preflight(namespace: str) -> list[str];
     def apply(spec: AutoscalerSpec) -> bool;
     def destroy(app_name: str, namespace: str) -> None;
     def destroy_collection(
@@ -89,7 +89,10 @@ obj KEDAAutoscaler(Autoscaler) {
     def http_scaled_object_name_for(target: str) -> str;
     def apply_http_activation(spec: HTTPActivationSpec) -> bool;
     def destroy_http_activation(target: str, namespace: str) -> None;
-    def discover_capabilities(refresh: bool = False) -> KEDACapabilities;
+    def discover_capabilities(
+        namespace: str, refresh: bool = False
+    ) -> KEDACapabilities;
+
     def invalidate_capabilities -> None;
     def _capabilities_cache_key -> str;
     def _check_service_address(core_api: any, address: str) -> (str | None);

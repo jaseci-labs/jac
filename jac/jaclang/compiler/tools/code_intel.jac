@@ -21,19 +21,9 @@ glob INDEX_SCHEMA: int = 2,
          "dist",
          ".mypy_cache",
          ".pytest_cache"
-     },
-     _ARCH_KIND: dict[str, str] = {
-         "node": "node",
-         "walker": "walker",
-         "edge": "edge",
-         "obj": "obj",
-         "class": "class",
-         "enum": "enum"
      };
 
-
 def _real(path: str) -> str;
-
 
 obj SourceRef {
     has file: str,
@@ -45,7 +35,6 @@ obj SourceRef {
     def render -> str;
     def to_dict -> dict[str, any];
 }
-
 
 obj SymbolInfo {
     has name: str,
@@ -66,7 +55,6 @@ obj SymbolInfo {
     static def from_dict(d: dict[str, any]) -> SymbolInfo;
 }
 
-
 obj Diagnostic {
     has file: str,
         line: int,
@@ -77,9 +65,7 @@ obj Diagnostic {
     def to_dict -> dict[str, any];
 }
 
-
 def _diag_key(d: Diagnostic) -> str;
-
 
 obj EntryPoint {
     has walker_name: str,
@@ -94,7 +80,6 @@ obj EntryPoint {
     static def from_dict(d: dict[str, any]) -> EntryPoint;
 }
 
-
 obj ContextSlice {
     has query: str,
         target: SymbolInfo | None = None,
@@ -104,7 +89,6 @@ obj ContextSlice {
     def render -> str;
     def to_dict -> dict[str, any];
 }
-
 
 obj CodeIntelligence {
     has proj_dir: str,

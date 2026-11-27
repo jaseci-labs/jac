@@ -60,8 +60,7 @@ def _app(tmp: str) -> str {
 test "the seal records the native unit and its artifact" {
     (ok, why) = native_pipeline_available();
     if not ok {
-        import pytest;
-        pytest.skip(why);
+        testskip(why);
     } else {
         with tempfile.TemporaryDirectory(prefix="jac-seal-native-") as tmp {
             src_root = _app(tmp);
@@ -107,8 +106,7 @@ test "the seal records the native unit and its artifact" {
 test "a tampered artifact is refused at load" {
     (ok, why) = native_pipeline_available();
     if not ok {
-        import pytest;
-        pytest.skip(why);
+        testskip(why);
     } else {
         with tempfile.TemporaryDirectory(prefix="jac-seal-native-") as tmp {
             src_root = _app(tmp);

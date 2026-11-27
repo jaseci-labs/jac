@@ -180,6 +180,7 @@ impl check(
             units.append(file_unit);
         }
     }
+    warn_unmet_project_pins(sorted({str(unit['root_dir']) for unit in units}));
     sharded = _shard_units(units);
     if sharded is None {
         console.error("Error: JAC_CHECK_SHARD must be K/N with 1 <= K <= N.");
@@ -454,7 +455,7 @@ impl lint(
             }
             error_count = fixed_count + unfixable_count;
 
-            import from jaclang.compiler.driver.bccache { discover_annex_files }
+            import from jaclang.compiler.driver.annex_discovery { discover_annex_files }
             annex_paths = (
                 discover_annex_files(str(path_obj), '.impl.jac')
                 + discover_annex_files(str(path_obj), '.test.jac')
@@ -572,6 +573,7 @@ impl lint(
     total_errors = 0;
     total_unfixable = 0;
     (all_files, had_path_errors) = _iter_jac_files(paths, ignore_list);
+    warn_unmet_project_pins(sorted({str(Path(f).parent) for f in all_files}));
     if fix {
         all_files = _with_annex_owners(all_files, ignore_list);
     }
@@ -1272,7 +1274,9 @@ impl precommit(
             try {
                 checkout_paths = list(rel_targets);
                 try {
-                    import from jaclang.compiler.driver.bccache { discover_annex_files }
+                    import from jaclang.compiler.driver.annex_discovery {
+                        discover_annex_files
+                    }
                     rel_set = {r for r in rel_targets};
                     annex_rel: list[str] = [];
                     for rel in rel_targets {
@@ -1514,6 +1518,22 @@ impl `test(
     jobs = jobs_setting("test", jobs, cfg.dev if cfg else None);
     rc = 0;
     try {
+        warn_unmet_project_pins(
+            sorted(
+                {
+                    str(Path(f).parent)
+                    for f in discover(
+                        paths,
+                        roots,
+                        [
+                            p
+                            for p in (ignore or [])
+                            if p
+                        ]
+                    ).files
+                }
+            )
+        );
         rc = run_tests(
             paths=paths,
             directory=roots,
@@ -1575,9 +1595,7 @@ impl grammar(output: str = "", strict: bool = False) -> int {
     }
 
     import from typing { cast }
-    pass_ = cast(
-        GrammarExtractPass, run_utility(CompilationProduct.GRAMMAR, mod, prog)
-    );
+    pass_ = cast(GrammarExtractPass, run_pass(GrammarExtractPass, mod, prog));
     if len(pass_.rules) == 0 {
         console.error("No grammar rules extracted.");
         return 1;
@@ -1917,10 +1935,6 @@ impl _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
             import from jaclang.compiler.driver.na_coverage { na_coverage_snapshot }
             result['coverage'] = na_coverage_snapshot();
         }
-        for m in prog.mod.hub.values() {
-            m.terminals = [];
-            m.src_terminals = [];
-        }
         new_errors = prog.errors_had[err_start:];
         new_warnings = prog.warnings_had[warn_start:];
 
@@ -2025,7 +2039,7 @@ impl _format_single_file_worker(
     annex_formatted_map: dict[str, str] = {};
     annex_logical_map: dict[str, str] = {};
     if lintfix {
-        import from jaclang.compiler.driver.bccache { discover_annex_files }
+        import from jaclang.compiler.driver.annex_discovery { discover_annex_files }
 
         annex_paths = (
             discover_annex_files(file_path, '.impl.jac')

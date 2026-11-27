@@ -12,32 +12,40 @@ impl MonitoringDeployer.ensure_service(
     }
 }
 
-impl MonitoringDeployer._deploy_prometheus(
-    app_name: str,
-    namespace: str,
-    apps_v1: any,
-    core_v1: any,
-    provider: ClusterProvider,
-    scrape_target_service: str = ""
-) {
-    prometheus_name = f"{app_name}-prometheus";
+impl MonitoringDeployer._scrape_config(app_name: str, namespace: str) -> str {
     ksm_name = f"{app_name}-kube-state-metrics";
     ne_name = f"{app_name}-node-exporter";
-    service_port = provider.prometheus_scrape_port(self.k8s_config.container_port);
-    scrape_target = scrape_target_service or f"{app_name}-service";
-
     scrape_config = (
         "global:\n"
         "  scrape_interval: 15s\n"
         "  evaluation_interval: 15s\n"
         "scrape_configs:\n"
         f"  - job_name: '{app_name}'\n"
-        "    static_configs:\n"
-        f"      - targets: ['{scrape_target}:{service_port}']\n"
+        "    kubernetes_sd_configs:\n"
+        "      - role: pod\n"
+        "        namespaces:\n"
+        f"          names: ['{namespace}']\n"
+        "        selectors:\n"
+        "          - role: pod\n"
+        f"            label: '{FLEET_SELECTOR}'\n"
         "    metrics_path: '/metrics'\n"
         "    basic_auth:\n"
         f"      username: '{self.k8s_config.admin_username}'\n"
         "      password_file: /etc/prometheus/scrape-secret/password\n"
+        "    relabel_configs:\n"
+        "      - source_labels: [__meta_kubernetes_pod_container_port_number]\n"
+        f"        regex: '{self.k8s_config.container_port}'\n"
+        "        action: keep\n"
+        "      - source_labels: [__meta_kubernetes_pod_label_jac_scale_role]\n"
+        "        target_label: role\n"
+        "      - source_labels: [__meta_kubernetes_pod_label_jac_scale_role]\n"
+        "        regex: microservice\n"
+        "        target_label: __metrics_path__\n"
+        f"        replacement: '{self.k8s_config.metrics_endpoint}'\n"
+        "      - source_labels: [__meta_kubernetes_pod_label_app]\n"
+        "        target_label: app\n"
+        "      - source_labels: [__meta_kubernetes_pod_name]\n"
+        "        target_label: pod\n"
     );
     if self.k8s_config.k8s_metrics_enabled {
         scrape_config = scrape_config
@@ -73,8 +81,108 @@ impl MonitoringDeployer._deploy_prometheus(
                 "        replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor\n"
             );
     }
+    return scrape_config;
+}
 
-    config_hash = hashlib.md5(scrape_config.encode()).hexdigest()[:12];
+impl MonitoringDeployer._prometheus_deployment(
+    app_name: str, namespace: str, volume_size: str = ''
+) -> dict[str, any] {
+    prometheus_name = f"{app_name}-prometheus";
+    prometheus_sa_name = f"{prometheus_name}-sa";
+    scrape_secret_name = f"{prometheus_name}-scrape-secret";
+    config_hash = hashlib.md5(
+        self._scrape_config(app_name, namespace).encode()
+    ).hexdigest()[:12];
+    deployment: dict[str, any] = {
+        'apiVersion': 'apps/v1',
+        'kind': 'Deployment',
+        'metadata': {
+            'name': prometheus_name,
+            'namespace': namespace,
+            'labels': {'app': prometheus_name, 'managed': 'jac-scale'}
+        },
+        'spec': {
+            'replicas': 1,
+            'selector': {'matchLabels': {'app': prometheus_name}},
+            'template': {
+                'metadata': {
+                    'labels': {'app': prometheus_name},
+                    'annotations': {'checksum/config': config_hash}
+                },
+                'spec': {
+                    'automountServiceAccountToken': True,
+                    'serviceAccountName': prometheus_sa_name,
+                    'securityContext': {'seccompProfile': {'type': 'RuntimeDefault'}},
+                    'containers': [
+                        {
+                            'name': 'prometheus',
+                            'image': 'prom/prometheus:v3.14.0',
+                            'securityContext': {
+                                'runAsNonRoot': True,
+                                'runAsUser': 65534,
+                                'readOnlyRootFilesystem': True,
+                                'allowPrivilegeEscalation': False,
+                                'capabilities': {'drop': ['ALL']}
+                            },
+                            'args': [
+                                '--config.file=/etc/prometheus/prometheus.yml',
+                                '--storage.tsdb.path=/prometheus',
+                                '--web.console.libraries=/usr/share/prometheus/console_libraries',
+                                '--web.console.templates=/usr/share/prometheus/consoles',
+                                '--web.enable-lifecycle'
+                            ],
+                            'ports': [{'containerPort': 9090}],
+                            'volumeMounts': [
+                                {
+                                    'name': 'prometheus-config-vol',
+                                    'mountPath': '/etc/prometheus'
+                                },
+                                {
+                                    'name': 'prometheus-scrape-secret',
+                                    'mountPath': '/etc/prometheus/scrape-secret',
+                                    'readOnly': True
+                                },
+                                {'name': 'prometheus-data', 'mountPath': '/prometheus'},
+                                {'name': 'tmp', 'mountPath': '/tmp'}
+                            ]
+                        }
+                    ],
+                    'volumes': [
+                        {
+                            'name': 'prometheus-config-vol',
+                            'configMap': {'name': f"{prometheus_name}-config"}
+                        },
+                        {
+                            'name': 'prometheus-scrape-secret',
+                            'secret': {'secretName': scrape_secret_name}
+                        },
+                        {'name': 'prometheus-data', 'emptyDir': {}},
+                        {'name': 'tmp', 'emptyDir': {}}
+                    ]
+                }
+            }
+        }
+    };
+    if self.k8s_config.monitoring_storage_enabled {
+        cap: int = (
+            parse_storage_quantity(volume_size or self.k8s_config.prometheus_storage)
+                * 4
+            // 5
+        )
+            // (1024 ** 2);
+        deployment['spec']['template']['spec']['containers'][0]['args'] += [
+            '--storage.tsdb.retention.time=15d',
+            f"--storage.tsdb.retention.size={cap}MB"
+        ];
+    }
+    return self._apply_storage(deployment, 'prometheus-data');
+}
+
+impl MonitoringDeployer._deploy_prometheus(
+    app_name: str, namespace: str, apps_v1: any, core_v1: any
+) {
+    prometheus_name = f"{app_name}-prometheus";
+    scrape_config = self._scrape_config(app_name, namespace);
 
     prometheus_configmap = {
         'apiVersion': 'v1',
@@ -226,76 +334,15 @@ impl MonitoringDeployer._deploy_prometheus(
         }
     }
 
-    prometheus_deployment = {
-        'apiVersion': 'apps/v1',
-        'kind': 'Deployment',
-        'metadata': {
-            'name': prometheus_name,
-            'namespace': namespace,
-            'labels': {'app': prometheus_name, 'managed': 'jac-scale'}
-        },
-        'spec': {
-            'replicas': 1,
-            'selector': {'matchLabels': {'app': prometheus_name}},
-            'template': {
-                'metadata': {
-                    'labels': {'app': prometheus_name},
-                    'annotations': {'checksum/config': config_hash}
-                },
-                'spec': {
-                    'automountServiceAccountToken': True,
-                    'serviceAccountName': prometheus_sa_name,
-                    'securityContext': {'seccompProfile': {'type': 'RuntimeDefault'}},
-                    'containers': [
-                        {
-                            'name': 'prometheus',
-                            'image': 'prom/prometheus:v3.14.0',
-                            'securityContext': {
-                                'runAsNonRoot': True,
-                                'runAsUser': 65534,
-                                'readOnlyRootFilesystem': True,
-                                'allowPrivilegeEscalation': False,
-                                'capabilities': {'drop': ['ALL']}
-                            },
-                            'args': [
-                                '--config.file=/etc/prometheus/prometheus.yml',
-                                '--storage.tsdb.path=/prometheus',
-                                '--web.console.libraries=/usr/share/prometheus/console_libraries',
-                                '--web.console.templates=/usr/share/prometheus/consoles',
-                                '--web.enable-lifecycle'
-                            ],
-                            'ports': [{'containerPort': 9090}],
-                            'volumeMounts': [
-                                {
-                                    'name': 'prometheus-config-vol',
-                                    'mountPath': '/etc/prometheus'
-                                },
-                                {
-                                    'name': 'prometheus-scrape-secret',
-                                    'mountPath': '/etc/prometheus/scrape-secret',
-                                    'readOnly': True
-                                },
-                                {'name': 'prometheus-data', 'mountPath': '/prometheus'},
-                                {'name': 'tmp', 'mountPath': '/tmp'}
-                            ]
-                        }
-                    ],
-                    'volumes': [
-                        {
-                            'name': 'prometheus-config-vol',
-                            'configMap': {'name': f"{prometheus_name}-config"}
-                        },
-                        {
-                            'name': 'prometheus-scrape-secret',
-                            'secret': {'secretName': scrape_secret_name}
-                        },
-                        {'name': 'prometheus-data', 'emptyDir': {}},
-                        {'name': 'tmp', 'emptyDir': {}}
-                    ]
-                }
-            }
-        }
-    };
+    volume_size: str = '';
+    if self.k8s_config.monitoring_storage_enabled {
+        volume_size = self._ensure_data_pvc(
+            apps_v1, core_v1, self._data_pvc(app_name, namespace, 'prometheus')
+        );
+    }
+    prometheus_deployment = self._prometheus_deployment(
+        app_name, namespace, volume_size
+    );
 
     try {
         apps_v1.patch_namespaced_deployment(
@@ -1267,6 +1314,77 @@ impl MonitoringDeployer._deploy_grafana(
     }
 }
 
+impl MonitoringDeployer._tempo_deployment(
+    app_name: str, namespace: str
+) -> dict[str, any] {
+    tempo_name = f"{app_name}-tempo";
+    tempo_sa_name = f"{tempo_name}-sa";
+    deployment: dict[str, any] = {
+        'apiVersion': 'apps/v1',
+        'kind': 'Deployment',
+        'metadata': {
+            'name': tempo_name,
+            'namespace': namespace,
+            'labels': {'app': tempo_name, 'managed': 'jac-scale'}
+        },
+        'spec': {
+            'replicas': 1,
+            'selector': {'matchLabels': {'app': tempo_name}},
+            'template': {
+                'metadata': {'labels': {'app': tempo_name}},
+                'spec': {
+                    'automountServiceAccountToken': False,
+                    'serviceAccountName': tempo_sa_name,
+                    'securityContext': {'seccompProfile': {'type': 'RuntimeDefault'}},
+                    'containers': [
+                        {
+                            'name': 'tempo',
+                            'image': 'grafana/tempo:2.7.0',
+                            'securityContext': {
+                                'runAsNonRoot': True,
+                                'runAsUser': 10001,
+                                'readOnlyRootFilesystem': True,
+                                'allowPrivilegeEscalation': False,
+                                'capabilities': {'drop': ['ALL']}
+                            },
+                            'args': ['-config.file=/etc/tempo/tempo.yaml'],
+                            'ports': [
+                                {'containerPort': 3200, 'name': 'http'},
+                                {'containerPort': 4317, 'name': 'otlp-grpc'},
+                                {'containerPort': 4318, 'name': 'otlp-http'}
+                            ],
+                            'readinessProbe': {
+                                'httpGet': {'path': '/ready', 'port': 3200},
+                                'initialDelaySeconds': 15,
+                                'timeoutSeconds': 5
+                            },
+                            'livenessProbe': {
+                                'httpGet': {'path': '/ready', 'port': 3200},
+                                'initialDelaySeconds': 15,
+                                'timeoutSeconds': 5
+                            },
+                            'volumeMounts': [
+                                {'name': 'tempo-config-vol', 'mountPath': '/etc/tempo'},
+                                {'name': 'tempo-data', 'mountPath': '/var/tempo'},
+                                {'name': 'tmp', 'mountPath': '/tmp'}
+                            ]
+                        }
+                    ],
+                    'volumes': [
+                        {
+                            'name': 'tempo-config-vol',
+                            'configMap': {'name': f"{tempo_name}-config"}
+                        },
+                        {'name': 'tempo-data', 'emptyDir': {}},
+                        {'name': 'tmp', 'emptyDir': {}}
+                    ]
+                }
+            }
+        }
+    };
+    return self._apply_storage(deployment, 'tempo-data');
+}
+
 impl MonitoringDeployer._deploy_tempo(
     app_name: str, namespace: str, apps_v1: any, core_v1: any
 ) {
@@ -1351,69 +1469,12 @@ impl MonitoringDeployer._deploy_tempo(
         }
     }
 
-    tempo_deployment = {
-        'apiVersion': 'apps/v1',
-        'kind': 'Deployment',
-        'metadata': {
-            'name': tempo_name,
-            'namespace': namespace,
-            'labels': {'app': tempo_name, 'managed': 'jac-scale'}
-        },
-        'spec': {
-            'replicas': 1,
-            'selector': {'matchLabels': {'app': tempo_name}},
-            'template': {
-                'metadata': {'labels': {'app': tempo_name}},
-                'spec': {
-                    'automountServiceAccountToken': False,
-                    'serviceAccountName': tempo_sa_name,
-                    'securityContext': {'seccompProfile': {'type': 'RuntimeDefault'}},
-                    'containers': [
-                        {
-                            'name': 'tempo',
-                            'image': 'grafana/tempo:2.7.0',
-                            'securityContext': {
-                                'runAsNonRoot': True,
-                                'runAsUser': 10001,
-                                'readOnlyRootFilesystem': True,
-                                'allowPrivilegeEscalation': False,
-                                'capabilities': {'drop': ['ALL']}
-                            },
-                            'args': ['-config.file=/etc/tempo/tempo.yaml'],
-                            'ports': [
-                                {'containerPort': 3200, 'name': 'http'},
-                                {'containerPort': 4317, 'name': 'otlp-grpc'},
-                                {'containerPort': 4318, 'name': 'otlp-http'}
-                            ],
-                            'readinessProbe': {
-                                'httpGet': {'path': '/ready', 'port': 3200},
-                                'initialDelaySeconds': 15,
-                                'timeoutSeconds': 5
-                            },
-                            'livenessProbe': {
-                                'httpGet': {'path': '/ready', 'port': 3200},
-                                'initialDelaySeconds': 15,
-                                'timeoutSeconds': 5
-                            },
-                            'volumeMounts': [
-                                {'name': 'tempo-config-vol', 'mountPath': '/etc/tempo'},
-                                {'name': 'tempo-data', 'mountPath': '/var/tempo'},
-                                {'name': 'tmp', 'mountPath': '/tmp'}
-                            ]
-                        }
-                    ],
-                    'volumes': [
-                        {
-                            'name': 'tempo-config-vol',
-                            'configMap': {'name': f"{tempo_name}-config"}
-                        },
-                        {'name': 'tempo-data', 'emptyDir': {}},
-                        {'name': 'tmp', 'emptyDir': {}}
-                    ]
-                }
-            }
-        }
-    };
+    if self.k8s_config.monitoring_storage_enabled {
+        self._ensure_data_pvc(
+            apps_v1, core_v1, self._data_pvc(app_name, namespace, 'tempo')
+        );
+    }
+    tempo_deployment = self._tempo_deployment(app_name, namespace);
     try {
         apps_v1.patch_namespaced_deployment(
             name=tempo_name, namespace=namespace, body=tempo_deployment
@@ -1463,13 +1524,17 @@ impl MonitoringDeployer._deploy_tempo(
     }
 }
 
-impl MonitoringDeployer._deploy_loki(
-    app_name: str, namespace: str, apps_v1: any, core_v1: any
-) {
-    loki_name = f"{app_name}-loki";
-    loki_sa_name = f"{loki_name}-sa";
-
-    loki_config_yaml = (
+impl MonitoringDeployer._loki_config -> str {
+    retention: str = "";
+    if self.k8s_config.monitoring_storage_enabled {
+        retention = (
+            f"  retention_period: {self.k8s_config.loki_retention}\n"
+            "compactor:\n"
+            "  retention_enabled: true\n"
+            "  delete_request_store: filesystem\n"
+        );
+    }
+    return (
         "auth_enabled: false\n"
         "server:\n"
         "  http_listen_port: 3100\n"
@@ -1497,57 +1562,16 @@ impl MonitoringDeployer._deploy_loki(
         "limits_config:\n"
         "  reject_old_samples: true\n"
         "  reject_old_samples_max_age: 168h\n"
-    );
-    loki_configmap = {
-        'apiVersion': 'v1',
-        'kind': 'ConfigMap',
-        'metadata': {
-            'name': f"{loki_name}-config",
-            'namespace': namespace,
-            'labels': {'app': loki_name, 'managed': 'jac-scale'}
-        },
-        'data': {'loki.yaml': loki_config_yaml}
-    };
-    try {
-        core_v1.read_namespaced_config_map(
-            name=f"{loki_name}-config", namespace=namespace
-        );
-        core_v1.replace_namespaced_config_map(
-            name=f"{loki_name}-config", namespace=namespace, body=loki_configmap
-        );
-    } except ApiException as e {
-        if e.status == 404 {
-            core_v1.create_namespaced_config_map(
-                namespace=namespace, body=loki_configmap
-            );
-        } else {
-            raise;
-        }
-    }
+    )
+        + retention;
+}
 
-    loki_sa = {
-        'apiVersion': 'v1',
-        'kind': 'ServiceAccount',
-        'metadata': {
-            'name': loki_sa_name,
-            'namespace': namespace,
-            'labels': {'app': loki_name, 'managed': 'jac-scale'}
-        },
-        'automountServiceAccountToken': False
-    };
-    try {
-        core_v1.read_namespaced_service_account(name=loki_sa_name, namespace=namespace);
-    } except ApiException as e {
-        if e.status == 404 {
-            core_v1.create_namespaced_service_account(
-                namespace=namespace, body=loki_sa
-            );
-        } else {
-            raise;
-        }
-    }
-
-    loki_deployment = {
+impl MonitoringDeployer._loki_deployment(
+    app_name: str, namespace: str
+) -> dict[str, any] {
+    loki_name = f"{app_name}-loki";
+    loki_sa_name = f"{loki_name}-sa";
+    deployment: dict[str, any] = {
         'apiVersion': 'apps/v1',
         'kind': 'Deployment',
         'metadata': {
@@ -1606,6 +1630,76 @@ impl MonitoringDeployer._deploy_loki(
             }
         }
     };
+    if self.k8s_config.monitoring_storage_enabled {
+        deployment['spec']['template']['metadata']['annotations'] = {
+            'checksum/config': hashlib.md5(self._loki_config().encode()).hexdigest()[:12]
+        };
+    }
+    return self._apply_storage(deployment, 'loki-data');
+}
+
+impl MonitoringDeployer._deploy_loki(
+    app_name: str, namespace: str, apps_v1: any, core_v1: any
+) {
+    loki_name = f"{app_name}-loki";
+    loki_sa_name = f"{loki_name}-sa";
+
+    loki_config_yaml = self._loki_config();
+    loki_configmap = {
+        'apiVersion': 'v1',
+        'kind': 'ConfigMap',
+        'metadata': {
+            'name': f"{loki_name}-config",
+            'namespace': namespace,
+            'labels': {'app': loki_name, 'managed': 'jac-scale'}
+        },
+        'data': {'loki.yaml': loki_config_yaml}
+    };
+    try {
+        core_v1.read_namespaced_config_map(
+            name=f"{loki_name}-config", namespace=namespace
+        );
+        core_v1.replace_namespaced_config_map(
+            name=f"{loki_name}-config", namespace=namespace, body=loki_configmap
+        );
+    } except ApiException as e {
+        if e.status == 404 {
+            core_v1.create_namespaced_config_map(
+                namespace=namespace, body=loki_configmap
+            );
+        } else {
+            raise;
+        }
+    }
+
+    loki_sa = {
+        'apiVersion': 'v1',
+        'kind': 'ServiceAccount',
+        'metadata': {
+            'name': loki_sa_name,
+            'namespace': namespace,
+            'labels': {'app': loki_name, 'managed': 'jac-scale'}
+        },
+        'automountServiceAccountToken': False
+    };
+    try {
+        core_v1.read_namespaced_service_account(name=loki_sa_name, namespace=namespace);
+    } except ApiException as e {
+        if e.status == 404 {
+            core_v1.create_namespaced_service_account(
+                namespace=namespace, body=loki_sa
+            );
+        } else {
+            raise;
+        }
+    }
+
+    if self.k8s_config.monitoring_storage_enabled {
+        self._ensure_data_pvc(
+            apps_v1, core_v1, self._data_pvc(app_name, namespace, 'loki')
+        );
+    }
+    loki_deployment = self._loki_deployment(app_name, namespace);
     try {
         apps_v1.patch_namespaced_deployment(
             name=loki_name, namespace=namespace, body=loki_deployment
@@ -1641,15 +1735,8 @@ impl MonitoringDeployer._deploy_loki(
     }
 }
 
-impl MonitoringDeployer._deploy_alloy(
-    app_name: str, namespace: str, apps_v1: any, core_v1: any
-) {
+impl MonitoringDeployer._alloy_config(app_name: str, namespace: str) -> str {
     loki_name = f"{app_name}-loki";
-    alloy_name = f"{app_name}-alloy";
-    alloy_sa_name = f"{alloy_name}-sa";
-    cluster_role_name = f"{namespace}-{alloy_name}";
-    cluster_role_binding_name = f"{namespace}-{alloy_name}";
-    rbac_v1 = client.RbacAuthorizationV1Api();
     loki_push_url = f"http://{loki_name}-service:3100/loki/api/v1/push";
     tempo_name = f"{app_name}-tempo";
     tempo_otlp_endpoint = f"{tempo_name}-service:4317";
@@ -1661,6 +1748,9 @@ impl MonitoringDeployer._deploy_alloy(
     alloy_logs_lane = (
         "discovery.kubernetes \"pods\" {\n"
         "  role = \"pod\"\n"
+        "  namespaces {\n"
+        f"    names = [\"{namespace}\"]\n"
+        "  }\n"
         "}\n"
         "\n"
         "discovery.relabel \"pods\" {\n"
@@ -1788,7 +1878,19 @@ impl MonitoringDeployer._deploy_alloy(
         );
     }
 
-    alloy_config_river = alloy_header + alloy_logs_lane + alloy_otel_lane;
+    return alloy_header + alloy_logs_lane + alloy_otel_lane;
+}
+
+impl MonitoringDeployer._deploy_alloy(
+    app_name: str, namespace: str, apps_v1: any, core_v1: any
+) {
+    alloy_name = f"{app_name}-alloy";
+    alloy_sa_name = f"{alloy_name}-sa";
+    cluster_role_name = f"{namespace}-{alloy_name}";
+    cluster_role_binding_name = f"{namespace}-{alloy_name}";
+    rbac_v1 = client.RbacAuthorizationV1Api();
+    alloy_config_river = self._alloy_config(app_name, namespace);
+    config_hash = hashlib.md5(alloy_config_river.encode()).hexdigest()[:12];
     alloy_configmap = {
         'apiVersion': 'v1',
         'kind': 'ConfigMap',
@@ -1914,7 +2016,10 @@ impl MonitoringDeployer._deploy_alloy(
         'spec': {
             'selector': {'matchLabels': {'app': alloy_name}},
             'template': {
-                'metadata': {'labels': {'app': alloy_name, 'managed': 'jac-scale'}},
+                'metadata': {
+                    'labels': {'app': alloy_name, 'managed': 'jac-scale'},
+                    'annotations': {'checksum/config': config_hash}
+                },
                 'spec': {
                     'automountServiceAccountToken': True,
                     'serviceAccountName': alloy_sa_name,
@@ -1967,7 +2072,9 @@ impl MonitoringDeployer._deploy_alloy(
         }
     };
     try {
-        apps_v1.read_namespaced_daemon_set(name=alloy_name, namespace=namespace);
+        apps_v1.patch_namespaced_daemon_set(
+            name=alloy_name, namespace=namespace, body=alloy_daemonset
+        );
     } except ApiException as e {
         if e.status == 404 {
             apps_v1.create_namespaced_daemon_set(
@@ -2015,21 +2122,14 @@ impl MonitoringDeployer._deploy_alloy(
 }
 
 impl MonitoringDeployer.deploy(
-    app_name: str,
-    namespace: str,
-    apps_v1: any,
-    core_v1: any,
-    provider: ClusterProvider,
-    scrape_target_service: str = ""
+    app_name: str, namespace: str, apps_v1: any, core_v1: any
 ) {
     if self.k8s_config.monitoring_enabled {
         if self.k8s_config.k8s_metrics_enabled {
             self._deploy_kube_state_metrics(app_name, namespace, apps_v1, core_v1);
             self._deploy_node_exporter(app_name, namespace, apps_v1, core_v1);
         }
-        self._deploy_prometheus(
-            app_name, namespace, apps_v1, core_v1, provider, scrape_target_service
-        );
+        self._deploy_prometheus(app_name, namespace, apps_v1, core_v1);
     }
     if self.k8s_config.tracing_enabled {
         self._deploy_tempo(app_name, namespace, apps_v1, core_v1);
@@ -2063,6 +2163,12 @@ impl MonitoringDeployer.destroy(
 
     delete_if_exists(
         apps_v1.delete_namespaced_deployment, prometheus_name, namespace, 'Deployment'
+    );
+    delete_if_exists(
+        core_v1.delete_namespaced_persistent_volume_claim,
+        f"{prometheus_name}-data",
+        namespace,
+        'PersistentVolumeClaim'
     );
     delete_if_exists(
         core_v1.delete_namespaced_service,
@@ -2152,6 +2258,12 @@ impl MonitoringDeployer.destroy(
         apps_v1.delete_namespaced_deployment, loki_name, namespace, 'Deployment'
     );
     delete_if_exists(
+        core_v1.delete_namespaced_persistent_volume_claim,
+        f"{loki_name}-data",
+        namespace,
+        'PersistentVolumeClaim'
+    );
+    delete_if_exists(
         core_v1.delete_namespaced_service, f"{loki_name}-service", namespace, 'Service'
     );
     try {
@@ -2223,6 +2335,12 @@ impl MonitoringDeployer.destroy(
         apps_v1.delete_namespaced_deployment, tempo_name, namespace, 'Deployment'
     );
     delete_if_exists(
+        core_v1.delete_namespaced_persistent_volume_claim,
+        f"{tempo_name}-data",
+        namespace,
+        'PersistentVolumeClaim'
+    );
+    delete_if_exists(
         core_v1.delete_namespaced_service, f"{tempo_name}-service", namespace, 'Service'
     );
     try {
@@ -2283,4 +2401,303 @@ impl MonitoringDeployer.destroy(
     if self.logger {
         self.logger.info(f"Monitoring stack destroyed for '{app_name}'");
     }
+}
+
+impl MonitoringDeployer._data_parts -> list[str] {
+    cfg = self.k8s_config;
+    return [
+        part
+        for (part, deployed) in [
+            ('prometheus', cfg.monitoring_enabled),
+            ('loki', cfg.loki_enabled),
+            ('tempo', cfg.tracing_enabled)
+        ]
+        if deployed
+    ];
+}
+
+impl MonitoringDeployer._storage_problems -> list[str] {
+    cfg = self.k8s_config;
+    parts: list[str] = self._data_parts();
+    problems: list[str] = [];
+    for part in parts {
+        key: str = f"{part}_storage";
+        size: any = getattr(cfg, key);
+        if not isinstance(size, str)
+            or re.fullmatch(r'[0-9]+(Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?', size.strip())
+                is None {
+            problems.append(
+                f"[scale.monitoring] {key} = {size!r} is not a whole-number "
+                "Kubernetes quantity in quotes, such as \"10Gi\""
+            );
+        } elif parse_storage_quantity(size) < 1024 ** 3 {
+            problems.append(f"[scale.monitoring] {key} = '{size}' is below 1Gi");
+        }
+    }
+    if 'loki' in parts {
+        kept: any = cfg.loki_retention;
+        hours: int = 0;
+        if isinstance(kept, str) {
+            period = re.fullmatch(r'([0-9]{1,6})([hdw])', kept.strip());
+            if period {
+                hours = int(period.group(1))
+                    * {'h': 1, 'd': 24, 'w': 168}[period.group(2)];
+            }
+        }
+        if hours < 24 {
+            problems.append(
+                f"[scale.monitoring] loki_retention = {kept!r} must be hours, days "
+                "or weeks in quotes and at least 24h, such as \"168h\" or \"7d\""
+            );
+        }
+    }
+    return problems;
+}
+
+impl MonitoringDeployer._storage_class_problem(classes: dict[str, bool]) -> str {
+    wanted: str = self.k8s_config.monitoring_storage_class;
+    if wanted and wanted not in classes {
+        return (
+            f"[scale.monitoring] storage_class = '{wanted}' is not a StorageClass "
+            "on this cluster"
+        );
+    }
+    if not wanted and not any(classes.values()) {
+        return (
+            "[scale.monitoring] storage_enabled needs a default StorageClass on "
+            "this cluster, or storage_class set to one that exists"
+        );
+    }
+    return "";
+}
+
+impl MonitoringDeployer._claims_to_make(
+    app_name: str, existing: set[str]
+) -> list[str] {
+    return [
+        f"{app_name}-{part}-data"
+        for part in self._data_parts()
+        if f"{app_name}-{part}-data" not in existing
+    ];
+}
+
+impl MonitoringDeployer._storage_unchecked(reason: any) -> None {
+    if self.logger {
+        self.logger.warn(
+            "Could not check the monitoring storage class before deploying "
+            f"({reason}). A claim on a class the cluster does not have stays Pending."
+        );
+    }
+}
+
+impl MonitoringDeployer._existing_data_claims(
+    core_v1: any, app_name: str, namespace: str
+) -> (set[str] | None) {
+    found: set[str] = set();
+    try {
+        for part in self._data_parts() {
+            name: str = f"{app_name}-{part}-data";
+            try {
+                core_v1.read_namespaced_persistent_volume_claim(
+                    name=name, namespace=namespace
+                );
+                found.add(name);
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise;
+                }
+            }
+        }
+    } except ApiException as e {
+        self._storage_unchecked(e.reason);
+        return None;
+    } except HTTPError as e {
+        self._storage_unchecked(e);
+        return None;
+    }
+    return found;
+}
+
+impl MonitoringDeployer._storage_classes(storage_v1: any) -> (dict[str, bool] | None) {
+    classes: dict[str, bool] = {};
+    try {
+        for sc in storage_v1.list_storage_class().items {
+            notes: dict[str, str] = sc.metadata.annotations or {};
+            classes[sc.metadata.name] = 'true'
+                in [
+                    notes.get('storageclass.kubernetes.io/is-default-class'),
+                    notes.get('storageclass.beta.kubernetes.io/is-default-class')
+                ];
+        }
+    } except ApiException as e {
+        self._storage_unchecked(e.reason);
+        return None;
+    } except HTTPError as e {
+        self._storage_unchecked(e);
+        return None;
+    }
+    return classes;
+}
+
+impl MonitoringDeployer._cluster_storage_problem(
+    app_name: str, namespace: str, core_v1: any, storage_v1: any
+) -> str {
+    existing = self._existing_data_claims(core_v1, app_name, namespace);
+    if existing is None or not self._claims_to_make(app_name, existing) {
+        return "";
+    }
+    classes = self._storage_classes(storage_v1);
+    return "" if classes is None else self._storage_class_problem(classes);
+}
+
+impl MonitoringDeployer._claim_size(
+    capacity: (str | None), requested: (str | None), asked: str
+) -> str {
+    readable: dict[str, int] = {};
+    for size in [capacity, requested, asked] {
+        try {
+            readable[str(size)] = parse_storage_quantity(str(size));
+        } except ValueError {
+            continue;
+        }
+    }
+    if str(capacity) in readable {
+        return str(capacity);
+    }
+    smallest: str = asked;
+    for size in [str(requested), asked] {
+        if size in readable
+            and (smallest not in readable or readable[size] < readable[smallest]) {
+            smallest = size;
+        }
+    }
+    return smallest;
+}
+
+impl MonitoringDeployer._apply_storage(
+    deployment: dict[str, any], volume: str
+) -> dict[str, any] {
+    on: bool = self.k8s_config.monitoring_storage_enabled;
+    pod: dict[str, any] = deployment['spec']['template']['spec'];
+    container: dict[str, any] = pod['containers'][0];
+    deployment['spec']['strategy'] = (
+        {'type': 'Recreate', 'rollingUpdate': None} if on else {'type': 'RollingUpdate'}
+    );
+    pod['securityContext']['fsGroup'] = (
+        container['securityContext']['runAsUser'] if on else None
+    );
+    pod['securityContext']['fsGroupChangePolicy'] = 'OnRootMismatch' if on else None;
+    if 'livenessProbe' in container {
+        container['startupProbe'] = (
+            {
+                'httpGet': container['livenessProbe']['httpGet'],
+                'periodSeconds': 10,
+                'failureThreshold': 60
+            }
+                if on
+                else None
+        );
+    }
+    for vol in pod['volumes'] {
+        if vol['name'] == volume {
+            vol['emptyDir'] = None if on else {};
+            vol['persistentVolumeClaim'] = (
+                {'claimName': f"{deployment['metadata']['name']}-data"} if on else None
+            );
+        }
+    }
+    return deployment;
+}
+
+impl MonitoringDeployer._data_pvc(
+    app_name: str, namespace: str, component: str
+) -> dict[str, any] {
+    cfg = self.k8s_config;
+    holder: str = f"{app_name}-{component}";
+    spec: dict[str, any] = {
+        'accessModes': ['ReadWriteOnce'],
+        'resources': {
+            'requests': {
+                'storage': {
+                    'prometheus': cfg.prometheus_storage,
+                    'loki': cfg.loki_storage,
+                    'tempo': cfg.tempo_storage
+                }[component].strip()
+            }
+        }
+    };
+    if cfg.monitoring_storage_class {
+        spec['storageClassName'] = cfg.monitoring_storage_class;
+    }
+    return {
+        'apiVersion': 'v1',
+        'kind': 'PersistentVolumeClaim',
+        'metadata': {
+            'name': f"{holder}-data",
+            'namespace': namespace,
+            'labels': {
+                'app': holder,
+                'managed': 'jac-scale',
+                'jac-scale.role': 'monitoring-data',
+                'jac-scale.owner': k8s_safe_name(app_name)
+            }
+        },
+        'spec': spec
+    };
+}
+
+impl MonitoringDeployer._ensure_data_pvc(
+    apps_v1: any, core_v1: any, manifest: dict[str, any]
+) -> str {
+    name: str = manifest['metadata']['name'];
+    namespace: str = manifest['metadata']['namespace'];
+    asked: str = manifest['spec']['resources']['requests']['storage'];
+    try {
+        claim = core_v1.read_namespaced_persistent_volume_claim(
+            name=name, namespace=namespace
+        );
+    } except ApiException as e {
+        if e.status != 404 {
+            raise;
+        }
+        core_v1.create_namespaced_persistent_volume_claim(
+            namespace=namespace, body=manifest
+        );
+        return asked;
+    }
+    if claim.metadata.deletion_timestamp is not None {
+        delete_if_exists(
+            apps_v1.delete_namespaced_deployment,
+            manifest['metadata']['labels']['app'],
+            namespace,
+            'Deployment'
+        );
+        wait_until_deleted(
+            lambda { core_v1.read_namespaced_persistent_volume_claim(
+                name, namespace
+            ); },
+            f"PVC '{name}'"
+        );
+        core_v1.create_namespaced_persistent_volume_claim(
+            namespace=namespace, body=manifest
+        );
+        return asked;
+    }
+    refused: str = "";
+    try {
+        resize_pvc_if_needed(core_v1, namespace, name, asked);
+    } except ValueError as e {
+        refused = str(e);
+    } except ApiException as e {
+        refused = f"{e.reason} {str(e.body or '')[:300]}".strip();
+    }
+    if refused and self.logger {
+        self.logger.warn(
+            f"Monitoring data claim '{name}' was not resized to {asked}: {refused}"
+        );
+    }
+    capacity: dict[str, str] = (claim.status.capacity if claim.status else None) or {};
+    return self._claim_size(
+        capacity.get('storage'), claim.spec.resources.requests.get('storage'), asked
+    );
 }

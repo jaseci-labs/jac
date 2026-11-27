@@ -11,6 +11,8 @@
 | **Deploy** | `jac scale deploy app.jac` | Ship the project source into the cluster and deploy |
 | **Preview** | `jac scale deploy app.jac --dry-run` | Print the manifests that would be applied; change nothing |
 | **Enable HTTPS** | `jac scale deploy app.jac --enable-tls` | Enable TLS on a live deployment (no redeploy, run after CNAME propagates) |
+| **Build only** | `jac scale build app.jac --out build --arch amd64` | Seal the app into `build/` without contacting the cluster |
+| **Deploy a build** | `jac scale deploy app.jac --from-build build` | Apply a build without building anything |
 
 There is no image-build step. `jac-scale` does not build, tag, or push a Docker
 image, and it needs no registry and no registry credentials: pods run a stock
@@ -413,10 +415,10 @@ cpu_utilization_target = 70   # Scale out when average CPU exceeds 70%
 The `"keda"` engine creates a `ScaledObject` custom resource instead of an HPA. It supports the full [KEDA trigger catalogue](https://keda.sh/docs/latest/scalers/) (Prometheus, Redis, RabbitMQ, Kafka, HTTP, and more) and enables scale-to-zero.
 
 !!! note
-    KEDA must be installed on the cluster before using this engine. If KEDA CRDs are absent at deploy time, jac-scale emits an install warning with a link to the [KEDA installation docs](https://keda.sh/docs/latest/deploy/) and the deploy continues with the Deployment's static replica count -- 1 for single-app deploys, each app's configured `[apps.<name>.scale] replicas` for a workspace fleet (no autoscaler is created).
+    KEDA must be installed on the cluster before using this engine. If KEDA CRDs are absent at deploy time, jac-scale emits an install warning with a link to the [KEDA installation docs](https://keda.sh/docs/latest/deploy/) and the deploy continues with the Deployment's static replica count -- 1 for single-app deploys, each app's configured `[apps.<name>.scale] replicas` for a workspace fleet (no autoscaler is created). If the deploying identity is not allowed to list ScaledObjects in the deploy namespace, the deploy fails with an error naming that namespace instead.
 
 !!! note "HTTP-activated workloads also require the KEDA HTTP Add-on"
-    Workloads scaled via `apply_http_activation` (HTTP request-driven scale-to-zero) require the [KEDA HTTP Add-on](https://keda.sh/docs/latest/deploy/#http-add-on) in addition to core KEDA. Call `KEDAAutoscaler.discover_capabilities()` to check both together: it returns a `KEDACapabilities` object that distinguishes a missing core install from a missing or outdated HTTP Add-on, an RBAC-denied check from a genuinely absent API, and a missing external-scaler or interceptor-proxy Service, each with its own diagnostic. Results are cached per cluster; pass `refresh=True` or call `invalidate_capabilities()` to force a recheck. `apply_http_activation` calls `discover_capabilities()` automatically and raises when the Add-on is installed but broken, instead of deploying a workload that will never receive traffic. If the Add-on is simply absent, it logs a warning and skips activation rather than failing the deploy.
+    Workloads scaled via `apply_http_activation` (HTTP request-driven scale-to-zero) require the [KEDA HTTP Add-on](https://keda.sh/docs/latest/deploy/#http-add-on) in addition to core KEDA. Call `KEDAAutoscaler.discover_capabilities("<your namespace>")` to check both together in the namespace you deploy to: it returns a `KEDACapabilities` object that distinguishes a missing core install from a missing or outdated HTTP Add-on, an RBAC-denied check from a genuinely absent API, and a missing external-scaler or interceptor-proxy Service, each with its own diagnostic. Results are cached per cluster and namespace; pass `refresh=True` or call `invalidate_capabilities()` to force a recheck. `apply_http_activation` calls `discover_capabilities` automatically with its own namespace and raises when the Add-on is installed but broken, instead of deploying a workload that will never receive traffic. If the Add-on is simply absent, it logs a warning and skips activation rather than failing the deploy.
 
     Install both with Helm:
     ```bash
@@ -431,7 +433,7 @@ The `"keda"` engine creates a `ScaledObject` custom resource instead of an HPA. 
     helm upgrade http-add-on kedacore/keda-add-ons-http -n keda --wait
     ```
 
-    Chart names, flags, and required values can change over time, so every install/upgrade command surfaced by `discover_capabilities()` also links to the current getting-started guide as the authoritative fallback: [https://keda.sh/http-add-on/0.15/getting-started/](https://keda.sh/http-add-on/0.15/getting-started/).
+    Chart names, flags, and required values can change over time, so every install/upgrade command surfaced by `discover_capabilities` also links to the current getting-started guide as the authoritative fallback: [https://keda.sh/http-add-on/0.15/getting-started/](https://keda.sh/http-add-on/0.15/getting-started/).
 
 **Switching between engines is safe.** Each engine removes the other engine's resource (`ScaledObject` or `HPA`) on apply, so two autoscalers never compete for `spec.replicas` on the same Deployment.
 
@@ -619,6 +621,11 @@ postgres_storage = "10Gi"  # under [scale.database]
 - **Decrease**: Attempting to set a smaller value than the current PVC size raises an explicit error and aborts the deploy. Shrinking a PVC is not supported by Kubernetes.
 - **No change**: If the value matches the current size, no action is taken.
 
+**Postgres disk usage:**
+
+- `jac scale status` shows how much of the Postgres data PVC is in use and warns once it passes 80%. Raise `postgres_storage` and redeploy before it fills: a full volume stops every write.
+- Not all of `postgres_storage` holds your data. Postgres keeps its write-ahead log on the same volume and lets it grow toward 2GB between checkpoints, plus some space for the empty database itself. On the `2Gi` default, your data gets much less than 2Gi.
+
 > **Note:** Postgres PVC resize requires the cluster's StorageClass to have `allowVolumeExpansion: true`. Most cloud providers (AWS EBS, GCE PD, Azure Disk) and MicroK8s enable this by default. Verify with `kubectl get storageclass`.
 > **Note:** The application bundle PVC has a fixed size (1Gi) and is created once, never resized. Bundle contents are content-addressed, so an unchanged app is not re-uploaded on redeploy.
 
@@ -632,7 +639,7 @@ Controls the base images used for the application pod and init containers. Overr
 
 | TOML Key  | Default | Description |
 |----------|---------|-------------|
-| `python_image` | `""` (auto) | Base image for the application pod. When empty, the deploy resolves the official image matching the runtime channel -- `jaseci/jaclang:latest` (stable), `:dev`, `:experimental-<PR#>`, or `:<x.y.z>` for a `jac-version` pin -- and pins it to an immutable `@sha256:` digest when Docker Hub is reachable (experimental builds are deliberately not digest-pinned). Falls back to `python:3.12-slim` when the registry is unreachable and always on the local-binary channel |
+| `python_image` | `""` (auto) | Base image for the application pod. When empty, the deploy resolves the official image matching the runtime channel -- `jaseci/jaclang:latest` (stable), `:dev`, `:experimental-<PR#>`, or `:<x.y.z>` for a `jac-version` pin -- and pins it to an immutable `@sha256:` digest when Docker Hub is reachable (experimental builds are deliberately not digest-pinned). When Docker Hub cannot be reached, the image is used unpinned. When Docker Hub reports the tag unpublished, pods fall back to `python:3.12-slim`, except on the experimental channel, where the deploy stops. Always `python:3.12-slim` on the local-binary channel |
 | `wait_image` | `busybox:1.36` | Init container image used for dependency wait checks (Postgres readiness) |
 
 **To change in `jac.toml`:**
@@ -701,7 +708,7 @@ Scale can deploy a full observability stack (Prometheus + Grafana + kube-state-m
 | **Grafana** | Dashboard UI - served via NGINX Ingress at `/grafana` (NodePort locally, NLB on AWS) |
 | **kube-state-metrics** | K8s object state: pod counts, replica health, restart counts |
 | **node-exporter** | Host-level metrics: CPU, memory, disk, network per node |
-| **Loki** *(optional)* | Log store - receives logs from Alloy (ClusterIP, ephemeral storage) |
+| **Loki** *(optional)* | Log store - receives logs from Alloy (ClusterIP; data is ephemeral unless `storage_enabled` is set) |
 | **Tempo** *(optional)* | Trace store - receives OTLP traces from Alloy, added to Grafana as a datasource |
 | **Grafana Alloy** *(optional)* | DaemonSet that tails `/var/log/pods` on every node and ships to Loki, with an OTLP lane to Tempo when tracing is on (replaces Promtail, which went EOL on 2026-03-02). Deployed when `loki_enabled` or `tracing_enabled` is set |
 
@@ -712,6 +719,12 @@ Scale can deploy a full observability stack (Prometheus + Grafana + kube-state-m
 | `enabled` | `false` | Deploy the monitoring stack and expose the app's `/metrics` endpoint |
 | `k8s_metrics_enabled` | `true` | Include kube-state-metrics and node-exporter exporters |
 | `prometheus_admin_password` | `Adminpassword123` | Grafana `admin` login password |
+| `storage_enabled` | `false` | Keep Prometheus, Loki and Tempo data on PersistentVolumeClaims. See [Monitoring data storage](#monitoring-data-storage) |
+| `storage_class` | `""` | StorageClass for those claims. Empty uses the cluster's default class |
+| `prometheus_storage` | `10Gi` | Size of the Prometheus claim |
+| `loki_storage` | `10Gi` | Size of the Loki claim |
+| `tempo_storage` | `5Gi` | Size of the Tempo claim |
+| `loki_retention` | `168h` | How long Loki keeps logs when `storage_enabled` is set |
 
 **Defaults (`[scale.kubernetes]`):**
 
@@ -743,6 +756,39 @@ After deployment, access:
 
 On AWS clusters, the NGINX Ingress controller is exposed via a Network Load Balancer (NLB). Grafana is accessible at `<nlb-url>/grafana`.
 
+#### Monitoring data storage
+
+By default Prometheus, Loki and Tempo each keep their data on an `emptyDir`, which lives only as long as the pod. A node drain, a lost node or a rollout replaces the pod, and the new one starts with no history.
+
+Set `storage_enabled` to keep the data on PersistentVolumeClaims instead:
+
+```toml
+[scale.monitoring]
+enabled = true
+storage_enabled = true
+storage_class = ""           # empty: the cluster's default StorageClass
+prometheus_storage = "30Gi"
+loki_storage = "20Gi"
+tempo_storage = "5Gi"
+loki_retention = "168h"
+```
+
+With it on, each of the three components gets:
+
+- a `ReadWriteOnce` claim named `<app>-prometheus-data`, `<app>-loki-data` or `<app>-tempo-data`
+- a `Recreate` rollout, because the volume attaches to one node at a time. Every later rollout of that component has a few seconds with no pod
+- a limit that fits the volume: Prometheus is capped at 80% of the size its claim really has and keeps 15 days at most, Loki keeps `loki_retention`, Tempo keeps 48 hours
+
+Things to know before turning it on:
+
+- **The switch itself replaces each pod once.** Whatever is on the `emptyDir` at that moment is lost one last time.
+- **Use a block-storage class.** Leave `storage_class` empty for the cluster default, or name a `ReadWriteOnce` class such as `gp3`. Do not reuse the `ReadWriteMany` class set as `bundle_storage_class`: Prometheus does not support NFS-style file systems.
+- **A setting that cannot be applied refuses the deploy.** A size or retention period that is not valid, a `storage_class` the cluster does not have, or an empty `storage_class` on a cluster with no default class stops the deploy before anything is applied. Only the parts a deploy runs are checked, so a leftover `tempo_storage` does not stop an app with tracing off. The class is looked up only while a claim still has to be made. If the deployer may not list StorageClasses, the deploy logs that it could not check and carries on.
+- **A claim that already exists is used as it is.** To use volumes you provisioned yourself, create the claims `<app>-prometheus-data`, `<app>-loki-data` and `<app>-tempo-data` before the first deploy. `jac scale destroy` deletes them like any other.
+- **Size Loki for its busiest week.** Loki and Tempo drop data by age only, so a volume that fills stays full until it is grown. Sizes are whole-number quantities of at least `1Gi`, and `loki_retention` is hours, days or weeks of at least `24h` (`168h`, `7d`, `1w`).
+- **Sizes can be raised, not lowered.** A larger value grows the claim on the next deploy. A smaller one is ignored with a warning, and so is a larger one on a class that cannot expand volumes: the claim keeps its size and Prometheus stays capped to the volume it has. After a size is raised, the cap follows on the next deploy, once the volume has grown. `storage_class` cannot be changed on a claim that exists.
+- **Turning it off leaves the claims in place.** The pods go back to `emptyDir`, and the claims keep their data until `jac scale destroy` deletes them, either in full or with `--component monitoring`.
+
 **Prometheus scrape targets:**
 
 - Jaseci application `/metrics` endpoint (authenticated with HTTP basic auth: `[scale.admin] username` + `prometheus_admin_password`, mounted from a Secret)
@@ -754,8 +800,8 @@ On AWS clusters, the NGINX Ingress controller is exposed via a Network Load Bala
 
 When enabled, two additional components are deployed:
 
-- **Loki** - single-process log store (port 3100, ClusterIP). Uses filesystem/TSDB storage backed by an `emptyDir` volume; logs are ephemeral and reset on pod restart. Suitable for dev and staging environments.
-- **Grafana Alloy** - DaemonSet deployed on every node (tolerates `NoSchedule` taints). Tails `/var/log/pods`, labels each stream with `namespace`, `pod`, and `container`, and pushes to Loki via Kubernetes service discovery. Configured in River syntax. (Alloy is the OpenTelemetry-compatible successor to Promtail, which went EOL on 2026-03-02.)
+- **Loki** - single-process log store (port 3100, ClusterIP). Uses filesystem/TSDB storage on an `emptyDir` volume by default, so logs reset whenever the pod is replaced. Set `[scale.monitoring] storage_enabled = true` to keep them on a volume (see [Monitoring data storage](#monitoring-data-storage)).
+- **Grafana Alloy** - DaemonSet deployed on every node (tolerates `NoSchedule` taints). Tails `/var/log/pods` for the pods in the app namespace only, labels each stream with `namespace`, `pod`, and `container`, and pushes to Loki via Kubernetes service discovery. Configured in River syntax. (Alloy is the OpenTelemetry-compatible successor to Promtail, which went EOL on 2026-03-02.)
 
 A **Pod Logs** dashboard is automatically added to Grafana with two panels: log volume (lines/min by namespace/pod) and a live log viewer.
 
@@ -1170,8 +1216,9 @@ Instead, a deploy:
 3. Starts every pod on a stock base image -- `jaseci/jaclang:latest` (or the
    tag matching the channel/version pin: `:dev`, `:experimental-<PR#>`,
    `:<x.y.z>`), pinned to an immutable `@sha256:` digest when Docker Hub is
-   reachable (experimental builds excepted) and falling back to
-   `python:3.12-slim` when it is not.
+   reachable (experimental builds excepted) and used unpinned when it is not.
+   A tag Docker Hub reports as unpublished falls back to `python:3.12-slim`;
+   on the experimental channel the deploy stops instead.
 
 Override the base image with `python_image` if you need your own:
 
@@ -1339,8 +1386,8 @@ enabled = true
 
 When enabled, `jac scale deploy` deploys:
 
-- **Loki** -- single-process log store (port 3100, ClusterIP). Uses filesystem/TSDB storage backed by `emptyDir` (logs are ephemeral and reset on pod restart; suitable for dev and staging).
-- **Grafana Alloy** -- DaemonSet on every node (tolerates `NoSchedule`). Tails `/var/log/pods`, labels each stream with `namespace`, `pod`, and `container`, and pushes to Loki via Kubernetes service discovery. River-syntax config; supersedes Promtail (EOL 2026-03-02).
+- **Loki** -- single-process log store (port 3100, ClusterIP). Uses filesystem/TSDB storage on `emptyDir` by default, so logs reset whenever the pod is replaced. `[scale.monitoring] storage_enabled = true` keeps them on a volume (see [Monitoring data storage](#monitoring-data-storage)).
+- **Grafana Alloy** -- DaemonSet on every node (tolerates `NoSchedule`). Tails `/var/log/pods` for the pods in the app namespace only, labels each stream with `namespace`, `pod`, and `container`, and pushes to Loki via Kubernetes service discovery. River-syntax config; supersedes Promtail (EOL 2026-03-02).
 - **Prometheus + Grafana** -- the full monitoring stack comes along because the Pod Logs dashboard view lives inside Grafana. Equivalent to setting `[scale.monitoring] enabled = true` plus `[scale.kubernetes] loki_enabled = true` on the monolith target.
 
 A **Pod Logs** dashboard is added to Grafana automatically, with two panels: log volume (lines/min by namespace/pod) and a live log viewer.
@@ -1351,7 +1398,7 @@ A **Pod Logs** dashboard is added to Grafana automatically, with two panels: log
 | Alloy | DaemonSet | Per node; reads host `/var/log/pods` (read-only) |
 | Grafana | Deployment + ClusterIP Service | Cluster-internal in fleet mode (the `/grafana` ingress path is wired by the single-app target only); reach it with `kubectl port-forward svc/<app>-grafana-service 3000:3000` |
 
-> **Storage caveat.** Loki uses `emptyDir` in v0. A Loki pod restart drops in-flight chunks. Persistent storage modes (PVC, S3-compatible object storage) are planned.
+> **Storage caveat.** Loki uses `emptyDir` unless `[scale.monitoring] storage_enabled` is set, and a replaced Loki pod then starts empty. S3-compatible object storage is planned.
 
 <!-- -->
 
@@ -1359,7 +1406,7 @@ A **Pod Logs** dashboard is added to Grafana automatically, with two panels: log
 
 <!-- -->
 
-> **Multi-tenant note.** Alloy's ClusterRole reads pods cluster-wide and the default Pod Logs dashboard query is `{namespace=~".+"}`, so anyone with Grafana access sees logs from every namespace -- change the default Grafana password and only enable on clusters where that exposure is acceptable. Persistent multi-tenancy is planned.
+> **Multi-tenant note.** Each app's Alloy collects only the logs of its own namespace, so its Loki and Grafana do not show other apps on the cluster. Apps deployed into the same namespace share that namespace's logs; give each tenant its own `[scale.kubernetes] namespace` to keep them apart. An app deployed before this scoping keeps the other namespaces' logs its Loki already stored until the Loki pod restarts; `kubectl rollout restart deployment/<app>-loki -n <namespace>` clears them, along with the app's own earlier logs.
 
 ---
 
@@ -1472,6 +1519,55 @@ kubectl get pvc                     # the bundle PVC must be Bound
 - `ImagePullBackOff` on the base image means the cluster cannot reach
   `jaseci/jaclang`; set `python_image` to a base it can pull.
 
+### Building and Deploying Separately
+
+`jac scale deploy` builds the app (the client build, `jac install`, the seal)
+and applies it in one process. To run the two halves in different places, for
+example an unprivileged CI runner that builds and a trusted step that holds the
+kubeconfig and applies, split them:
+
+```bash
+jac scale build app.jac --out build --arch amd64     # no cluster access
+jac scale deploy app.jac --from-build build --plan-out plan.json
+```
+
+`jac scale build` never loads cluster config, so it takes the node architecture
+from `--arch` or `JAC_NODE_ARCH` and refuses when neither is set. It writes
+the sealed bundle as `build/bundle-<sha256 prefix>.jab` and then
+`build/build.json`, which names that file and records the jac version,
+channel, node architecture, app name, the bundle's object key, sha256 and size,
+the pod runtime's sha256 and one sha256 over every `jac.toml` sealed into the
+bundle (the root one and each nested one). `build.json` is replaced last, so a
+deploy reading the directory always finds the bundle it names; older bundle
+files are removed afterwards. The output directory holds only these files: the
+build refuses a directory with anything else in it, or a symlink.
+
+`--from-build` never builds. It refuses a build whose bundle does not match its
+recorded sha256, or that was made by another jac version, for another app,
+node architecture or jac channel, or whose sealed `jac.toml` files differ from
+the ones this deploy would ship (the refusal names each file and key that
+differs, never the values). It fetches the
+pod runtime the usual way and refuses when its sha256 differs from the one the
+build recorded. `--plan-out` writes the rendered Deployments as JSON
+(`{expect, parked, deployments}`, where `parked` lists the ones that may sit at
+zero replicas) before anything is applied; with `--dry-run` it writes the plan
+and applies nothing.
+
+### Node Architecture
+
+The pod runtime is built for the nodes' architecture, which the deploy reads by
+listing the cluster's nodes. A kubeconfig bound to a namespace-scoped Role
+cannot list them, so the deploy stops with `Could not read the cluster's node
+architectures (HTTP 403 Forbidden)`. Grant the deploy identity `list` on `nodes`
+through a ClusterRole, or name the architecture:
+
+```bash
+JAC_NODE_ARCH=x86_64 jac scale deploy    # or aarch64; amd64 and arm64 also work
+```
+
+Set it too when the nodes report several architectures or none, or when a
+`jac-bootstrap` log shows `Exec format error` (the pods got the wrong one).
+
 ### General Debugging
 
 ```bash
@@ -1551,7 +1647,7 @@ with entry {
 | `domain`, `replicas`, `resources`, `autoscaler` | `[scale.kubernetes]` | `resources` takes `cpu_request`/`cpu_limit`/`memory_request`/`memory_limit`; `autoscaler` entries are raw config keys (`max_replicas`, `autoscaler_engine`, ...) |
 | `apps` | `[apps]` | the workspace's app tables; every serving app becomes a fleet member, per-app scale keys come from `[apps.<name>.scale]` |
 | `gateway` | `[scale.gateway]` | `ingress`, `cors`, `rate_limit`, timeouts, `shared_volumes`, ... |
-| `kube_context` | new | kubeconfig context to deploy through; empty = current context, falling back to in-cluster |
+| `kube_context` | new | kubeconfig context to deploy through; empty = current context, falling back to in-cluster; a set context that does not load is an error |
 | `labels` | new | stamped on every generated Deployment and Service (platform-owned tags) |
 | `extra` | any `[scale.kubernetes]` key | escape hatch merged last, e.g. `{"bundle_storage_class": "efs-sc"}` |
 

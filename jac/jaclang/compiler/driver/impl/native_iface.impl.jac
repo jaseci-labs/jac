@@ -1,7 +1,5 @@
 impl native_unit_ref(path: str) -> str {
-    rp = os.path.realpath(path);
-    ident = native_unit_identity(rp);
-    return ident if ident != rp else rp;
+    return native_unit_identity(os.path.realpath(path));
 }
 
 impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
@@ -13,7 +11,7 @@ impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
         return ref;
     }
     if root_name == "jaclang" {
-        return os.path.join(os.path.dirname(target_pkg_root()), ref);
+        return os.path.join(os.path.dirname(jaclang_pkg_root()), ref);
     }
     if anchor {
         anchor_root = native_unit_root(os.path.dirname(os.path.realpath(anchor)));
@@ -27,24 +25,18 @@ impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
             }
         }
     }
-    import from jaclang.compiler.frontend.host { active_host }
-    import from jaclang.compiler.backends.native.na_constants {
-        FACT_IMPORT_PATHS,
-        FACT_PACKAGE_STORE,
-        FACT_SEP
+    import from jaclang.compiler.backends.native.host_facts {
+        import_search_dirs,
+        package_store_dir
     }
-    for search_dir in active_host().native_fact(FACT_IMPORT_PATHS, "").split(
-        FACT_SEP
-    ) {
-        if search_dir and os.path.isabs(search_dir) {
-            candidate = os.path.join(search_dir, ref);
-            if os.path.isfile(candidate) {
-                return candidate;
-            }
+    for search_dir in import_search_dirs() {
+        candidate = os.path.join(search_dir, ref);
+        if os.path.isfile(candidate) {
+            return candidate;
         }
     }
 
-    store = active_host().native_fact(FACT_PACKAGE_STORE, "");
+    store = package_store_dir();
     if store and os.path.isdir(store) {
         for org in sorted(os.listdir(store)) {
             org_dir = os.path.join(store, org);
@@ -311,7 +303,7 @@ impl NativeExport.from_dict(d: dict[str, any]) -> NativeExport {
     return NativeExport(
         name=str(d.get("name", "")),
         symbol=str(d.get("symbol", "")),
-        kind=str(d.get("kind", EXPORT_FUNCTION)),
+        kind=str(d.get("kind", "function")),
         is_pub=bool(d.get("is_pub", False)),
         param_types=_json_str_list(d.get("param_types")),
         param_names=_json_str_list(d.get("param_names")),
@@ -410,11 +402,6 @@ impl NativeClassLayout.from_dict(d: dict[str, any]) -> NativeClassLayout {
     );
 }
 
-impl _fields_digest(fields: dict[str, any]) -> str {
-    body = json.dumps(fields, sort_keys=True, separators=(",", ":"));
-    return hashlib.sha256(body.encode("utf-8")).hexdigest();
-}
-
 impl NativeIface.digest_fields -> dict[str, any] {
     return {
         "format": self.format,
@@ -439,11 +426,7 @@ impl NativeIface.digest_fields -> dict[str, any] {
 }
 
 impl NativeIface.digest -> str {
-    return _fields_digest(self.digest_fields());
-}
-
-impl NativeIface.to_dict -> dict[str, any] {
-    return self._with_references(self.digest_fields());
+    return layout_digest(self.digest_fields());
 }
 
 impl NativeIface._with_references(fields: dict[str, any]) -> dict[str, any] {
@@ -460,7 +443,7 @@ impl NativeIface.resolve_deps(anchor: str) {
 
 impl NativeIface.to_bytes -> bytes {
     fields = self.digest_fields();
-    digest = _fields_digest(fields);
+    digest = layout_digest(fields);
     body = json.dumps(
         self._with_references(fields), sort_keys=True, separators=(",", ":")
     );
@@ -572,23 +555,6 @@ impl NativeIface.symbol_of(name: str) -> (str | None) {
     return ex.symbol if ex is not None else None;
 }
 
-impl NativeIface.classes_json -> dict[str, any] {
-    out: dict[str, any] = {};
-    for name in sorted(self.classes.keys()) {
-        lay = self.classes[name];
-        out[name] = {
-            "size": lay.size,
-            "tag": lay.tag,
-            "tag_offset": lay.tag_offset,
-            "fields": {k: v.to_dict() for (k, v) in lay.fields.items()},
-            "bases": list(lay.bases),
-            "vtable": list(lay.vtable),
-            "is_node": lay.is_node
-        };
-    }
-    return out;
-}
-
 impl _rekey_class_refs(value: any, keys: dict[str, str]) -> any {
     if isinstance(value, dict) {
         out: dict[str, any] = {};
@@ -610,10 +576,10 @@ impl _rekey_class_refs(value: any, keys: dict[str, str]) -> any {
 impl merge_class_layouts(ifaces: list[NativeIface]) -> dict[str, any] {
     by_name: dict[str, dict[str, tuple[any, str]]] = {};
     for iface in ifaces {
-        bodies = iface.classes_json();
         for (name, lay) in iface.classes.items() {
             ident = lay.name or name;
-            body = bodies[name];
+            body = lay.to_dict();
+            del body["name"];
             same_name = by_name.setdefault(name, {});
             prev = same_name.get(ident);
             if prev is None {

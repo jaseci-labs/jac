@@ -2,12 +2,6 @@ import hashlib;
 import os;
 import sys;
 
-obj CatalogOrigin {
-    has path: str,
-        offset: int = 0,
-        length: int = 0;
-}
-
 glob TYPE_SYSTEM_ROOTS: tuple[str, ...] = (
          "compiler/types",
          "compiler/passes/pyast_load_pass.jac",
@@ -21,13 +15,7 @@ glob TYPE_SYSTEM_ROOTS: tuple[str, ...] = (
      ),
      DIGEST_SUFFIXES: tuple[str, ...] = (".jac", ".pyi", ".py", "PIN"),
      _DIGEST_CACHE: list[str] = [],
-     _CATALOG_CACHE: list[StubCatalog] = [],
-     _OPENED_FROM: list[CatalogOrigin] = [],
-     _ORIGIN: list[CatalogOrigin] = [];
-
-def catalog_origin -> (CatalogOrigin | None);
-
-def _opened(path: str, offset: int, length: int);
+     _CATALOG_CACHE: list[StubCatalog] = [];
 
 def jaclang_pkg_dir -> str;
 

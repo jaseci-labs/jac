@@ -555,7 +555,6 @@ impl start_worker(interval_s: float = 1.0) -> None {
         if current is not None and current.is_alive() {
             return;
         }
-        _store_for_worker();
         stop = threading.Event();
         thread = threading.Thread(
             target=_worker_loop, args=(interval_s, stop), daemon=True, name="jac-outbox"

@@ -87,7 +87,6 @@ impl NativeLegality.refuse_site(mod: Module, refusal: NativeRefusal) -> None {
         self.module.append(refusal);
         return;
     }
-    self.tops[id(top)] = top;
     if id(top) not in self.elements {
         self.elements[id(top)] = refusal;
     }
@@ -201,14 +200,6 @@ impl NativeLegality.settle -> None {
             break;
         }
     }
-}
-
-impl NativeLegality.static_units -> int {
-    return len(self.units);
-}
-
-impl NativeLegality.late_units -> int {
-    return len(self.late);
 }
 
 impl NativeLegality.unmet -> list[tuple[NativeRefusal, NativeRefusal]] {
@@ -488,7 +479,6 @@ impl build_native_legality(
                 if source is None {
                     top = nm.element_in(mod);
                     if top is not None {
-                        legality.tops[id(top)] = top;
                         if id(top) not in legality.anchored_by {
                             legality.anchored_by[id(top)] = set();
                         }
@@ -794,7 +784,6 @@ impl settle_native_module(
     del pending[:];
     del warnings[:];
     gen = mod.gen;
-    gen.native_refusal_code = refusal.code;
     gen.native_refusal = refusal.headline();
     gen.llvm_ir = None;
     gen.native_engine = None;

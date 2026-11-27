@@ -101,6 +101,23 @@ test "trace filter renders bracket escapes Loki's parser accepts" {
     assert "\\\\]" in q , f"expected `\\\\]` in {q}";
     # And no bare `\[` (which would re-introduce the parser error).
     assert "\\[" not in q.replace("\\\\[", "") , f"bare `\\[` found in {q}";
+
+    import json;
+    import re;
+
+    tid = "abc12345-dead-beef-cafe-000000000001";
+    hex_tid = "0123456789abcdef0123456789abcdef";
+    for (trace_id, body, expected) in (
+        (tid, json.dumps({"trace_id": tid, "msg": "json"}), True),
+        (hex_tid, json.dumps({"trace_id": hex_tid, "msg": "json"}), True),
+        (tid, "[trace=abc12345] plain", True),
+        (hex_tid, f"[trace={hex_tid}] undashed", True),
+        (tid, "[trace=ffffffff] other", False)
+    ) {
+        pattern = _build_logql("ns", "", "", "", trace_id).split('|~ "', 1)[1][:-1];
+        matched = bool(re.search(json.loads('"' + pattern + '"'), body));
+        assert matched == expected , f"LogQL for {trace_id!r} on {body!r}: {matched}";
+    }
 }
 
 

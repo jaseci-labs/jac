@@ -151,6 +151,26 @@ section[id] { scroll-margin-top: 4.5rem; }
 .tok-dec { color: #ffa657; }
 .code-plain { color: #e6edf3; }
 
+/* featured install command: breathing brand glow */
+@keyframes cmd-glow {
+    0%, 100% { box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 45%, transparent), 0 0 18px -6px color-mix(in oklch, var(--primary) 55%, transparent); }
+    50% { box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 70%, transparent), 0 0 34px -4px color-mix(in oklch, var(--primary) 70%, transparent); }
+}
+.cmd-glow { animation: cmd-glow 3.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .cmd-glow { animation: none; box-shadow: 0 0 24px -6px color-mix(in oklch, var(--primary) 60%, transparent); } }
+
+/* corner sticker on the featured install command: rests tilted, then wiggles */
+@keyframes sticker-wiggle {
+    0%, 55%, 100% { transform: rotate(-10deg) scale(1); }
+    62% { transform: rotate(-20deg) scale(1.12); }
+    69% { transform: rotate(2deg) scale(1.12); }
+    76% { transform: rotate(-17deg) scale(1.06); }
+    83% { transform: rotate(-4deg) scale(1.02); }
+    90% { transform: rotate(-12deg) scale(1); }
+}
+.sticker-wiggle { transform: rotate(-10deg); transform-origin: 70% 80%; animation: sticker-wiggle 2.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .sticker-wiggle { animation: none; } }
+
 /* shell snippets */
 .sh-prompt { color: #ff6b35; }
 .sh-cmd { color: #e6edf3; }

@@ -1165,6 +1165,14 @@ def agent_task(question: str) -> str by llm(
 
 The callback fires **between iterations**, not between individual tool calls. If the LLM batches multiple tool calls in one iteration, all execute before the callback fires. No callback = old behavior.
 
+### Empty Replies
+
+A model can end its turn with no text and no tool call. In a call with tools, byLLM does not take that as the answer: it logs a warning and asks the model once to continue (call the next tool, or `finish_tool`), as one more iteration. If the next reply is empty too, the call raises `EmptyReplyError`. A reply that calls a tool resets this, so a later empty reply is asked again. An empty reply the provider filtered (`finish_reason` `content_filter`) raises at once, without asking again.
+
+The final answer byLLM asks for after `max_react_iterations` or `ABORT_WITH_SUMMARY` raises `EmptyReplyError` too when it comes back empty, for a `str` result. A structured result keeps [Typed-Output Retry](#typed-output-retry) instead. A call without tools can still return `""` for a `str` result.
+
+An assistant message with blank text is never sent to the model or written back to `conversation=`: a reply with nothing in it is left out, and a reply that only calls tools keeps `content` as `None`. Some providers reject blank text, and litellm replaces it with a placeholder the model then reads as its own words.
+
 ---
 
 ## Parallel Tool Calling
@@ -1634,6 +1642,7 @@ delta from a stream that replaced an abandoned one.
 | `reasoning` | Reasoning text from a model that returns it, merged into pieces of about 200 characters (see [Reasoning](#reasoning)) | `content` (str), `iteration` (int) |
 | `steps_done` | ReAct loop finished, final answer next | `iterations` (int), `reason` (str): `"max_iterations"`, `"aborted"`, or `"aborted_with_summary"` |
 | `chunk` | One token of the final streamed answer | `content` (str) |
+| `stream_reset` | Text already sent is void. Scope `"answer"` takes back the `chunk`s sent so far, and always arrives before any later `tool_call` or `tool_result`; scope `"thought"` means the model call restarted | `scope` (str), `iteration` (int, `"thought"` only) |
 | `compaction` | Auto-compaction replaced the message history (tool-calling invocations only) | See [Observing compactions](#observing-compactions) |
 | `usage_step` | A single LLM call finished (tool-calling invocations only; see [Per-Call Usage](#per-call-usage)) | Same shape as `usage`, scoped to that one call |
 | `usage` | All LLM calls complete (always the last event) | `total` (dict), `by_kind` (dict), `per_call` (list[dict]), `requests` (int) |
@@ -2191,7 +2200,8 @@ ByLLMError (base)
 ├── FinishToolError              - finish_tool output failed validation against the declared return type
 ├── ConfigurationError           - Invalid byLLM usage (e.g. streaming with a non-str return type)
 ├── LLMTimeout                   - A by llm() call outlived its timeout
-└── CompactionNotEffectiveError  - The provider rejected the request as too long and compaction could not reduce the context
+├── CompactionNotEffectiveError  - The provider rejected the request as too long and compaction could not reduce the context
+└── EmptyReplyError              - The model gave no answer in a call with tools
 ```
 
 All exceptions are importable from `byllm.lib`.
@@ -2208,6 +2218,7 @@ All exceptions are importable from `byllm.lib`.
 | `ConfigurationError` | `by llm()` was used in an unsupported way, such as `stream=True` with a non-`str` return type |
 | `LLMTimeout` | A `by llm()` call outlived its `timeout`. Also a `litellm.Timeout`. See [Request Timeout](#request-timeout) |
 | `CompactionNotEffectiveError` | The provider rejected a request as too long and auto-compaction could not reduce the context, or the request was rejected again after a compaction. Provide a custom `on_compaction` hook, increase `ctx_window`, or switch to a model with a larger context window |
+| `EmptyReplyError` | In a call with tools, the model gave no answer: twice in a row, once when the provider filtered it, or when asked for its final answer. See [Empty Replies](#empty-replies) |
 
 ### Importing Exceptions
 

@@ -147,11 +147,110 @@ impl reap_stale_scaling_resources_for_bundle(
     }
 }
 
+impl lift_parked_deployments_for_bundle(
+    bundle: dict[str, any], namespace: str, apps_v1: any
+) -> list[str] {
+    lifted: list[str] = [];
+    scaling: dict[str, any] = bundle.get("scaling", {});
+    for svc_name in scaling.keys() {
+        plan: dict[str, any] = dict(scaling.get(svc_name, {}));
+        floor = int(plan.get("replica_floor", 0));
+        if plan.get("mode") != ScalingMode.METRIC or floor <= 0 {
+            continue;
+        }
+        name = str(plan.get("scale_target_name", ""));
+        live = apps_v1.read_namespaced_deployment(name=name, namespace=namespace);
+        if live.spec.replicas == 0 {
+            apps_v1.patch_namespaced_deployment(
+                name=name, namespace=namespace, body={"spec": {"replicas": floor}}
+            );
+            lifted.append(svc_name);
+        }
+    }
+    return lifted;
+}
+
 impl KubernetesTarget._gateway_cfg -> dict[str, any] {
     if self.gateway_config is not None {
         return normalize_gateway_config(self.gateway_config);
     }
     return get_scale_config().get_gateway_config();
+}
+
+impl KubernetesTarget.build(app_config: AppConfig, out_dir: str) -> dict[str, any] {
+    if not self.pod_arch {
+        raise ValueError(
+            "A build never asks the cluster for its node architecture; name it "
+            "with --arch amd64|arm64 or JAC_NODE_ARCH."
+        );
+    }
+    import from pathlib { Path }
+    base = Path(app_config.code_folder).resolve();
+    out = Path(out_dir).resolve();
+    excluded = source_filter_for(base);
+    if out.is_relative_to(base)
+        and not all(
+            excluded.excludes(out.relative_to(base) / name)
+            for name in build_output_names()
+        ) {
+        raise ValueError(
+            f"--out {out} is inside the project and its files would ship, so the "
+            "next build would seal this one. Write the build outside the project, "
+            "into a directory the bundle excludes such as build/ or dist/, or add "
+            "it to .jacignore."
+        );
+    }
+    refusal = deploy_generation_refusal(app_config.code_folder);
+    if refusal {
+        raise ValueError(refusal);
+    }
+    injector = self._manifest_builder(app_config)._prepare_injector(app_config);
+    return injector.write_build(out_dir, k8s_safe_name(self.k8s_config.app_name));
+}
+
+impl KubernetesTarget._verify_build(app_config: AppConfig) -> str {
+    import os;
+    pod_arch = self.pod_arch
+        or (node_arch() if os.environ.get("JAC_NODE_ARCH") else "");
+    try {
+        self._verified_injector = self._manifest_builder(
+            app_config
+        )._injector_from_build(
+            app_config, pod_arch
+        );
+    } except Exception as e {
+        return str(e);
+    }
+    return "";
+}
+
+impl KubernetesTarget.write_plan(bundle: dict[str, any]) {
+    if not self.plan_out {
+        return;
+    }
+    import json;
+    import from pathlib { Path }
+    deployments: dict[str, any] = {};
+    parked: list[str] = [];
+    for manifest in dict(bundle.get("deployments", {})).values() {
+        name = str(manifest["metadata"]["name"]);
+        deployments[name] = manifest;
+        if manifest.get("spec", {}).get("replicas") == 0
+            or replica_floor_of(manifest) == 0 {
+            parked.append(name);
+        }
+    }
+    plan = {
+        "expect": sorted(deployments),
+        "parked": sorted(parked),
+        "deployments": deployments
+    };
+    atomic_write(
+        Path(self.plan_out),
+        (json.dumps(plan, indent=2, sort_keys=True, `default=str) + "\n").encode(
+            "utf-8"
+        )
+    );
 }
 
 impl KubernetesTarget.deploy(app_config: AppConfig) -> DeploymentResult {
@@ -168,6 +267,15 @@ impl KubernetesTarget.deploy(app_config: AppConfig) -> DeploymentResult {
     if refusal {
         return DeploymentResult(success=False, message=refusal);
     }
+    if self.from_build {
+        self._emit("build", "start", "Checking the saved build");
+        problem = self._verify_build(app_config);
+        if problem {
+            self._emit("build", "error", problem);
+            return DeploymentResult(success=False, message=problem);
+        }
+        self._emit("build", "ok", "The saved build matches this deploy");
+    }
     if self.logger {
         self.logger.info(
             f"Deploying app '{app_name}' to Kubernetes",
@@ -181,13 +289,25 @@ impl KubernetesTarget.deploy(app_config: AppConfig) -> DeploymentResult {
             import from jaclang.scale.config.dev_config { resolve_dev_channel }
             import from jaclang.scale.injector.binary {
                 node_arch,
-                preflight_pod_runtime
+                preflight_pod_runtime,
+                resolve_pod_base_image
             }
             self._load_cluster_config();
+            arch = node_arch();
+            verified = self._verified_injector;
+            if verified is not None and verified._pod_arch != arch {
+                raise ValueError(
+                    f"Refusing to deploy from {self.from_build}: it was built for "
+                    f"{verified._pod_arch} nodes and the cluster runs {arch}."
+                );
+            }
             pinned = preflight_pod_runtime(
                 app_config.code_folder,
                 resolve_dev_channel(app_config.code_folder).value,
-                node_arch()
+                arch
+            );
+            self.k8s_config.python_image = resolve_pod_base_image(
+                app_config.code_folder, self.k8s_config.python_image
             );
         } except Exception as e {
             self._emit("runtime", "error", str(e));
@@ -198,6 +318,18 @@ impl KubernetesTarget.deploy(app_config: AppConfig) -> DeploymentResult {
             "ok",
             f"Pod runtime jac {pinned}" if pinned else "Pod runtime resolved"
         );
+    }
+
+    try {
+        storage_refusal = self._monitoring_storage_refusal(
+            app_name, check_cluster=not self.dry_run
+        );
+    } except Exception as e {
+        storage_refusal = f"monitoring storage check failed: {e}";
+    }
+    if storage_refusal {
+        self._emit("observability", "error", storage_refusal);
+        return DeploymentResult(success=False, message=storage_refusal);
     }
 
     self._emit("config", "start", "Checking the config the pods load");
@@ -229,6 +361,7 @@ impl KubernetesTarget.deploy(app_config: AppConfig) -> DeploymentResult {
     self._emit("bundle", "start", "Generating manifests");
     try {
         bundle = self.generate_manifests(app_config);
+        self.write_plan(bundle);
     } except Exception as e {
         self._emit("bundle", "error", f"manifest generation failed: {e}");
         return DeploymentResult(
@@ -750,14 +883,7 @@ impl KubernetesTarget._deploy_observability(app_name: str) -> None {
         );
     }
     monitoring = MonitoringDeployer(obs_config, self.logger);
-    monitoring.deploy(
-        app_name,
-        obs_config.namespace,
-        apps_v1,
-        core_v1,
-        provider,
-        scrape_target_service="gateway-service"
-    );
+    monitoring.deploy(app_name, obs_config.namespace, apps_v1, core_v1);
 }
 
 impl KubernetesTarget.ensure_alb_readiness_gates(core_v1: any, namespace: str) -> None {
@@ -880,7 +1006,10 @@ impl KubernetesTarget._manifest_builder(app_config: AppConfig) -> ManifestBuilde
         fleet=self.fleet,
         gateway_config=self.gateway_config,
         app_overrides=dict(self.app_overrides),
-        dry_run=self.dry_run
+        dry_run=self.dry_run,
+        from_build=self.from_build,
+        pod_arch=self.pod_arch,
+        injector=self._verified_injector
     );
 }
 
@@ -1186,6 +1315,14 @@ impl KubernetesTarget.apply_manifests(bundle: dict[str, any]) {
         if self.logger and autoscaler_applied {
             self.logger.info(
                 f"Applied autoscaler for '{svc_name}'", {"name": spec.autoscaler_name}
+            );
+        }
+    }
+
+    for svc_name in lift_parked_deployments_for_bundle(bundle, namespace, apps_v1) {
+        if self.logger {
+            self.logger.info(
+                f"Scaled '{svc_name}' up from zero: it no longer scales to zero"
             );
         }
     }
@@ -2010,7 +2147,9 @@ impl KubernetesTarget._foreign_app_resources(
             role == "bundle-store" and pvc.metadata.name != our_bundle
         );
         foreign_volume: bool = (
-            role == "shared-volume" and bool(volume_owner) and volume_owner != owner
+            role in ["shared-volume", "monitoring-data"]
+            and bool(volume_owner)
+            and volume_owner != owner
         );
         if foreign_bundle or foreign_volume {
             found.append(f"PersistentVolumeClaim/{pvc.metadata.name}");
@@ -2274,4 +2413,25 @@ impl KubernetesTarget._destroy_named_component(
     if self.logger {
         self.logger.info(f"Component '{component}' of '{app_name}' destroyed");
     }
+}
+
+impl KubernetesTarget._monitoring_storage_refusal(
+    app_name: str, check_cluster: bool = True
+) -> str {
+    if not self.k8s_config.monitoring_storage_enabled
+        or not self._observability_requested() {
+        return "";
+    }
+    obs_config = self._build_observability_config();
+    deployer = MonitoringDeployer(obs_config, self.logger);
+    problems: list[str] = deployer._storage_problems();
+    if check_cluster {
+        problem: str = deployer._cluster_storage_problem(
+            app_name, obs_config.namespace, client.CoreV1Api(), client.StorageV1Api()
+        );
+        if problem {
+            problems.append(problem);
+        }
+    }
+    return "; ".join(problems);
 }

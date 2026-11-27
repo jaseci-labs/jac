@@ -1,5 +1,6 @@
 import platform;
 import from ctypes {
+    CDLL,
     POINTER,
     c_char_p,
     c_bool,
@@ -41,7 +42,25 @@ def create_mcjit_compiler(
         }
     }
     target_machine._owned = True;
-    return ExecutionEngine(engine, module=module);
+    result = ExecutionEngine(engine, module=module);
+    if platform.system() == "Darwin" {
+        _map_dso_handle(result, module);
+    }
+    return result;
+}
+
+def _map_dso_handle(engine: ExecutionEngine, module: any) {
+    try {
+        handle = module.get_global_variable("__dso_handle");
+    } except NameError {
+        return;
+    }
+    if not handle.is_declaration {
+        return;
+    }
+    image_header = CDLL(None)._dyld_get_image_header;
+    image_header.restype = c_void_p;
+    engine.add_global_mapping(handle, image_header(0));
 }
 
 """

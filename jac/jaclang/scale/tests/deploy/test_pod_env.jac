@@ -694,6 +694,8 @@ test "a shipped jac.toml value the pods cannot resolve stops the deploy before p
                 binary_mod, "deploy_generation_refusal", return_value=""
             ), mock.patch.object(
                 binary_mod, "preflight_pod_runtime", return_value="0.0.0"
+            ), mock.patch.object(
+                binary_mod, "resolve_pod_base_image", return_value="img"
             ), mock.patch.object(binary_mod, "node_arch", return_value="x86_64"), mock.patch.object(
                 DatabaseProvisioner,
                 "provision",
@@ -1396,4 +1398,35 @@ test "a configured revision history limit reaches the deployment" {
     manifest = builder._build_deployment_manifest("littlex", {});
 
     assert manifest["spec"]["revisionHistoryLimit"] == 3;
+}
+
+
+test "build_env marks an app whose own env sets JAC_DB_URL as holding its own identity store" {
+    cfg = KubernetesConfig(app_name="jac-shop", namespace="ns");
+    builder = ManifestBuilder(k8s_config=cfg);
+
+    shared = {e["name"]: e["value"] for e in builder._build_env("orders_app", {})};
+    assert OWN_STORE_ENV not in shared , "an app on the fleet's database must not provision";
+
+    separate = builder._build_env(
+        "orders_app", {"env": {"JAC_DB_URL": "postgresql://db.ns/orders"}}
+    );
+    marks = [
+        e
+        for e in separate
+        if e["name"] == OWN_STORE_ENV
+    ];
+    assert len(marks) == 1 and marks[0]["value"] == "1" , separate;
+}
+
+
+test "build_env ignores an own-store mark an operator sets directly" {
+    cfg = KubernetesConfig(app_name="jac-shop", namespace="ns");
+    builder = ManifestBuilder(k8s_config=cfg);
+
+    env = builder._build_env("orders_app", {"env": {OWN_STORE_ENV: "1"}});
+
+    assert OWN_STORE_ENV not in {e["name"] for e in env} , (
+        "only the launcher decides, from the app's own JAC_DB_URL"
+    );
 }

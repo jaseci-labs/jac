@@ -92,13 +92,15 @@ impl JacClientCompiler.compile(
         source_root=source_root,
         native=native
     );
-    self._has_pages = self._scan_and_compile_pages(
-        entry_manifest=artifact.manifest,
-        visited=visited,
-        collected_exports=collected_exports,
-        collected_globals=collected_globals,
-        native=native
-    );
+    with stage("Pages compiled") {
+        self._has_pages = self._scan_and_compile_pages(
+            entry_manifest=artifact.manifest,
+            visited=visited,
+            collected_exports=collected_exports,
+            collected_globals=collected_globals,
+            native=native
+        );
+    }
     if native {
         self.compile_runtime_utils(self.NATIVE_RUNTIME_FILE);
     }
@@ -738,6 +740,12 @@ impl JacClientCompiler._route_exports_of(
     source_root = self.jac_compiler.source_root or self.project_dir;
     try {
         artifact = self.jac_compiler._compile_to_js(module_path, source_root);
+    } except ClientCompileError {
+        held = resolve_route_exports(module_path);
+        if held == (None, None) {
+            raise;
+        }
+        return held;
     } except ClientBundleError {
         return resolve_route_exports(module_path);
     }

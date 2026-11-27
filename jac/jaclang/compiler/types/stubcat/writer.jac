@@ -84,7 +84,6 @@ obj CatalogWriter {
         external_modules: set[str] postinit,
         boundary: (Module | None) = None,
         path_mapper: (PathMapper | None) = None,
-        spans: bool = True,
         failures: int = 0,
         evaluated: int = 0,
         failure_log: list[str] = [],
@@ -123,6 +122,7 @@ obj CatalogWriter {
     def encode_scope(idx: int) -> bytes;
     def encode_symbol(idx: int) -> bytes;
     def encode_type(idx: int) -> bytes;
+    def _settle_ancestry(cls: ClassType) -> None;
     def note_orphan(sh: ClassDetailsShared);
     def encode_shared(idx: int) -> bytes;
     def drain;
@@ -138,16 +138,12 @@ def build_module_iface(
     mod: Module,
     evaluator: TypeEvaluator,
     pkg_dir: str,
-    path_mapper: (PathMapper | None) = None,
-    spans: bool = True
+    path_mapper: (PathMapper | None) = None
 ) -> bytes;
-
-def module_iface_shape(mod: Module, evaluator: TypeEvaluator, pkg_dir: str) -> str;
 
 def module_iface_body(
     mod: Module,
     evaluator: TypeEvaluator,
     pkg_dir: str,
-    path_mapper: (PathMapper | None),
-    spans: bool
+    path_mapper: (PathMapper | None)
 ) -> bytes;

@@ -5,7 +5,6 @@ impl JacProgram.init(
     self.hub: ModuleHub = ModuleHub(mod=main_mod or uni.ProgramModule());
     self.deps: DepGraph = DepGraph();
     self.diags: DiagLedger = DiagLedger();
-    self.scratch: BuildScratch = BuildScratch();
     self.analysis: AnalysisCaches = AnalysisCaches();
     self.options: CompileOptions = CompileOptions();
     self.mod: uni.ProgramModule = self.hub.mod;
@@ -22,6 +21,7 @@ impl JacProgram.init(
     self.context_key = "";
     self.contexts = {};
     self.internal = False;
+    self.compile_depth = 0;
 }
 
 impl JacProgram.iface_registry(self: JacProgram) -> IfaceRegistry {
@@ -38,10 +38,6 @@ impl JacProgram.native_units(self: JacProgram) -> NativeUnitRegistry {
     }
     import from jaclang.compiler.frontend.host { active_host }
     return active_host().native_units_for(self);
-}
-
-impl JacProgram.hub_cache_stamp(self: JacProgram, resolved_path: str) -> None {
-    self.hub.stamp(resolved_path);
 }
 
 impl JacProgram.install_module(
@@ -66,24 +62,29 @@ impl JacProgram.is_hub_entry_fresh(self: JacProgram, resolved_path: str) -> bool
     return self.hub.is_fresh(resolved_path);
 }
 
-impl JacProgram.record_dependency(
-    self: JacProgram, importer_path: str, target_path: str
-) -> None {
-    self.deps.record(importer_path, target_path);
-}
-
 impl JacProgram.transitive_dependents(self: JacProgram, target_path: str) -> set[str] {
     return self.deps.transitive_dependents(target_path);
 }
 
-impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None {
-    if self.context_root is None {
-        for context in list(self.contexts.values()) {
-            if context is not self {
-                context.invalidate_module(resolved_path);
-            }
-        }
+impl JacProgram.sibling_contexts(self: JacProgram) -> list[JacProgram] {
+    if self.context_root is not None {
+        return [];
     }
+    return [
+        context
+        for context in list(self.contexts.values())
+        if context is not self
+    ];
+}
+
+impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None {
+    for context in self.sibling_contexts() {
+        context.invalidate_own_module(resolved_path);
+    }
+    self.invalidate_own_module(resolved_path);
+}
+
+impl JacProgram.invalidate_own_module(self: JacProgram, resolved_path: str) -> None {
     old_module = self.mod.hub.get(resolved_path);
     if old_module is not None {
         self.analysis.forget_module(old_module);
@@ -112,16 +113,15 @@ impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None 
 }
 
 impl JacProgram.release_module(self: JacProgram, resolved_path: str) -> None {
-    if self.context_root is None {
-        for context in list(self.contexts.values()) {
-            if context is not self {
-                context.release_module(resolved_path);
-            }
-        }
+    for prog in [*self.sibling_contexts(), self] {
+        prog.release_own_module(resolved_path);
     }
+}
+
+impl JacProgram.release_own_module(self: JacProgram, resolved_path: str) -> None {
     released = self.hub.mod.hub.get(resolved_path) or self.find_module(resolved_path);
-    self.invalidate_module(resolved_path);
-    self.drop_module_alerts(resolved_path);
+    self.invalidate_own_module(resolved_path);
+    self.diags.drop_module(resolved_path);
     prog_root = self.mod;
     main = prog_root.main_mod;
     if (main is not None and JacProgram.hub_key(main.loc.mod_path) == resolved_path) {
@@ -129,18 +129,7 @@ impl JacProgram.release_module(self: JacProgram, resolved_path: str) -> None {
         prog_root.main_mod = None;
     }
     if released is not None {
-        if prog_root.main_mod is released {
-            prog_root.main_mod = None;
-        }
-        prog_root.set_kids(
-            [
-                k
-                for k in [prog_root->:Kid:->]
-                if k is not released
-            ],
-            pos_update=False
-        );
-        del [edge released<-:ScopeChild:<-];
+        self.hub.detach([released]);
         if [prog_root->:Kid:->] {
             (first_tok, last_tok) = prog_root.resolve_tok_range();
             prog_root.loc.update_token_range(first_tok, last_tok);
@@ -167,7 +156,7 @@ impl JacProgram.load_dependency_module(
             cat_mod = catalog.module_for_path(resolved_path);
             if cat_mod is not None {
                 if importer_path is not None {
-                    self.record_dependency(importer_path, resolved_path);
+                    self.deps.record(importer_path, resolved_path);
                 }
                 return cat_mod;
             }
@@ -222,7 +211,7 @@ impl JacProgram.load_dependency_module(
     }
 
     if importer_path is not None {
-        self.record_dependency(importer_path, resolved_path);
+        self.deps.record(importer_path, resolved_path);
         if need_tree {
             importer = self.find_module(JacProgram.hub_key(importer_path));
             if importer is not None {
@@ -254,14 +243,9 @@ impl JacProgram.has_failed_parse(self: JacProgram, path: str) -> bool {
 }
 
 impl JacProgram.drop_module_alerts(self: JacProgram, resolved_path: str) -> None {
-    if self.context_root is None {
-        for context in list(self.contexts.values()) {
-            if context is not self {
-                context.drop_module_alerts(resolved_path);
-            }
-        }
+    for prog in [*self.sibling_contexts(), self] {
+        prog.diags.drop_module(resolved_path);
     }
-    self.diags.drop_module(resolved_path);
 }
 
 impl JacProgram.forget_failed_modules(self: JacProgram) -> None {
@@ -269,9 +253,9 @@ impl JacProgram.forget_failed_modules(self: JacProgram) -> None {
         self.context_root.forget_failed_modules();
         return;
     }
-    programs = {id(prog): prog for prog in [self, *self.contexts.values()]};
+    programs = [*self.sibling_contexts(), self];
     failed: set[str] = set();
-    for prog in programs.values() {
+    for prog in programs {
         for alert in prog.errors_had {
             if alert.owner {
                 failed.add(alert.owner);
@@ -279,7 +263,7 @@ impl JacProgram.forget_failed_modules(self: JacProgram) -> None {
         }
     }
     stale = set(failed);
-    for prog in programs.values() {
+    for prog in programs {
         for path in failed {
             stale.update(prog.transitive_dependents(path));
         }
@@ -382,12 +366,8 @@ impl JacProgram.release_compile_closure(
     }
 
     if self.context_root is None {
-        for context in list(self.contexts.values()) {
-            if context is not self {
-                context.release_compile_closure(
-                    collect=False, retain_stubs=retain_stubs
-                );
-            }
+        for context in self.sibling_contexts() {
+            context.release_compile_closure(collect=False, retain_stubs=retain_stubs);
         }
         self.contexts.clear();
         self.context_key = '';
@@ -413,7 +393,7 @@ impl JacProgram.release_compile_closure(
     }
     self._stub_trees_served = False;
     self.diags.clear();
-    self.scratch.clear();
+    self.compile_depth = 0;
     self.analysis.reset_module_state();
     if collect {
         host.collect_released_memory();
@@ -430,11 +410,9 @@ impl JacProgram.find_module(self: JacProgram, path: str) -> (uni.Module | None) 
     if found is not None {
         return found;
     }
-    if self.context_root is None {
-        for context in self.contexts.values() {
-            if context is not self and context.options.entry_point == keyed {
-                return context.find_module(keyed);
-            }
+    for context in self.sibling_contexts() {
+        if context.options.entry_point == keyed {
+            return context.find_module(keyed);
         }
     }
     return None;
@@ -490,12 +468,6 @@ impl JacProgram.compile(
         } except Exception {}
     }
     return mod;
-}
-
-impl JacProgram.build(
-    self: JacProgram, file_path: str, use_str: (str | None) = None
-) -> uni.Module {
-    return active_host().build_module(self, file_path, use_str);
 }
 
 impl JacProgram.declared_codespace(self: JacProgram, file_path: str) -> str {
@@ -600,10 +572,6 @@ impl JacProgram.parse_source(
             parse_woven
         }
         import from jaclang.compiler.frontend.constant { CodeContext }
-        import from jaclang.compiler.driver.boundary_classify {
-            _coerce_client_module,
-            _coerce_native_module
-        }
         codespace = self.declared_codespace(file_path);
         if codespace == 'native' and self.prefers_native_codespace(file_path) {
             codespace = '';
@@ -614,10 +582,10 @@ impl JacProgram.parse_source(
         );
         active_host().place_wired_imports(parsed);
         if codespace == 'client' {
-            _coerce_client_module(parsed);
+            parsed.set_code_context(CodeContext.CLIENT);
             parsed.gen.placement_mode = 'declared';
         } elif codespace == 'native' {
-            _coerce_native_module(parsed);
+            parsed.set_code_context(CodeContext.NATIVE);
             parsed.gen.placement_mode = 'declared';
         } elif codespace == 'server' {
             parsed.set_code_context(CodeContext.SERVER);
@@ -1018,12 +986,9 @@ impl JacProgram.stamp_boundary_facts(self: JacProgram, mod: uni.Module) -> None 
             if (isinstance(item, uni.ModulePath) and item.path) {
                 module_name = '.'.join(p.value for p in item.path);
                 if module_name {
-                    na_intent = (
-                        native_ctx
-                        or in_native_mod
-                        or import_declares_native_target(nd, self)
+                    facts.native_absorb_path = resolve_native(
+                        module_name, native_ctx or in_native_mod
                     );
-                    facts.native_absorb_path = resolve_native(module_name, na_intent);
                 }
             }
             continue;
@@ -1036,12 +1001,9 @@ impl JacProgram.stamp_boundary_facts(self: JacProgram, mod: uni.Module) -> None 
                     eligible = is_bundled_native_module(whole_name)
                         or (item.alias is None and len(item.path) == 1);
                     if (whole_name and eligible) {
-                        na_intent = (
-                            native_ctx
-                            or in_native_mod
-                            or import_declares_native_target(nd, self)
+                        item_path = resolve_native(
+                            whole_name, native_ctx or in_native_mod
                         );
-                        item_path = resolve_native(whole_name, na_intent);
                         if item_path {
                             facts.native_item_paths[whole_name] = item_path;
                         }
@@ -1093,27 +1055,14 @@ impl JacProgram.ingest_comptime_producers(
     }
 }
 
-impl JacProgram.count_module_blocking_errors(self: JacProgram, mod_path: str) -> int {
+impl JacProgram.count_module_errors(
+    self: JacProgram, mod_path: str, blocking: bool = False
+) -> int {
     count = 0;
     for e in self.errors_had {
-        if e.code is None or not e.code.blocks_codegen {
+        if blocking and (e.code is None or not e.code.blocks_codegen) {
             continue;
         }
-        try {
-            e_path = os.path.normpath(e.loc.mod_path);
-        } except Exception {
-            continue;
-        }
-        if e_path == mod_path {
-            count += 1;
-        }
-    }
-    return count;
-}
-
-impl JacProgram.count_module_errors(self: JacProgram, mod_path: str) -> int {
-    count = 0;
-    for e in self.errors_had {
         try {
             e_path = os.path.normpath(e.loc.mod_path);
         } except Exception {

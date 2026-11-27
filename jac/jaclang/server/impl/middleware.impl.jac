@@ -19,16 +19,30 @@ impl jwt_middleware(user_manager: UserManager) -> Callable[..., any] {
         username: (str | None) = None;
         user_root_id: (str | None) = None;
         assurance: (dict[str, any] | None) = None;
+        session_epoch: (int | None) = None;
+        session_claims: (dict[str, any] | None) = None;
+        unknown_subject: (str | None) = None;
         (token, from_cookie) = presented_token(request);
         if token {
-            username = user_manager.validate_jwt_token(token);
-            if username {
-                user_root_id = user_manager.get_root_id(username);
+            detail = user_manager.validate_jwt_token_detail(
+                token, check_existence=False
+            );
+            if detail['status'] == 'ok' and detail['user_id'] {
+                username = str(detail['user_id']);
+                user_root_id = detail.get('root_id')
+                    or user_manager.get_root_id(username);
                 assurance = token_assurance(token);
+                session_epoch = detail.get('session_epoch');
+                session_claims = detail.get('claims');
+            } elif detail['status'] == 'unknown_user' and detail.get('subject') {
+                unknown_subject = str(detail['subject']);
             }
         }
         setattr(request.state, 'user_root_id', user_root_id);
         setattr(request.state, 'username', username);
+        setattr(request.state, 'unknown_subject', unknown_subject);
+        setattr(request.state, 'session_epoch', session_epoch);
+        setattr(request.state, 'session_claims', session_claims);
         next_fn: any = call_next;
         binding = bind_caller_assurance(assurance);
         caller = bind_caller_user(username);

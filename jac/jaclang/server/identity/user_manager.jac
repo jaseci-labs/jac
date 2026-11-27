@@ -5,8 +5,10 @@ import from datetime { UTC, datetime, timedelta }
 
 glob logger = logging.getLogger(__name__),
      SYSTEM_USER: str = '__system__',
+     SESSION_EPOCH_CLAIM: str = 'sep',
      LOGIN_SCOPE: str = 'login-attempt',
      RETIRED_ADMIN_PASSWORD: str = 'changeme',
+     PROVISIONED_HERE: str = 'This app provisions accounts on its own store, where blank records are expected; run the clean-up on the gateway',
      _root_id_request_cache: ContextVar[dict[str, str] | None] = ContextVar(
          '_jaclang_root_id_cache', `default=None
      );
@@ -49,7 +51,21 @@ obj UserManager {
     ) -> dict[str, any] | None;
 
     def unverified_email(user_id: str) -> dict[str, any] | None;
-    def open_session(user_id: str, method: str = METHOD_PASSWORD) -> SessionGrant;
+    def open_session(
+        user_id: str, method: str = METHOD_PASSWORD, session_epoch: (int | None) = None
+    ) -> SessionGrant;
+
+    def session_detail(
+        user_id: str, token_epoch: int, claims: dict[str, any]
+    ) -> dict[str, any];
+
+    def session_current(user_id: str, session_epoch: (int | None)) -> bool;
+    def end_sessions(user_id: str) -> int | None;
+    def current_epoch(user_id: str) -> int | None;
+    def replacement_token(
+        user_id: str, claims: (dict[str, any] | None), session_epoch: (int | None)
+    ) -> str | None;
+
     def find_user_by_identity(value: str) -> dict[str, any] | None;
     def user_exists(user_id: str) -> bool;
     def get_user(user_id: str) -> dict[str, any] | None;
@@ -79,7 +95,8 @@ obj UserManager {
     def create_jwt_token(
         user_id: str,
         include_role: bool = True,
-        assurance: (dict[str, any] | None) = None
+        assurance: (dict[str, any] | None) = None,
+        session_epoch: (int | None) = None
     ) -> str;
 
     def second_factors -> SecondFactorManager;
@@ -124,6 +141,9 @@ obj UserManager {
 
     def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, any]];
     def delete_user(user_id: str) -> dict[str, str];
+    def list_provisioned_users -> dict[str, any];
+    def count_provisioned_users -> int;
+    def delete_provisioned_users -> dict[str, any];
     def create_user_as_admin(
         identities: list[dict[str, any]],
         password: str,

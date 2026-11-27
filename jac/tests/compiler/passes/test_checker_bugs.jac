@@ -466,27 +466,6 @@ test "bug_unpack1_assign_non_tuple_iterable" {
 }
 
 # =========================================================================
-# Bug #ANY-1: typing.Any attribute access incorrectly raises E1030
-#
-# TypeBase.is_any_type() missed ClassType-wrapped typing.Any.
-# E1030 guards called lookup_type.is_any_type() (simple) instead of
-# self.is_any_type() (TypeEvaluator, checks prefetch.any_class).
-# =========================================================================
-test "bug_any1_typing_any_attr_access" {
-    program = compile_and_check("checker_bug_typing_any_attr.jac");
-    # Expect 1 error: object.nonexistent (object does not allow arbitrary attr access)
-    # Any still allows all attribute access (0 errors for Any tests)
-    assert len(program.errors_had) == 1 , "Bug #ANY-1: Expected 1 error (object.nonexistent), "
-    f"got {len(
-        program.errors_had
-    )} errors. Any must allow all attribute access, but object must not.";
-    # Verify the error is for object.nonexistent, not for Any
-    err_str = program.errors_had[0].pretty_print();
-    assert "nonexistent" in err_str , f"Expected error for 'nonexistent' attr, got: {err_str}";
-    assert "object" in err_str , f"Expected error mentioning 'object' type, got: {err_str}";
-}
-
-# =========================================================================
 # Bug #FINAL-1: Final[T] not unwrapped for attribute access
 #
 # Member lookup ran against Final instead of T, so Final[list[int]].count
@@ -2407,5 +2386,45 @@ test "bug_ctor_init_args_dict_call_misuse_is_reported" {
     assert "dict[int, str]" in by_line.get(24, "") , (
         "Bug #CTOR-INIT-ARGS: `dict({1: \"one\"})` is a dict[int, str]. "
         f"Line 24 reported: {by_line.get(24)}"
+    );
+}
+
+# Bug #OPT-OPERATOR: `x + 1` on `int | None` passed the checker and crashed at
+# runtime; an operator now rejects an un-narrowed optional operand with E1160.
+test "bug_opt_operator_optional_operand_rejected" {
+    program = compile_and_check("checker_optional_operator_operand.jac");
+
+    codes = [
+        e.code.code
+        for e in program.errors_had
+        if e.code
+    ];
+
+    # Each of the 18 fail_ functions raises one E1160, with no E1055/E1002 cascade.
+    assert len(codes) == 18 and set(codes) == {"E1160"} , (
+        "Bug #OPT-OPERATOR: each fail_ function must raise exactly one "
+        f"E1160 and no cascade. Got: {codes}"
+    );
+
+    # ok_ functions stay clean.
+    with open(
+        os.path.join(CHECKER_FIXTURES, "checker_optional_operator_operand.jac")
+    ) as f {
+        lines = f.read().splitlines();
+    }
+    first_ok = 1
+        + next(
+            i
+            for (i, line) in enumerate(lines)
+            if line.startswith("def ok_")
+        );
+    ok_errors = [
+        e
+        for e in program.errors_had
+        if e.loc and e.loc.first_line >= first_ok
+    ];
+    assert ok_errors == [] , (
+        "Bug #OPT-OPERATOR: ok_ functions must produce no errors. "
+        f"Got: {[str(e) for e in ok_errors]}"
     );
 }

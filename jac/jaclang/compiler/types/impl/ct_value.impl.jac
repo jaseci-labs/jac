@@ -79,10 +79,6 @@ impl mk_set(items: list[CtValue], frozen: bool = False) -> CtSet {
     return out;
 }
 
-impl int_is_big(v: CtInt) -> bool {
-    return len(v.mag) > 0;
-}
-
 impl int_sign_mag(v: CtInt) -> tuple[bool, list[int]] {
     if v.mag {
         return (v.neg, v.mag);

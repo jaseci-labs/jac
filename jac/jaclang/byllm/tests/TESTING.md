@@ -7,7 +7,7 @@ follows. The helpers live in [`support.jac`](support.jac).
 
 ```bash
 # Once per binary: the dependencies CI installs for this suite.
-jac install "litellm>=1.102.1,<1.103.0" "pillow>=12.0.0,<13.0.0" \
+jac install "litellm>=1.102.1,<1.103.0" "pillow>=12.0.0,<14.0.0" \
   "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" --global
 
 # The suite, as CI's byllm lane runs it.
@@ -123,7 +123,7 @@ build a `FunctionInfo` and call `lower()` on an `MTRuntime` carrying it, as
 | which tools were offered | `tool_names(params)` |
 | the routing candidates offered | `routing_candidates(params)` |
 | the events of a `logging=True` stream | `stream_events(stream)`, `events_of(events, kind)`, `event_types(events)` |
-| the answer text of a stream | `chunk_text(events)` |
+| the answer text a chat UI is left with (a tool event seals the text before it) | `chunk_text(events)` |
 | what byLLM logged through loguru: `llm.jac` and its impls, `visit_routing.jac` | `with capture_loguru() as logs`, then `logs.text()` |
 | what it logged through `logging`: `types`, `mcp`, `parallel`, `telemetry`, `model_cache` | `with capture_logs(name=) as logs`, then `logs.text()` |
 | every queued reply was used | `llm.exhausted()` |

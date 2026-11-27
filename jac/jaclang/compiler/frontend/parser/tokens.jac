@@ -368,29 +368,9 @@ glob RESERVED_KINDS: frozenset = frozenset(KEYWORDS.values())
 def is_reserved_kind(kind: TokenKind) -> bool;
 
 glob BUILTIN_TYPE_KINDS: frozenset = frozenset(
-         {
-             TokenKind.TYP_STRING,
-             TokenKind.TYP_INT,
-             TokenKind.TYP_FLOAT,
-             TokenKind.TYP_LIST,
-             TokenKind.TYP_TUPLE,
-             TokenKind.TYP_SET,
-             TokenKind.TYP_DICT,
-             TokenKind.TYP_BOOL,
-             TokenKind.TYP_BYTES,
-             TokenKind.TYP_ANY,
-             TokenKind.TYP_TYPE,
-             TokenKind.TYP_I8,
-             TokenKind.TYP_U8,
-             TokenKind.TYP_I16,
-             TokenKind.TYP_U16,
-             TokenKind.TYP_I32,
-             TokenKind.TYP_U32,
-             TokenKind.TYP_I64,
-             TokenKind.TYP_U64,
-             TokenKind.TYP_F32,
-             TokenKind.TYP_F64
-         }
+         kind
+         for kind in TokenKind
+         if kind.name.startswith("TYP_")
      );
 
 def is_builtin_type_kind(kind: TokenKind) -> bool;

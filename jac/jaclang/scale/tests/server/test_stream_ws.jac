@@ -1,4 +1,6 @@
 import asyncio;
+import json;
+import uuid;
 
 
 test "ws scheme rewrite: http -> ws" {
@@ -323,9 +325,11 @@ obj FakeClientWS {
         self.sent.append(("bytes", data));
     }
 
-    async def close(code: int = 1000) {
-        self.closed = True;
-        self.close_code = code;
+    async def close(code: int = 1000, reason: str = '') {
+        if not self.closed {
+            self.closed = True;
+            self.close_code = code;
+        }
     }
 }
 
@@ -517,4 +521,84 @@ test "a failed upstream handshake never accepts the client" {
         "no upstream means nothing to proxy; the client must not be handed a 101"
     );
     assert out["closed"];
+}
+
+
+"""A real account and a gateway session guard for relay regression tests."""
+def _relay_session -> tuple[any, str, str] {
+    manager = UserManager(base_path=".");
+    name = f"relay_{uuid.uuid4().hex[:10]}";
+    created = manager.create_user_with_identities(
+        [{"type": "username", "value": name}],
+        {"type": "password", "password": f"pw-{uuid.uuid4().hex}"}
+    );
+    assert "error" not in created;
+    uid = str(created["user_id"]);
+    return (manager, uid, manager.create_jwt_token(uid));
+}
+
+
+test "gateway relay refuses a revoked token in the first text or binary websocket frame" {
+    (manager, uid, token) = _relay_session();
+    manager.end_sessions(uid);
+    async def body(binary: bool) {
+        (stop, server, url) = _spawn_ws_upstream();
+        client = FakeClientWS(inbound=asyncio.Queue(), sent=[]);
+        payload = json.dumps({"token": token});
+        frame: dict[str, any] = {"type": "websocket.receive"};
+        if binary {
+            frame["bytes"] = payload.encode();
+        } else {
+            frame["text"] = payload;
+        }
+        client.inbound.put_nowait(frame);
+        guard = GatewaySessionGuard(manager=manager);
+        try {
+            await asyncio.wait_for(
+                websocket_forward(client, url, {}, session_guard=guard.allow),
+                timeout=10.0
+            );
+            assert client.close_code == 4401;
+            assert client.sent == [] , "a rejected auth frame must never reach the upstream";
+        } finally {
+            stop();
+        }
+    }
+    for binary in [False, True] {
+        _run(body(binary));
+    }
+}
+
+
+test "gateway relay closes an idle authenticated websocket after revocation" {
+    (manager, uid, token) = _relay_session();
+    async def body {
+        (stop, server, url) = _spawn_ws_upstream();
+        client = FakeClientWS(inbound=asyncio.Queue(), sent=[]);
+        guard = GatewaySessionGuard(manager=manager);
+        client.inbound.put_nowait(
+            {"type": "websocket.receive", "text": json.dumps({"token": token})}
+        );
+        relay = asyncio.create_task(
+            websocket_forward(client, url, {}, session_guard=guard.allow)
+        );
+        try {
+            for attempt in range(200) {
+                if client.sent {
+                    break;
+                }
+                await asyncio.sleep(0.01);
+            }
+            assert client.sent , "the session must be live before it is revoked";
+            manager.end_sessions(uid);
+            # No further client traffic: the relay's watcher must close both sides.
+            await asyncio.wait_for(relay, timeout=10.0);
+            assert client.close_code == 4401;
+        } finally {
+            relay.cancel();
+            await asyncio.gather(relay, return_exceptions=True);
+            stop();
+        }
+    }
+    _run(body());
 }

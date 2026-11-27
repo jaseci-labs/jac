@@ -117,7 +117,7 @@ obj HostServices {
     def native_dep_discovery_open(program: JacProgram) -> bool;
     def native_deps_deferred(program: JacProgram) -> bool;
     def native_lowering_failed(program: JacProgram, path: str, detail: str);
-    def native_fact(kind: str, key: str) -> str;
+    def git_ignored_under(root_dir: str) -> list[str];
     def save_native_debug_ir(path: str, text: str);
     def native_units_for(program: JacProgram) -> NativeUnitRegistry;
     def client_boundary_facts(program: JacProgram, path: str) -> (list[str] | None);
@@ -148,10 +148,6 @@ obj HostServices {
         options: CompileOptions
     ) -> Module;
 
-    def build_module(
-        program: JacProgram, file_path: str, use_str: (str | None)
-    ) -> Module;
-
     def internal_program(program: JacProgram) -> (JacProgram | None);
     def bind_context_program(context_root: JacProgram, program: JacProgram);
     def note_program_dependency(program: JacProgram, resolved_path: str);
@@ -170,9 +166,6 @@ obj HostServices {
 
 obj NeutralHost(HostServices) {}
 
-glob HOST_FACT_SEP: str = "\x1e",
-     HOST_FACT_STDLIB_MODULES: str = "stdlib_modules",
-     HOST_FACT_GIT_IGNORED: str = "git_ignored";
 
 glob _HOSTS: list[HostServices] = [],
      _NEUTRAL_HOST: HostServices = NeutralHost(),

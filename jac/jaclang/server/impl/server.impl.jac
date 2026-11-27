@@ -1372,6 +1372,8 @@ impl JacAPIServer._register_scheduled_tasks -> None {
         self.scheduler.claim = _claim;
         self.scheduler.hold = _hold;
         self.scheduler.release = _release;
+        self.scheduler.record = _store.kv_put_record;
+        self.scheduler.recall = _store.kv_get_record;
         self.scheduler.namespace = schedule_namespace(self.module_name);
     }
 }
@@ -1556,6 +1558,7 @@ impl JacAPIServer._worker_main(
         heartbeat=handle.heartbeat if handle is not None else None
     );
     self.server = serving;
+    Jac.get_context();
     self.scheduler.start_if_pending();
     start_worker_if_bridging();
     for ext in (self.extensions or []) {
@@ -1745,8 +1748,8 @@ impl _abegin_user_request_context(
 ) -> tuple[(ExecutionContext, any, str)] | dict[str, JsonValue] {
     root_id = await user_manager.aget_root_id(username);
     if not root_id {
-        import os;
-        if username != Con.GUEST.value and os.environ.get('JAC_SV_SIBLING') {
+        if username != Con.GUEST.value
+            and getattr(user_manager, 'provision_unknown_users', False) {
             ensure_root = getattr(
                 user_manager, 'ensure_user_root', user_manager.get_root_id
             );

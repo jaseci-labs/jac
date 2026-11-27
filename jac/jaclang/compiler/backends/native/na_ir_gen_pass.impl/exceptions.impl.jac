@@ -30,8 +30,7 @@ impl NaIRGenPass._declare_exception_runtime -> None {
     setjmp_fn = self._get_or_declare_extern(setjmp_name, i32, [i8p]);
     setjmp_fn.attributes.add("returns_twice");
 
-    longjmp_args = [i8p] if self._exc_builtin_sjlj() else [i8p, i32];
-    longjmp_fn = self._get_or_declare_extern(longjmp_name, ir.VoidType(), longjmp_args);
+    longjmp_fn = self._get_or_declare_extern(longjmp_name, ir.VoidType(), [i8p, i32]);
     longjmp_fn.attributes.add("noreturn");
 
     self._get_or_declare_extern("abort", ir.VoidType(), []);
@@ -53,37 +52,13 @@ impl NaIRGenPass._exc_jmp_symbols -> tuple[str, str] {
             return ("__jac_setjmp", "__jac_longjmp");
         }
     }
-    if self._native_sjlj_on() and triple.startswith("x86_64") {
-        return ("llvm.eh.sjlj.setjmp", "llvm.eh.sjlj.longjmp");
-    }
     return ("_setjmp", "_longjmp");
-}
-
-impl NaIRGenPass._exc_builtin_sjlj -> bool {
-    return self._exc_jmp_symbols()[0] == "llvm.eh.sjlj.setjmp";
 }
 
 impl NaIRGenPass._emit_exc_arm(
     b: ir.IRBuilder, env: ir.Value, name: str = ""
 ) -> ir.Value {
-    if self._exc_builtin_sjlj() {
-        b.function.attributes.add("noinline");
-        i8p = ir.IntType(8).as_pointer();
-        i32 = ir.IntType(32);
-        words = b.bitcast(env, i8p.as_pointer());
-        frame = b.call(
-            self._get_or_declare_extern("llvm.frameaddress.p0", i8p, [i32]),
-            [ir.Constant(i32, 0)]
-        );
-        b.store(frame, words);
-        stack = b.call(self._get_or_declare_extern("llvm.stacksave.p0", i8p, []), []);
-        b.store(stack, b.gep(words, [ir.Constant(i32, 2)]));
-    }
-    armed = b.call(self._exc_setjmp_fn(), [env], name=name);
-    if self._exc_builtin_sjlj() {
-        armed.attributes.add("returns_twice");
-    }
-    return armed;
+    return b.call(self._exc_setjmp_fn(), [env], name=name);
 }
 
 impl NaIRGenPass._exc_setjmp_fn -> ir.Function {
@@ -276,12 +251,7 @@ impl NaIRGenPass._emit_exc_raise_helper -> None {
         cur_handler, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="env.ptr"
     );
     env_i8p = b.bitcast(env_ptr, i8p, name="env.i8p");
-    if self._exc_builtin_sjlj() {
-        func.attributes.add("noinline");
-        b.call(self._exc_longjmp_fn(), [env_i8p]);
-    } else {
-        b.call(self._exc_longjmp_fn(), [env_i8p, ir.Constant(i32, 1)]);
-    }
+    b.call(self._exc_longjmp_fn(), [env_i8p, ir.Constant(i32, 1)]);
     b.unreachable();
     self._exc_raise_fn = func;
 }
@@ -1369,17 +1339,7 @@ impl NaIRGenPass._get_exception_context_fn -> ir.Function {
     fast_ret = func.append_basic_block("fast.ret");
     miss_bb = func.append_basic_block("miss");
     b = ir.IRBuilder(entry_bb);
-    if self._native_tls_on() {
-        held = b.call(get_fn, [], name="exc.tl");
-        b.cbranch(
-            b.icmp_unsigned("!=", held, ir.Constant(i64, 0), name="exc.tl.set"),
-            fast_bb,
-            miss_bb
-        );
-        b = ir.IRBuilder(fast_bb);
-        b.ret(b.inttoptr(held, context_ptr));
-        func.blocks.remove(fast_ret);
-    } elif self.rc_threaded_gv is not None {
+    if self.rc_threaded_gv is not None {
         mt_flag = b.load_atomic(self.rc_threaded_gv, "monotonic", 1, name="exc.mt");
         b.cbranch(
             b.icmp_unsigned(
@@ -1391,19 +1351,15 @@ impl NaIRGenPass._get_exception_context_fn -> ir.Function {
     } else {
         b.branch(miss_bb);
     }
-    if not self._native_tls_on() {
-        b = ir.IRBuilder(fast_bb);
-        main_ctx = b.load(main_gv, name="exc.main");
-        b.cbranch(
-            b.icmp_unsigned(
-                "==", main_ctx, ir.Constant(i8p, None), name="exc.main.none"
-            ),
-            miss_bb,
-            fast_ret
-        );
-        b = ir.IRBuilder(fast_ret);
-        b.ret(b.bitcast(main_ctx, context_ptr));
-    }
+    b = ir.IRBuilder(fast_bb);
+    main_ctx = b.load(main_gv, name="exc.main");
+    b.cbranch(
+        b.icmp_unsigned("==", main_ctx, ir.Constant(i8p, None), name="exc.main.none"),
+        miss_bb,
+        fast_ret
+    );
+    b = ir.IRBuilder(fast_ret);
+    b.ret(b.bitcast(main_ctx, context_ptr));
     b = ir.IRBuilder(miss_bb);
     b.ret(b.call(slow_fn, [], name="exc.slow"));
 
@@ -1427,7 +1383,7 @@ impl NaIRGenPass._get_exception_context_fn -> ir.Function {
     found.add_incoming(value, slow_entry);
     found.add_incoming(created, create);
     context = b.inttoptr(found, context_ptr);
-    if self.rc_threaded_gv is None or self._native_tls_on() {
+    if self.rc_threaded_gv is None {
         b.ret(context);
         return func;
     }
@@ -1809,9 +1765,6 @@ impl NaIRGenPass._drop_guard_fn(hook: ir.Function, owner: str) -> ir.Function {
 impl NaIRGenPass._unwind_raise_sites(
     func: ir.Function, slots: list[tuple[str, ir.Value]]
 ) -> (list[tuple[ir.Instruction, set[int]]] | None) {
-    if os.environ.get("JAC_NO_UNWIND_SKIP") {
-        return None;
-    }
     for known in self._setjmp_functions {
         if known is func {
             return None;

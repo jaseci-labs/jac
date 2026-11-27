@@ -880,52 +880,15 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
         }
 
         if here.aug_op and isinstance(left_type, TypeVarType) {
-            op_name = AUG_OPERATOR_MAP.get(here.aug_op.name);
-
-            if left_type.constraints {
-                for constraint_type in left_type.constraints {
-                    if isinstance(constraint_type, ClassType) {
-                        if op_name {
-                            result = self.evaluator.get_type_of_magic_method_call(
-                                constraint_type, op_name, [here.value], None
-                            );
-                            if result is None {
-                                self.ctx.emit(
-                                    E1010,
-                                    node_override=here,
-                                    op=here.aug_op.name,
-                                    type=str(constraint_type)
-                                );
-                            }
-                        }
-                    }
-                }
-            } elif left_type.bound and isinstance(left_type.bound, ClassType) {
-                if op_name {
-                    result = self.evaluator.get_type_of_magic_method_call(
-                        left_type.bound, op_name, [here.value], here.value
-                    );
-                    if result is None {
-                        self.ctx.emit(
-                            E1010,
-                            node_override=here,
-                            op=here.aug_op.name,
-                            type=str(left_type.bound)
-                        );
-                    }
-                } else {
-                    self.ctx.emit(
-                        E1010,
-                        node_override=here,
-                        op=here.aug_op.name,
-                        type=str(left_type.bound)
-                    );
-                }
-            } else {
-                self.ctx.emit(
-                    E1010, node_override=here, op=here.aug_op.name, type=left_type.name
-                );
-            }
+            self.evaluator._typevar_magic_call(
+                left_type,
+                AUG_OPERATOR_MAP[here.aug_op.name],
+                [here.value],
+                here,
+                E1010,
+                via=self.ctx,
+                op=here.aug_op.name
+            );
         } else {
             is_rebind = isinstance(target, Name)
                 and target.sym is not None
@@ -970,10 +933,46 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
                 and not right_type.is_any_instance()
             ) {
                 aug_magic = AUG_OPERATOR_MAP.get(aug_op.name);
-                if aug_magic is not None {
-                    result = self.evaluator.get_type_of_magic_method_call(
-                        left_type, aug_magic, [here.value], here.value
+                aug_base_op = AUG_TO_BINARY_MAP.get(aug_op.name);
+                aug_read_type = self.evaluator.get_type_of_expression(target);
+                aug_inplace = self.evaluator.get_type_of_magic_method_call(
+                    left_type, aug_magic, [here.value], here.value
+                )
+                    if aug_magic is not None
+                    else None;
+                aug_unsafe: (TypeBase | None) = None;
+                if aug_magic is not None
+                    and aug_base_op in NONE_UNSAFE_BINARY_OPERATORS {
+                    (aug_bin, aug_rbin) = BINARY_OPERATOR_MAP[aug_base_op];
+                    aug_none = operand_carries_none(self.evaluator, aug_read_type);
+                    aug_members = aug_read_type.types
+                        if isinstance(aug_read_type, UnionType) and not aug_none
+                        else [aug_read_type];
+                    for aug_member in aug_members {
+                        if aug_unsafe is None
+                            and (
+                                aug_none
+                                or self.evaluator.get_type_of_magic_method_call(
+                                    aug_member, aug_magic, [here.value], here.value
+                                )
+                                    is None
+                            ) {
+                            aug_unsafe = none_unsafe_operand(
+                                self.evaluator,
+                                aug_bin,
+                                aug_rbin,
+                                (aug_member, target),
+                                (right_type, here.value)
+                            );
+                        }
+                    }
+                }
+                if aug_unsafe is not None {
+                    self.ctx.emit(
+                        E1160, node_override=here, op=aug_op.value, type=str(aug_unsafe)
                     );
+                } elif aug_magic is not None {
+                    result = aug_inplace;
                     if result is None {
                         base_op = AUG_TO_BINARY_MAP.get(aug_op.name);
                         if base_op is not None {
@@ -1884,31 +1883,9 @@ impl TypeCheckPass.exit_in_for_stmt with InForStmt exit {
 
     iter_method = "__aiter__" if here.is_async else "__iter__";
     if isinstance(collection_type, TypeVarType) {
-        if collection_type.constraints {
-            for constraint_type in collection_type.constraints {
-                if isinstance(constraint_type, ClassType) {
-                    iter_result = self.evaluator.get_type_of_magic_method_call(
-                        constraint_type, iter_method, [], None
-                    );
-                    if iter_result is None {
-                        self.ctx.emit(
-                            E1021, node_override=here, type=str(constraint_type)
-                        );
-                    }
-                }
-            }
-        } elif collection_type.bound and isinstance(collection_type.bound, ClassType) {
-            iter_result = self.evaluator.get_type_of_magic_method_call(
-                collection_type.bound, iter_method, [], here.collection
-            );
-            if iter_result is None {
-                self.ctx.emit(
-                    E1021, node_override=here, type=str(collection_type.bound)
-                );
-            }
-        } else {
-            self.ctx.emit(E1021, node_override=here, type=collection_type.name);
-        }
+        self.evaluator._typevar_magic_call(
+            collection_type, iter_method, [], here, E1021, via=self.ctx
+        );
     } elif not isinstance(collection_type, UnknownType)
         and not self.evaluator.is_any_type(collection_type) {
         is_enum = (
@@ -2251,7 +2228,7 @@ impl TypeCheckPass._is_exception_class_operand(
 }
 
 impl TypeCheckPass.exit_match_as with MatchAs exit {
-    self._check_binder_write(here.name, rebind_scope=here);
+    self._check_binder_write(here.name, rebind_scope=here, binder=here);
 }
 
 impl TypeCheckPass.exit_match_arch with MatchArch exit {

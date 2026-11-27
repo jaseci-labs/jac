@@ -11,7 +11,6 @@ glob MINTED_SECRET_NOTES: dict[str, str] = {
      },
      logger = logging.getLogger(__name__),
      REVISION_ANNOTATION: str = "deployment.kubernetes.io/revision",
-     FLEET_SELECTOR: str = "managed=jac-scale,jac-scale.role in (microservice,gateway)",
      ROLLOUT_POLL_SECONDS: int = 2,
      IMAGE_PULL_PERSIST_SECONDS: int = 10,
      MOUNT_WEDGE_SECONDS: int = 300;
@@ -49,13 +48,25 @@ def reap_stale_scaling_resources_for_bundle(
 );
 
 
+def lift_parked_deployments_for_bundle(
+    bundle: dict[str, any], namespace: str, apps_v1: any
+) -> list[str];
+
+
 obj KubernetesTarget(KubernetesTargetBase) {
     has _deploy_context: DeployContext = DeployContext(),
         fleet: (FleetSpec | None) = None,
         gateway_config: (dict[str, any] | None) = None,
-        app_overrides: dict[str, dict[str, any]] = {};
+        app_overrides: dict[str, dict[str, any]] = {},
+        from_build: str = "",
+        pod_arch: str = "",
+        plan_out: str = "",
+        _verified_injector: (BinaryInjector | None) = None;
 
     def _gateway_cfg -> dict[str, any];
+    def build(app_config: AppConfig, out_dir: str) -> dict[str, any];
+    def write_plan(bundle: dict[str, any]);
+    def _verify_build(app_config: AppConfig) -> str;
     def deploy(app_config: AppConfig) -> DeploymentResult;
     def _scan_for_crash_loop(
         core_v1: any,
@@ -79,6 +90,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
     ) -> str;
 
     def _observability_requested -> bool;
+    def _monitoring_storage_refusal(app_name: str, check_cluster: bool = True) -> str;
     def _deploy_observability(app_name: str) -> None;
     def ensure_alb_readiness_gates(core_v1: any, namespace: str) -> None;
     def _ensure_privileged_namespace(core_v1: any, namespace: str) -> None;

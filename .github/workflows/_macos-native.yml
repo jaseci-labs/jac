@@ -1,10 +1,8 @@
 name: macOS native
 
 # The darwin native lane: the sealed macOS kit and the Mach-O / wasm-floor /
-# libSystem-equivalence tests that consume it. Two callers share this one copy:
-#   - nightly.yml (macos-native): daily, the default home for this lane.
-#   - ci.yml      (macos-native): PR lane, OPT-IN via the `macos` label, plus
-#     workflow_dispatch.
+# libSystem-equivalence tests that consume it. Called from nightly.yml
+# (macos-native): daily, and on a manual run of Nightly.
 #
 # Why it is not on every PR: the macOS kit is 44-68 min of critical path
 # (macos-26-arm64, ~3x the Linux leg for the same cold 622-module
@@ -93,7 +91,7 @@ jobs:
         # Pure-compute na modules that must agree on darwin; str/bytes guard
         # the libc-binding divergence (musl static vs libSystem).
         run: >-
-          jac test jac/jaclang/compiler/tests/test_prim_equivalence.jac
+          jac test jac/jaclang/compiler/tests/test_prim_equivalence*.jac
           -f "shutil or path or textwrap or keyword or str or bytes"
       - name: Provision managed Ruby, CocoaPods, and native Node
         run: |

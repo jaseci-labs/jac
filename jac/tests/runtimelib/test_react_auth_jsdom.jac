@@ -35,7 +35,8 @@ import from .react_jsdom_harness {
     compile_page,
     require_client_integration,
     run_harness,
-    write_runtime
+    write_runtime,
+    write_runtime_core
 }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures" / "react_auth"),
@@ -202,13 +203,26 @@ test "react AuthGuard renders children, child routes, and nothing -- in jsdom" {
 }
 
 
-glob _STALE_401_HARNESS: str = """
+glob _REJECTED_TOKEN_HARNESS: str = """
 import { JSDOM } from "jsdom";
 
+const [target] = process.argv.slice(2);
 const dom = new JSDOM("<!DOCTYPE html><html><body></body></html>", { url: "http://localhost/" });
-globalThis.window = dom.window;
+const storage = dom.window.localStorage;
 globalThis.document = dom.window.document;
-globalThis.localStorage = dom.window.localStorage;
+globalThis.localStorage = storage;
+globalThis.sessionStorage = dom.window.sessionStorage;
+
+// The page reset: web reloads, native runs the unauthorized handler.
+let resets = 0;
+if (target === "native") {
+  globalThis.__jacGetApiBaseUrl__ = () => "";
+  globalThis.__jacGetLocalStorage__ = (key) => storage.getItem(key) || "";
+  globalThis.__jacRemoveLocalStorage__ = (key) => storage.removeItem(key);
+  globalThis.__jacHandleWalkerUnauthorized__ = () => { resets += 1; };
+} else {
+  globalThis.window = { location: { reload: () => { resets += 1; } } };
+}
 
 const failures = [];
 const check = (label, ok, detail) => {
@@ -216,46 +230,106 @@ const check = (label, ok, detail) => {
   if (!ok) failures.push(label);
 };
 
-const core = await import("./client_runtime_core.js");
-let answer;
+const core = await import(
+  target === "native" ? "./native/client_react_core.js" : "./client_runtime_core.js"
+);
+const answers = [];
 globalThis.fetch = () => new Promise((resolve) => {
-  answer = () => resolve(new Response("unauthorized", { status: 401 }));
+  answers.push((status) => resolve(status === 200
+    ? new Response(JSON.stringify({ ok: true, data: {} }), { status: 200 })
+    : new Response("unauthorized", { status: 401 })));
 });
-const call = (token) => {
-  localStorage.setItem("jac_token", token);
-  const pending = core.__doWalkerFetch("w", "", {}, { app: "svc" }).then(
-    () => null,
-    (e) => e
-  );
-  return pending;
+const tick = () => new Promise((r) => setTimeout(r, 0));
+const stored = () => storage.getItem("jac_token");
+const seed = (token) => {
+  if (token === null) storage.removeItem("jac_token");
+  else storage.setItem("jac_token", token);
 };
 
-// A request sent with the old token answers 401 after the user signed in again.
-let pending = call("old-token");
-await new Promise((r) => setTimeout(r, 0));
-localStorage.setItem("jac_token", "new-token");
-answer();
-let err = await pending;
-check("a stale 401 keeps the newer login", localStorage.getItem("jac_token") === "new-token",
-  `jac_token=${localStorage.getItem("jac_token")}`);
-check("the stale call still raises a 401 BridgeRejected", !!err && err.status === 401, String(err));
+// Each sender, and whether it can call another app.
+const senders = [
+  ["__doWalkerFetch", (opts) => core.__doWalkerFetch("w", "", {}, opts), true],
+  ["__doFuncFetch", (opts) => core.__doFuncFetch("f", {}, opts), true],
+];
+if (target === "web") {
+  senders.push(["__jacAuthedJson",
+    () => core.__jacAuthedJson("GET", "http://localhost/sso/connections"), false]);
+}
 
-// A 401 for the token still in use drops it.
-pending = call("current-token");
-await new Promise((r) => setTimeout(r, 0));
-answer();
-err = await pending;
-check("a 401 for the current token drops it", !localStorage.getItem("jac_token"),
-  `jac_token=${localStorage.getItem("jac_token")}`);
+// One page load: `calls` requests go out with `sent` stored and are answered
+// with `status` once `landed` is stored. `left` is what must be stored after,
+// `resets` how many times the page must have been reset.
+const load = async (tag, send, bridges, c) => {
+  const status = c.status || 401;
+  resets = 0;
+  seed(c.sent);
+  const pending = Array.from({ length: c.calls || 1 }, () =>
+    send(c.app ? { app: c.app, route: "/" + c.app } : {}).then(() => null, (e) => e));
+  await tick();
+  seed("landed" in c ? c.landed : c.sent);
+  answers.splice(0).forEach((answer) => answer(status));
+  const errors = await Promise.all(pending);
+  const raises = bridges && c.app && status === 401;
+  check(`${tag}: ${c.name}`,
+    stored() === c.left && resets === c.resets
+      && errors.every((e) => (raises ? !!e && e.status === 401 : e === null)),
+    `jac_token=${stored()} resets=${resets} errors=${errors}`);
+};
+
+const CASES = [
+  { name: "another app, current token", app: "svc", sent: "tok", left: null, resets: 1 },
+  { name: "another app, six calls, current token", app: "svc", calls: 6, sent: "tok", left: null, resets: 1 },
+  { name: "another app, newer login", app: "svc", sent: "old", landed: "new", left: "new", resets: 0 },
+  { name: "another app, no token", app: "svc", sent: null, left: null, resets: 0 },
+  { name: "own app, current token", sent: "tok", left: null, resets: 1 },
+  { name: "own app, newer login", sent: "old", landed: "new", left: "new", resets: 0 },
+  { name: "own app, no token", sent: null, left: null, resets: 1 },
+];
+
+// Desktop profiles: each row is a page load, with the token the host put back.
+const EXPIRED = "eyJhbGciOiJIUzI1NiJ9." +
+  Buffer.from(JSON.stringify({ sub: "u", exp: 1000000000 })).toString("base64url") +
+  ".sig";
+const PROFILE_LOADS = [
+  { name: "first rejection resets", profile: "p1", app: "svc", sent: "tok-1", left: null, resets: 1 },
+  { name: "put back and accepted", profile: "p1", app: "svc", sent: "tok-2", status: 200, left: "tok-2", resets: 0 },
+  { name: "rejected again is left alone", profile: "p1", app: "svc", sent: "tok-2", left: "tok-2", resets: 0 },
+  { name: "expired resets again", profile: "p1", app: "svc", sent: EXPIRED, left: null, resets: 1 },
+  { name: "put back after that is left alone", profile: "p1", app: "svc", sent: "tok-3", left: "tok-3", resets: 0 },
+  { name: "already dropped, own app resets", profile: "p1", sent: null, left: null, resets: 1 },
+  { name: "put back after that is left alone", profile: "p1", sent: "tok-4", left: "tok-4", resets: 0 },
+  { name: "another profile resets", profile: "p2", app: "svc", sent: "tok-5", left: null, resets: 1 },
+];
+
+for (const [fn, send, bridges] of senders) {
+  for (const c of CASES) {
+    if (bridges || (!c.app && c.sent !== null)) await load(`${target} ${fn}`, send, bridges, c);
+  }
+  if (target !== "web") continue;
+  sessionStorage.clear();
+  for (const c of PROFILE_LOADS) {
+    globalThis.__JAC_PROFILES__ = { active: c.profile, profiles: [] };
+    if (bridges || c.sent !== null) await load(`web ${fn}: profile`, send, bridges, c);
+  }
+  delete globalThis.__JAC_PROFILES__;
+}
 
 console.log(failures.length ? `FAILED: ${failures.join(", ")}` : "OK");
 process.exit(failures.length ? 1 : 0);
 """;
 
-"""A 401 only clears the token the failing request sent. A slow request that
-went out before the user signed in again must not erase the new login."""
-test "a delayed 401 from an old request keeps a newer login" {
-    require_client_integration("stale 401");
+"""What a 401 does to the stored token and the page (#10800):
+
+    the token changed while the call was out   nothing, the newer login stays
+    another app, a token was sent              token dropped, page reset once
+    another app, no token                      nothing, a visitor never reloads
+    the page's own app, token or not           token dropped, page reset once
+    desktop profile, token put back by the     one reset per profile, until that
+      host and rejected again                    token expires or is gone
+
+The web core reloads the page; the native core runs the unauthorized handler."""
+test "a 401 drops only the token it was sent with and resets the page once" {
+    require_client_integration("rejected token");
     bun = js_runtime_or_none();
     if bun is None {
         testskip("bun is required but could not be located/installed");
@@ -263,8 +337,12 @@ test "a delayed 401 from an old request keeps a newer login" {
     with TemporaryDirectory() as tmp {
         work = Path(tmp);
         write_runtime(work);
-        (work / "harness.mjs").write_text(_STALE_401_HARNESS, encoding="utf-8");
-        bun_install(bun, work, "react-stale-401-jsdom-test");
-        run_harness(bun, work, [], "stale 401");
+        (work / "native").mkdir();
+        write_runtime_core(work / "native", "client_react_core");
+        (work / "harness.mjs").write_text(_REJECTED_TOKEN_HARNESS, encoding="utf-8");
+        bun_install(bun, work, "react-rejected-token-jsdom-test");
+        for target in ["web", "native"] {
+            run_harness(bun, work, [target], f"rejected token {target}");
+        }
     }
 }

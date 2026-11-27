@@ -979,7 +979,7 @@ impl CatalogWriter.encode_scope(idx: int) -> bytes {
     put_ref(out, parent);
     put_ref(out, self.ref_module(module_of(scope)));
     put_ref(out, self.ref_symbol(owner));
-    loc = scope.loc if self.spans else None;
+    loc = scope.loc;
     put_uvar(out, max(loc.first_line, 0) if loc else 0);
     put_uvar(out, max(loc.col_start, 0) if loc else 0);
     put_uvar(out, max(loc.last_line, 0) if loc else 0);
@@ -1061,7 +1061,7 @@ impl CatalogWriter.encode_symbol(idx: int) -> bytes {
     }
     put_uvar(out, access);
     put_uvar(out, 1 if sym.imported else 0);
-    loc = sym.decl.loc if sym.decl and self.spans else None;
+    loc = sym.decl.loc if sym.decl else None;
     if loc is not None and is_arch_file(loc.mod_path) {
         loc = None;
     }
@@ -1170,6 +1170,9 @@ impl CatalogWriter.encode_type(idx: int) -> bytes {
         }
         put_uvar(out, TY_CLASS);
         put_uvar(out, flags);
+        if self._shared_ident(shared) not in self.shared_ids {
+            self._settle_ancestry(t);
+        }
         put_ref(out, self.ref_shared(shared));
         put_refs(out, self.ref_types(t.private.type_args));
         put_uvar(out, self.sid(t.private.alias_name or ""));
@@ -1295,6 +1298,28 @@ impl CatalogWriter.encode_type(idx: int) -> bytes {
     put_uvar(out, 1 if is_diagnosed else 0);
     put_uvar(out, 1 if is_incomplete else 0);
     return bytes(out);
+}
+
+impl CatalogWriter._settle_ancestry(cls: ClassType) -> None {
+    home = module_of(cls.shared.symbol_table)
+        if cls.shared.symbol_table is not None
+        else None;
+    if self.boundary is None or home is None or not self.in_boundary(home) {
+        return;
+    }
+    self.evaluator._heal_ancestry(cls);
+    for ancestor in [cls] + list(cls.shared.mro or []) {
+        if ancestor.shared._provisional {
+            self.failures += 1;
+            if len(self.failure_log) < 200 {
+                self.failure_log.append(
+                    f"{cls.shared.class_name}: a base of "
+                    f"{ancestor.shared.class_name} is not resolved yet"
+                );
+            }
+            return;
+        }
+    }
 }
 
 impl CatalogWriter.note_orphan(sh: ClassDetailsShared) {
@@ -1567,33 +1592,21 @@ impl build_module_iface(
     mod: Module,
     evaluator: TypeEvaluator,
     pkg_dir: str,
-    path_mapper: (PathMapper | None) = None,
-    spans: bool = True
+    path_mapper: (PathMapper | None) = None
 ) -> bytes {
-    body = module_iface_body(mod, evaluator, pkg_dir, path_mapper, spans);
+    body = module_iface_body(mod, evaluator, pkg_dir, path_mapper);
     digest = hashlib.sha256(body).hexdigest();
     return digest.encode("utf-8") + body;
-}
-
-impl module_iface_shape(mod: Module, evaluator: TypeEvaluator, pkg_dir: str) -> str {
-    return hashlib.sha256(
-        module_iface_body(mod, evaluator, pkg_dir, None, False)
-    ).hexdigest();
 }
 
 impl module_iface_body(
     mod: Module,
     evaluator: TypeEvaluator,
     pkg_dir: str,
-    path_mapper: (PathMapper | None),
-    spans: bool
+    path_mapper: (PathMapper | None)
 ) -> bytes {
     writer = CatalogWriter(
-        evaluator=evaluator,
-        pkg_dir=pkg_dir,
-        boundary=mod,
-        path_mapper=path_mapper,
-        spans=spans
+        evaluator=evaluator, pkg_dir=pkg_dir, boundary=mod, path_mapper=path_mapper
     );
     dotted = mod.name or "";
     writer.add_module(mod, dotted);

@@ -99,14 +99,37 @@ def _stray_caches(proj: Path) -> list[str] {
 test "a warm client build over a real layout is served from the cache" {
     import from jaclang.server.hmr { HotReloader }
     import from jaclang.server.watcher { JacFileWatcher }
+    import from contextlib { redirect_stdout }
+    import from io { StringIO }
+    import jaclang.client.client_bundle as client_bundle;
     proj = _project();
 
-    cold = _build(proj);
+    shown = client_bundle.STAGE_SHOWN_FROM_SECONDS;
+    client_bundle.STAGE_SHOWN_FROM_SECONDS = 0.0;
+    timed = StringIO();
+    quiet = StringIO();
+    try {
+        with client_bundle.timing_stages() {
+            with redirect_stdout(timed) {
+                cold = _build(proj);
+            }
+        }
+        with redirect_stdout(quiet) {
+            warm = _build(proj);
+        }
+    } finally {
+        client_bundle.STAGE_SHOWN_FROM_SECONDS = shown;
+    }
     for name in ["main.jac", "Navbar.jac", "button.jac", "index.jac", "about.jac"] {
         assert name in cold , f"the cold build must compile {name}, saw {cold}";
     }
-    warm = _build(proj);
+    assert "Pages compiled (" in timed.getvalue() , (
+        f"a timed build must print a line for the pages, saw {timed.getvalue()!r}"
+    );
     assert warm == [] , f"the warm build must be served from the cache, compiled {warm}";
+    assert "\u2714" not in quiet.getvalue() , (
+        f"a build with timing off must print no stage, saw {quiet.getvalue()!r}"
+    );
 
     pinned = project_scope_is_pinned();
     saved = get_config();
@@ -162,19 +185,65 @@ test "a warm client build over a real layout is served from the cache" {
     assert _build(proj) == [] , "the build after that must be fully served again";
 }
 
-test "a pages entry whose app cannot receive the route tree is refused" {
-    # The generated entry renders `app` with the routes as its children; an
-    # `app` without `children` would drop every page, so the build stops here.
-    import from jaclang.client.client_bundle { ClientBundleError }
-    proj = _project();
-    (proj / "main.jac").write_text(
-        'def:pub app -> JsxElement {\n    return <main>shell</main>;\n}\n'
-    );
-    refused = False;
+test "a client build that cannot bundle the app as written is refused" {
+    import from contextlib { redirect_stdout }
+    import from io { StringIO }
+    import jaclang.client.client_bundle as client_bundle;
+    import from jaclang.client.targets.web_target { WebTarget }
+    entry_done = ["Entry module and its imports compiled"];
+    cases: list[tuple[str, str, str, list[str], list[str]]] = [
+        (
+            "an app that declares no children would drop every routed page",
+            "main.jac",
+            'def:pub app -> JsxElement {\n    return <main>shell</main>;\n}\n',
+            ["children"],
+            entry_done
+        ),
+        (
+            "an entry with a syntax error",
+            "main.jac",
+            'def:pub app(children: any = None) -> any {\n    return <main>{children}</main>\n',
+            ["main.jac", "Missing"],
+            []
+        ),
+        (
+            "a page with a syntax error",
+            "pages/about.jac",
+            'def:pub page -> JsxPage {\n    return <p>about</p>\n',
+            ["about.jac", "Missing"],
+            entry_done
+        )
+    ];
+    shown = client_bundle.STAGE_SHOWN_FROM_SECONDS;
+    client_bundle.STAGE_SHOWN_FROM_SECONDS = 0.0;
     try {
-        _compiler(proj).jac_client_compiler.compile(None, proj / "main.jac");
-    } except ClientBundleError as e {
-        refused = "children" in str(e);
+        for (what, rel, text, needles, finished) in cases {
+            proj = _project();
+            (proj / rel).write_text(text);
+            failure = "";
+            printed = StringIO();
+            with client_bundle.timing_stages() {
+                with redirect_stdout(printed) {
+                    try {
+                        WebTarget().build(proj / "main.jac", proj);
+                    } except RuntimeError as e {
+                        failure = str(e);
+                    }
+                }
+            }
+            assert all(needle in failure for needle in needles) , (
+                f"{what}: the build must stop and name {needles}, got {failure!r}"
+            );
+            lines = [
+                line.split("\u2714 ", 1)[1].rsplit(" (", 1)[0]
+                for line in printed.getvalue().splitlines()
+                if "\u2714 " in line
+            ];
+            assert lines == finished , (
+                f"{what}: only the stages that finished may print a line, saw {printed.getvalue()!r}"
+            );
+        }
+    } finally {
+        client_bundle.STAGE_SHOWN_FROM_SECONDS = shown;
     }
-    assert refused , "an app that drops the route tree must fail the client build";
 }

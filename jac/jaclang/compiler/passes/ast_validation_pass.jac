@@ -1,17 +1,24 @@
 import keyword;
 import os;
 
+type ImportBinding = tuple[Import, (ModuleItem | ModulePath), Name];
 
 walker ASTValidationPass(TreePass) {
     static has contract: PassContract = PassContract();
+    has _import_scopes: (dict[int, dict[str, ImportBinding]] | None) = None;
 
     can enter_try_stmt with TryStmt entry;
     can enter_match_stmt with MatchStmt entry;
     can enter_module with Module entry;
-    def _import_bindings(mod: Module) -> dict[str, tuple[Import, Name]];
+    def _import_bindings(
+        scope: UniNode, direct_only: bool
+    ) -> dict[str, ImportBinding];
+
     def _declared_names(item: ContextAwareNode) -> list[Name];
-    def _imports_itself(mod: Module, stmt: Import) -> bool;
-    def _binding_origin(mod: Module, name: Name) -> str;
+    def _imports_itself(mod: UniNode, stmt: Import) -> bool;
+    def _binding_origin(at: UniNode, name: Name) -> str;
+    def _bound_name(item: (ModuleItem | ModulePath)) -> (Name | None);
+    def _import_target(item: (ModuleItem | ModulePath)) -> str;
     can enter_module_code with ModuleCode entry;
     can enter_binary_expr with BinaryExpr entry;
     can enter_name with Name entry;

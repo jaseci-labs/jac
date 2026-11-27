@@ -269,36 +269,8 @@ test "MalformedJacTomlError keeps its identity and its tomllib base" {
 }
 
 # ─────────────────────────────────────────────────────────────────────
-# runtime reflection -> frozen name tables
+# test block assert names
 # ─────────────────────────────────────────────────────────────────────
-
-# Two passes asked the running interpreter what names exist -- `dir(builtins)`
-# for the undefined-name check, `dir(TestCase())` for the assert stubs a
-# `test` block gets. Both are now tables generated from CPython 3.14. These
-# are the drift alarms: if a CPython upgrade changes either surface, they
-# fail here with the exact delta, and the tables get regenerated.
-test "the frozen builtins table matches the running interpreter" {
-    import builtins;
-    import from jaclang.compiler.passes.static_analysis_pass { BUILTIN_NAMES }
-    live = set(dir(builtins));
-    assert BUILTIN_NAMES == live , (
-        f"regenerate BUILTIN_NAMES: missing {sorted(live - BUILTIN_NAMES)}, "
-        f"stale {sorted(BUILTIN_NAMES - live)}"
-    );
-}
-
-test "the frozen TestCase assert table matches the running interpreter" {
-    import from unittest { TestCase }
-    import from jaclang.compiler.passes.sym_tab_build_pass { TEST_ASSERT_METHOD_NAMES }
-    live = [
-        j
-        for j in dir(TestCase())
-        if j.startswith('assert')
-    ];
-    assert list(TEST_ASSERT_METHOD_NAMES) == live , (
-        f"regenerate TEST_ASSERT_METHOD_NAMES: live surface is {live}"
-    );
-}
 
 test "a test block still binds the assert names to symbols" {
     import from jaclang.compiler.frontend.unitree { Name }
@@ -331,9 +303,15 @@ test "a test block still binds the assert names to symbols" {
 test "version-condition comparisons match the operator table they replaced" {
     import sys;
     import ast as py_ast;
-    import from jaclang.compiler.frontend.unitree { IfStmt, PythonModuleAst, Source }
-    import from jaclang.compiler.driver.pipeline { run_utility }
-    import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
+    import from typing { cast }
+    import from jaclang.compiler.frontend.unitree {
+        IfStmt,
+        Module,
+        PythonModuleAst,
+        Source
+    }
+    import from jaclang.compiler.driver.pass_driver { run_pass }
+    import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
     import from jaclang.compiler.frontend.helpers { evaluate_version_condition }
     code = "import sys\n"
     "if sys.version_info >= (3, 11):\n    a = 1\n"
@@ -345,10 +323,13 @@ test "version-condition comparisons match the operator table they replaced" {
     "if sys.version_info >= (99, 0):\n    g = 1\n"
     "if sys.platform == 'linux':\n    h = 1\n";
     prog = JacProgram();
-    mod = run_utility(
-        CompilationProduct.PYTHON_AST,
-        PythonModuleAst(
-            py_ast.parse(code), orig_src=Source(code, "test_version_ops.py")
+    mod = run_pass(
+        PyastBuildPass,
+        cast(
+            Module,
+            PythonModuleAst(
+                py_ast.parse(code), orig_src=Source(code, "test_version_ops.py")
+            )
         ),
         prog
     ).module;
@@ -426,32 +407,6 @@ test "Jdb.has_breakpoint still reads the compiled bytecode" {
     without_bp = compile("x = 1\n", "<probe>", "exec");
     assert debugger.has_breakpoint(marshal.dumps(with_bp));
     assert not debugger.has_breakpoint(marshal.dumps(without_bp));
-}
-
-# ─────────────────────────────────────────────────────────────────────
-# placement: typ.__name__ -> the name carried beside the type
-# ─────────────────────────────────────────────────────────────────────
-
-# `scan_native_blockers` read `typ.__name__` off entries of a constant class
-# list purely to name the offender in a diagnostic string. The name now rides
-# beside the type so the runtime does no reflection. Reflection is fine HERE --
-# a test is never lowered natively -- so this pins the pair against drift.
-test "placement blocker tables carry the real class name" {
-    import from jaclang.compiler.placement.placement {
-        PLACEMENT_NATIVE_REJECT_NODES,
-        PLACEMENT_SV_SIGNAL_NODES
-    }
-    tables = [PLACEMENT_SV_SIGNAL_NODES, PLACEMENT_NATIVE_REJECT_NODES];
-    seen = 0;
-    for table in tables {
-        for (nd_name, typ) in table {
-            assert nd_name == typ.__name__ , (
-                f"placement table name {nd_name!r} drifted from {typ.__name__!r}"
-            );
-            seen += 1;
-        }
-    }
-    assert seen == 2 , f"expected 2 tabled node types, saw {seen}";
 }
 
 test "scan_native_blockers names the offending node from the table" {

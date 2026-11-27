@@ -7,27 +7,27 @@ impl JcirBytecodeGenPass.process_modules(root_module: Module) -> None {
     mods = [root_module] + root_module.get_all_sub_nodes(Module);
     for mod in mods {
         self.ctx.current_node = mod;
-        self.transcribe_module(mod);
+        self.compile_module(mod);
     }
 }
 
-impl JcirBytecodeGenPass.transcribe_module(mod: Module) -> None {
-    if not mod.gen.jcir {
+impl JcirBytecodeGenPass.compile_module(mod: Module) -> None {
+    tree = mod.gen.py_tree;
+    if tree is None {
         if not mod.gen.py_bytecode {
             self.ctx.emit(E5040, node_override=mod, path=mod.loc.mod_path);
         }
         return;
     }
-    result = compile_ir(mod.gen.jcir);
-    for d in result.diags {
-        self.ctx.emit(E5043, node_override=mod, error=d.message);
+    try {
+        code_obj = compile(tree, mod.loc.mod_path, "exec", dont_inherit=True);
+    } except (ValueError, SyntaxError, TypeError) as e {
+        self.ctx.emit(E5043, node_override=mod, error=str(e));
+        return;
     }
-    if result.modules {
-        compiled = result.modules[0];
-        mod.gen.py_ast = [compiled.tree];
-        mod.gen.py_text = None;
-        mod.gen.py_bytecode = compiled.bytecode;
-    }
+    mod.gen.py_ast = [tree];
+    mod.gen.py_text = None;
+    mod.gen.py_bytecode = marshal.dumps(code_obj);
 }
 
 impl JcirBytecodeGenPass.run_walk with Module entry {

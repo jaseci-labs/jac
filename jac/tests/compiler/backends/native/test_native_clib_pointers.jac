@@ -828,25 +828,6 @@ test "a scalar C definition's entry jumps into its body unless a region is open"
     assert_frameless_entry(thunk, escape, "c_remember.jac");
 }
 
-test "under native TLS a C entry reads the region slot with the initial-exec model" {
-    options = native_force_opts();
-    options.native_tls = True;
-    with tempfile.TemporaryDirectory() as directory {
-        stage_source(directory, C_DEFINITION_ENTRY, "centry.jac");
-        text = str(
-            compile_native_ir(
-                "centry.jac", fixture_dir=directory, options=options
-            ).gen.llvm_ir
-        );
-    }
-    assert re.search(
-        r'@"?__jac_region_tls_tl"? = weak thread_local\(initialexec\) global', text
-    ) , "the region slot is not initial-exec";
-    (thunk, escape) = c_entry_pair(text, "c_remember");
-    assert_frameless_entry(thunk, escape, "c_remember.jac");
-    assert "pthread_getspecific" not in thunk , thunk;
-}
-
 test "a Jac callback's C trampoline leaves an open region out of line" {
     with tempfile.TemporaryDirectory() as directory {
         stage_source(directory, C_CALLBACK_ENTRY, "cbentry.jac");

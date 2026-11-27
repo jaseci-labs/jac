@@ -218,7 +218,7 @@ impl BoundaryAnalysisPass._register_native_absorb(nd: Import) -> None {
         }
         src = self._native_source_module_of(defn0.name_of.find_parent_of_type(Module))
             or native_path;
-        self._imported_native_funcs[name] = (src, import_context);
+        self._imported_native_funcs[name] = src;
         if (is_native_ctx and name not in manifest.bindings) {
             decl = self._resolved_native_decl(defn0);
             (ret_type, param_types, param_names) = self._signature_of_decl(decl);
@@ -298,7 +298,7 @@ impl BoundaryAnalysisPass.enter_import with Import entry {
                             if _definition is not None
                             else None;
                         _src = _src or native_path;
-                        self._imported_native_funcs[func_name] = (_src, import_context);
+                        self._imported_native_funcs[func_name] = _src;
 
                         is_native_ctx = (
                             import_context == InteropContext.NATIVE
@@ -339,10 +339,7 @@ impl BoundaryAnalysisPass.enter_import with Import entry {
                 whole_name = '.'.join(p.value for p in item.path);
                 item_path = facts.native_item_paths.get(whole_name) if facts else None;
                 if (whole_name and item_path) {
-                    self._imported_native_modules[whole_name] = (
-                        item_path,
-                        import_context
-                    );
+                    self._imported_native_modules[whole_name] = item_path;
                 }
             }
         }
@@ -641,7 +638,7 @@ impl BoundaryAnalysisPass._record_app_edge(nd: Import) -> None {
     if provider_app is None {
         return;
     }
-    consumer_app = module_app(self.module) or '';
+    consumer_app = self.module.app or '';
     if provider_app == consumer_app {
         return;
     }
@@ -656,7 +653,7 @@ impl BoundaryAnalysisPass._record_app_edge(nd: Import) -> None {
 }
 
 impl BoundaryAnalysisPass._bridge_targets(mod: Module) -> list[tuple[(str, str)]] {
-    consumer_app = module_app(mod) or '';
+    consumer_app = mod.app or '';
     targets: list[tuple[(str, str)]] = [];
     for imp in mod.get_all_sub_nodes(Import) {
         provider_app = import_provider_app(imp);
@@ -725,7 +722,7 @@ impl BoundaryAnalysisPass._parsed_provider_of(nd: Import) -> (Module | None) {
 impl BoundaryAnalysisPass._reject_owned_type_import(
     nd: Import, item: ModuleItem, kind: str
 ) -> None {
-    consumer = module_app(self.module) or self.module.name;
+    consumer = self.module.app or self.module.name;
     self.ctx.emit(
         E5108,
         node_override=item,
@@ -745,7 +742,7 @@ impl BoundaryAnalysisPass._check_provider_pub(nd: Import, item: ModuleItem) -> N
         != ClientImportVerdict.DEAD {
         return;
     }
-    consumer = module_app(self.module) or self.module.name;
+    consumer = self.module.app or self.module.name;
     self.ctx.emit(
         E5106,
         node_override=item,
@@ -908,7 +905,7 @@ impl BoundaryAnalysisPass.enter_func_call with FuncCall entry {
                 or self._in_native_module()
             );
             if isinstance(right_name, str) and right_name and _is_native_ctx {
-                (mod_path, _ctx) = self._imported_native_modules[base_name];
+                mod_path = self._imported_native_modules[base_name];
                 _mfst = self.module.gen.interop_manifest;
                 if right_name not in _mfst.bindings {
                     _decl = self._resolved_native_decl(right);
@@ -944,7 +941,7 @@ impl BoundaryAnalysisPass.enter_func_call with FuncCall entry {
         return;
     }
     if (func_name in self._imported_native_funcs) {
-        (source_module, import_ctx) = self._imported_native_funcs[func_name];
+        source_module = self._imported_native_funcs[func_name];
         if (caller_ctx == InteropContext.NATIVE or self._in_native_module()) {
             if (func_name not in manifest.bindings) {
                 _decl = self._resolved_native_decl(target);
@@ -1091,10 +1088,6 @@ impl BoundaryAnalysisPass._extract_all_type_names(expr: (UniNode | None)) -> lis
         if expr.value not in prims {
             return [expr.value];
         }
-        return [];
-    }
-
-    if isinstance(expr, BuiltinType) {
         return [];
     }
 

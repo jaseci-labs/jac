@@ -8,6 +8,9 @@ obj IdentityTakenError(Exception) {}
 
 def primary_username(user: dict[str, any]) -> str;
 
+
+def session_epoch_value(raw: any) -> int | None;
+
 obj IdentityStorage {
     static def hash_password(password: str) -> str;
     static def verify_password(password: str, password_hash: str) -> bool;
@@ -17,6 +20,10 @@ obj IdentityStorage {
     def _update_credentials(
         user_id: str, credentials: list[dict[str, any]]
     ) -> None abst;
+
+    def _end_sessions(
+        user_id: str, patch: dict[str, any], expected: (int | None) = None
+    ) -> int | None;
 
     def _get_oauth_grants(user_id: str) -> list[dict[str, any]] abst;
     def _put_oauth_grant(user_id: str, grant: dict[str, any]) -> int abst;
@@ -41,6 +48,9 @@ obj IdentityStorage {
     def rename_username(user_id: str, new_username: str) -> dict[str, any];
     def identity_taken(value: str) -> bool abst;
     def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, any]] abst;
+    def list_provisioned_users -> list[dict[str, any]] abst;
+    def count_provisioned_users -> int abst;
+    def delete_if_provisioned(user_id: str) -> bool abst;
     def get_user_by_sso(platform: str, external_id: str) -> dict[str, any] | None abst;
     def create_user(
         identities: list[dict[str, any]],
@@ -57,9 +67,15 @@ obj IdentityStorage {
     def holds_password(user_id: str, password: str) -> bool;
     def password_reused(credentials: list[dict[str, any]], new_password: str) -> bool;
     def write_password(
-        user_id: str, credentials: list[dict[str, any]], new_password: str
-    ) -> None;
+        user_id: str,
+        credentials: list[dict[str, any]],
+        new_password: str,
+        expected_epoch: (int | None) = None
+    ) -> int | None;
 
+    def credential_state(user_id: str) -> tuple[list[dict[str, any]], any];
+    def session_state(user_id: str) -> dict[str, any] | None;
+    def end_sessions(user_id: str) -> int | None;
     def password_expired(user: dict[str, any], credential: dict[str, any]) -> bool;
     def update_password(
         user_id: str, current_password: str, new_password: str
@@ -67,6 +83,7 @@ obj IdentityStorage {
 
     def reset_password(user_id: str, new_password: str) -> dict[str, any];
     def expire_legacy_credentials(user_id: (str | None) = None) -> list[str];
+    def delete_provisioned_users -> dict[str, list[str]];
     def get_root_id(user_id: str) -> str | None;
     def get_username(user_id: str) -> str | None;
     def update_user_fields(user_id: str, fields: dict[str, any]) -> bool;
@@ -86,6 +103,12 @@ obj PgIdentityStorage(IdentityStorage) {
     def _update_fields(user_id: str, fields: dict[str, any]) -> bool;
     def _get_credentials(user_id: str) -> list[dict[str, any]];
     def _update_credentials(user_id: str, credentials: list[dict[str, any]]) -> None;
+    def _end_sessions(
+        user_id: str, patch: dict[str, any], expected: (int | None) = None
+    ) -> int | None;
+
+    def credential_state(user_id: str) -> tuple[list[dict[str, any]], any];
+    def session_state(user_id: str) -> dict[str, any] | None;
     def _get_oauth_grants(user_id: str) -> list[dict[str, any]];
     def _put_oauth_grant(user_id: str, grant: dict[str, any]) -> int;
     def _swap_oauth_grant(user_id: str, grant: dict[str, any], version: int) -> int;
@@ -105,5 +128,8 @@ obj PgIdentityStorage(IdentityStorage) {
     def find_user_by_identity(value: str) -> dict[str, any] | None;
     def identity_taken(value: str) -> bool;
     def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, any]];
+    def list_provisioned_users -> list[dict[str, any]];
+    def count_provisioned_users -> int;
+    def delete_if_provisioned(user_id: str) -> bool;
     def get_user_by_sso(platform: str, external_id: str) -> dict[str, any] | None;
 }

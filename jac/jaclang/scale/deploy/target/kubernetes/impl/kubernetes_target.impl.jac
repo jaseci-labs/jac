@@ -20,19 +20,24 @@ impl KubernetesTargetBase._owner_labels -> dict[str, str] {
 }
 
 impl KubernetesTargetBase._load_cluster_config {
-    kubeconfig_failed: bool = False;
+    kube_context: str = self.k8s_config.kube_context;
+    kubeconfig: str = getattr(self.k8s_config, "kubeconfig", "");
+    kubeconfig_error: (ConfigException | None) = None;
     try {
         k8s_cluster_config.load_kube_config(
-            config_file=(getattr(self.k8s_config, "kubeconfig", "") or None),
-            context=(self.k8s_config.kube_context or None)
+            config_file=(kubeconfig or None), context=(kube_context or None)
         );
-    } except ConfigException {
-        kubeconfig_failed = True;
+    } except ConfigException as e {
+        if kube_context or kubeconfig {
+            raise ConfigException(
+                "Could not load the configured Kubernetes cluster "
+                f"(kube_context={kube_context!r}, kubeconfig={kubeconfig!r}): {e}"
+            ) from e;
+        }
+        kubeconfig_error = e;
     }
-    if not kubeconfig_failed {
-        self._kubectl = kubectl_cluster(
-            self.k8s_config.kube_context, getattr(self.k8s_config, "kubeconfig", "")
-        );
+    if kubeconfig_error is None {
+        self._kubectl = kubectl_cluster(kube_context, kubeconfig);
         return;
     }
     try {
@@ -50,7 +55,8 @@ impl KubernetesTargetBase._load_cluster_config {
             "If you're deploying from inside a pod, the pod needs a "
             "ServiceAccount with cluster API access (the default "
             "ServiceAccount usually does, but a restricted one may not).\n"
-            f"Original error from in-cluster load: {e}"
+            f"Error from kubeconfig load: {kubeconfig_error}\n"
+            f"Error from in-cluster load: {e}"
         );
     }
 }
@@ -458,6 +464,7 @@ impl KubernetesTargetBase.get_full_status(app_name: str) -> dict[str, any] {
     namespace = self.k8s_config.namespace;
     components = [];
     urls = {};
+    warnings: list[str] = [];
 
     dep_map = {};
     try {
@@ -531,14 +538,26 @@ impl KubernetesTargetBase.get_full_status(app_name: str) -> dict[str, any] {
             health = assess_workload(
                 resource_map[k8s_name], crashlooping=k8s_name in restarting_apps
             );
-            components.append(
-                {
-                    'name': display_name,
-                    'status': health.status.value,
-                    'ready': health.ready_replicas,
-                    'total': health.replicas
+            component = {
+                'name': display_name,
+                'status': health.status.value,
+                'ready': health.ready_replicas,
+                'total': health.replicas
+            };
+            disk = self._database_disk(app_name, namespace)
+                if display_name == 'PostgreSQL'
+                else None;
+            if disk is not None {
+                component['disk'] = disk;
+                if disk['percent'] >= DB_DISK_WARN_PERCENT {
+                    warnings.append(
+                        f"The database volume is {disk['percent']}% full. Raise "
+                        "[scale.database] postgres_storage and redeploy before "
+                        "writes fail."
+                    );
                 }
-            );
+            }
+            components.append(component);
             if display_name == 'Grafana' {
                 grafana_running = True;
             }
@@ -571,6 +590,43 @@ impl KubernetesTargetBase.get_full_status(app_name: str) -> dict[str, any] {
         'app_name': app_name,
         'namespace': namespace,
         'components': components,
-        'urls': urls
+        'urls': urls,
+        'warnings': warnings
     };
+}
+
+impl KubernetesTargetBase._database_disk(
+    app_name: str, namespace: str
+) -> (dict[str, any] | None) {
+    pg_name = f"{app_name}-postgres";
+    try {
+        core_v1 = client.CoreV1Api();
+        pvc = core_v1.read_namespaced_persistent_volume_claim(
+            name=f"{pg_name}-data-{pg_name}-0",
+            namespace=namespace,
+            _request_timeout=DB_DISK_TIMEOUT_S
+        );
+        size = (pvc.status.capacity or {}).get('storage')
+            or pvc.spec.resources.requests['storage'];
+        total = parse_storage_quantity(str(size));
+        out = stream(
+            core_v1.connect_get_namespaced_pod_exec,
+            f"{pg_name}-0",
+            namespace,
+            container='postgres',
+            command=['du', '-sk', DB_DATA_PATH],
+            stderr=False,
+            stdin=False,
+            stdout=True,
+            tty=False,
+            _request_timeout=DB_DISK_TIMEOUT_S
+        );
+        used = int(str(out).split()[0]) * 1024;
+        return {'used': used, 'total': total, 'percent': round(100 * used / total, 1)};
+    } except Exception as e {
+        if self.logger {
+            self.logger.warning(f"Could not read the database disk usage: {e}");
+        }
+        return None;
+    }
 }

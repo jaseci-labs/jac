@@ -350,8 +350,7 @@ impl _native_extra(jac_path: str, pkg_root: str) -> dict[int, bytes] {
                 continue;
             }
             if sec == SEC_PLACEMENT {
-                import from jaclang.compiler.driver.jir { rebase_placement_section }
-                raw = rebase_placement_section(raw, os.path.normpath(pkg_root));
+                raw = _placement_section(data, jac_path, pkg_root) or raw;
             }
             if sec == SEC_NCTDEPS {
                 rebased: dict[str, bytes] = {};
@@ -372,6 +371,27 @@ impl _native_extra(jac_path: str, pkg_root: str) -> dict[int, bytes] {
         }
     } except Exception {}
     return out;
+}
+
+impl _placement_section(data: bytes, jac_path: str, pkg_root: str) -> (bytes | None) {
+    raw = read_section_bytes(data, SEC_PLACEMENT);
+    if raw is None {
+        return None;
+    }
+    paths = read_jir_paths(data);
+    if not paths.base_dir {
+        paths.base_dir = os.path.dirname(os.path.realpath(jac_path));
+    }
+    package_dir = os.path.realpath(pkg_root);
+    def encode_path(path: str) -> str {
+        return paths.encode(paths.resolve(path), package_dir);
+    }
+    import from jaclang.compiler.placement.placement_export {
+        summary_from_bytes,
+        summary_to_bytes
+    }
+    summary = summary_from_bytes(raw, encode_path);
+    return summary_to_bytes(summary) if summary is not None else None;
 }
 
 impl _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, bytes] {
@@ -421,13 +441,9 @@ impl _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, byt
                     }
                 }
                 if SEC_PLACEMENT in extra {
-                    import from jaclang.compiler.placement.placement_export {
-                        summary_from_bytes,
-                        summary_to_bytes
-                    }
-                    summary = summary_from_bytes(extra[SEC_PLACEMENT], encode_path);
-                    if summary is not None {
-                        extra[SEC_PLACEMENT] = summary_to_bytes(summary);
+                    placed = _placement_section(data, jac_path, pkg_root);
+                    if placed is not None {
+                        extra[SEC_PLACEMENT] = placed;
                     }
                 }
                 extra[SEC_PATH_ROOT] = paths.to_bytes(os.path.realpath(pkg_root));
@@ -1596,8 +1612,11 @@ impl run_precompile(
     native_only_units: list[str] = [];
     if exclude_seed {
         import from jaclang.compiler.placement.placement_facts { native_only }
+        import from jaclang.compiler.frontend.codeinfo { is_foreign_native_variant }
         for unit in package_native_units(package_dir) {
-            native_units_set.add(unit);
+            if not is_foreign_native_variant(unit) {
+                native_units_set.add(unit);
+            }
             if native_only(unit) {
                 native_only_units.append(unit);
             }

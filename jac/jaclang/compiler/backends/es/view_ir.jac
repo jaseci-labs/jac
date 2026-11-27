@@ -99,10 +99,6 @@ obj ViewElement {
         jac_node: (uni.UniNode | None);
 }
 
-def view_attr_node(
-    attr: (StaticAttr | DynamicAttr | EventAttr | RefAttr | SpreadAttr)
-) -> (uni.UniNode | None);
-
 obj ViewLocator {
     has anchor: (uni.UniNode | None) = None,
         locate: bool = True;

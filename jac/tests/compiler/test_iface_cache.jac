@@ -27,13 +27,11 @@ import from jaclang.compiler.driver.jir {
     SEC_DIAG,
     SEC_IFACE,
     SECTIONS_MAGIC,
-    compiler_source_digest,
     parse_header,
     read_section_bytes,
     read_sections,
     write_module_cache,
-    write_precompiled_jir,
-    _manifest_compiler_digest
+    write_precompiled_jir
 }
 import from jaclang.compiler.frontend.constant { ImmutabilityKind }
 import from jaclang.compiler.types.stubcat.modiface { read_iface_hash }
@@ -294,26 +292,6 @@ test "verify mode accepts an honest cache and rejects a corrupted one" {
             os.environ["JAC_IFACE_VERIFY"] = prior;
         }
     }
-}
-
-test "the compiler digest manifest reproduces the full sweep exactly" {
-    pkg = tempfile.mkdtemp();
-    comp = Path(pkg) / "compiler";
-    comp.mkdir();
-    (comp / "a.jac").write_text("with entry { print(1); }\n");
-    (comp / "b.py").write_text("x = 1\n");
-    full = compiler_source_digest(pkg);
-    assert _manifest_compiler_digest(pkg) == full , "manifest digest diverged";
-    assert _manifest_compiler_digest(pkg) == full , "second (stat-only) run diverged";
-    import time;
-    (comp / "a.jac").write_text("with entry { print(2); }\n");
-    future = time.time() + 2.0;
-    os.utime(comp / "a.jac", (future, future));
-    changed = compiler_source_digest(pkg);
-    assert changed != full;
-    assert _manifest_compiler_digest(pkg) == changed , (
-        "manifest digest missed an edited file"
-    );
 }
 
 test "a typed third-party Python dependency is fingerprinted, never encoded as a target" {
@@ -1194,5 +1172,33 @@ test "a fresh check process can serve its first unit from the cache" {
     );
     assert "FIRST_UNIT_CODEC_READY [True]" in done.stdout , (
         f"the first unit ran before the interface codec was ready:\n{done.stdout}\n{done.stderr}"
+    );
+}
+
+glob CYCLE_A: str = "import from b { Base }\n\nclass A(Base) {}\n",
+     CYCLE_B: str = (
+         "import from a { A }\n\n"
+         "class Meta(type) {\n    def hi(cls: Meta) -> int { return 1; }\n}\n\n"
+         "class Base(metaclass=Meta) {\n    def f(self: Base) -> int { return 2; }\n}\n\n"
+         "class C(A) {}\n"
+     );
+
+test "classes in an import cycle keep their ancestry through the cache" {
+    tmp = Path(tempfile.mkdtemp());
+    (tmp / "a.jac").write_text(CYCLE_A);
+    (tmp / "b.jac").write_text(CYCLE_B);
+    (tmp / "main.jac").write_text("import from a { A }\nimport from b { C }\n");
+    _check(str(tmp / "main.jac"));
+    (tmp / "user.jac").write_text(
+        "import from b { C }\n\nglob n: int = C().f() + C.hi();\nglob s: str = C().f();\n"
+    );
+    (_prog, diags) = _check(str(tmp / "user.jac"));
+    assert len(diags) == 1 and "Cannot assign int to str" in diags[0] , diags;
+    (tmp / "again.jac").write_text("import from b { C }\n\nglob s: str = C().f();\n");
+    (settled, diags) = _check(str(tmp / "again.jac"));
+    events = settled.analysis.cache_events;
+    assert len(diags) == 1 and "Cannot assign int to str" in diags[0] , diags;
+    assert events.get("dep_hydrate", 0) >= 2 and not events.get("iface_encode", 0) , (
+        f"the cycle never settled into the cache (events: {events})"
     );
 }

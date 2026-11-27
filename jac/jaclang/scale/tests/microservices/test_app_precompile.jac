@@ -230,6 +230,44 @@ test "an unchanged project reuses its sealed bundle instead of sealing again" {
     assert not any("Reusing the sealed bundle" in m for m in mode_log) , (
         "a file mode change reused the previous seal"
     );
+    prior = os.environ.pop("JAC_PROFILE", None);
+    try {
+        client_key = _client_key(base, binary);
+        os.environ["JAC_PROFILE"] = "preview";
+        (_, preview_log) = _pack_logged(base, binary);
+        (_, preview_again_log) = _pack_logged(base, binary);
+        preview_client_key = _client_key(base, binary);
+        preview_client_again = _client_key(base, binary);
+    } finally {
+        os.environ.pop("JAC_PROFILE", None);
+        if prior is not None {
+            os.environ["JAC_PROFILE"] = prior;
+        }
+    }
+    assert not any("Reusing the sealed bundle" in m for m in preview_log) , (
+        "a deploy under JAC_PROFILE=preview reused the seal built without it"
+    );
+    assert any("Reusing the sealed bundle" in m for m in preview_again_log) , (
+        f"an unchanged deploy under the same profile sealed again: {preview_again_log}"
+    );
+    assert preview_client_key != client_key , (
+        "a deploy under JAC_PROFILE=preview reused the client built without it"
+    );
+    assert preview_client_again == preview_client_key , (
+        "the same profile gave the client build two different cache keys"
+    );
+}
+
+
+def _client_key(base: Path, binary: bytes) -> str {
+    return client_input_digest(
+        base,
+        client_build_sources(base),
+        binary,
+        "svc.jac",
+        sanitized_jac_toml(base),
+        nested_sanitized_tomls(base)
+    );
 }
 
 
@@ -248,6 +286,24 @@ test "a precompile report left in the project does not block reusing the seal" {
         f"a project holding a precompile report sealed the app again: {again_log}"
     );
     assert again == first;
+}
+
+
+test "a bundle whose dependency vendoring failed is not reused by the next deploy" {
+    binary = require_pod_binary().read_bytes();
+    base = Path(_mini_app());
+    (base / "jac.toml").write_text(
+        "[project]\nname = \"mini\"\nentry-point = \"svc\"\n\n"
+            + "[dependencies.pypi]\njac-nonexistent-package-10782 = \">=1.0\"\n"
+    );
+    (thin, thin_log) = _pack_logged(base, binary);
+    assert "_vendor/VENDOR.json" not in _names(thin) , thin_log;
+    assert any("Fat bundle vendoring failed" in m for m in thin_log) , thin_log;
+    (again, again_log) = _pack_logged(base, binary);
+    assert not any("Reusing the sealed bundle" in m for m in again_log) , (
+        "a deploy reused the thin bundle a failed vendoring left behind"
+    );
+    assert any("Fat bundle vendoring failed" in m for m in again_log) , again_log;
 }
 
 

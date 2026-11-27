@@ -17,9 +17,7 @@ test "a callback slot and ptr(f) agree on a def's and a C function's address" {
         native_required=True,
         memory_profile="rc",
         no_ir_cache=True,
-        native_target="x86_64-unknown-linux-gnu",
-        native_tls=True,
-        native_sjlj=True
+        native_target="x86_64-unknown-linux-gnu"
     );
     text = str(
         compile_native_ir("clib_callback_identity.jac", options=options).gen.llvm_ir

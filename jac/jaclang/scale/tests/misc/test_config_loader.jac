@@ -332,6 +332,13 @@ test "every [scale.kubernetes] key a user writes reaches the resolved config" {
         "monitoring_enabled",
         "k8s_metrics_enabled",
         "prometheus_admin_password",
+        "metrics_endpoint",
+        "monitoring_storage_enabled",
+        "monitoring_storage_class",
+        "prometheus_storage",
+        "loki_storage",
+        "tempo_storage",
+        "loki_retention",
         "service_dependencies"
     };
     written: dict[str, any] = {};
@@ -383,14 +390,47 @@ test "every [scale.kubernetes] key a user writes reaches the resolved config" {
 
 
 test "a value from another section reaches the kubernetes config" {
-    # admin_username is emitted by the loader from [scale.admin], not written
-    # under [scale.kubernetes], so it exercises the hand-off the sweep skips.
+    # admin_username, metrics_endpoint and the monitoring storage settings are
+    # emitted by the loader from [scale.admin] and [scale.monitoring], so they
+    # exercise the hand-off the sweep skips.
+    storage: dict[str, any] = {
+        "monitoring_storage_enabled": True,
+        "monitoring_storage_class": "gp3",
+        "prometheus_storage": "30Gi",
+        "loki_storage": "20Gi",
+        "tempo_storage": "2Gi",
+        "loki_retention": "72h"
+    };
     with tempfile.TemporaryDirectory() as project {
         (Path(project) / "jac.toml").write_text(
             '[project]\nname = "admin-app"\nversion = "0.0.1"\n\n'
-            '[scale.admin]\nusername = "metrics-admin"\n'
+            '[scale.admin]\nusername = "metrics-admin"\n\n'
+            '[scale.monitoring]\nendpoint = "/app-metrics"\n'
+            'storage_enabled = true\nstorage_class = "gp3"\n'
+            'prometheus_storage = "30Gi"\nloki_storage = "20Gi"\n'
+            'tempo_storage = "2Gi"\nloki_retention = "72h"\n'
         );
         resolved = JacScaleConfig(project_dir=Path(project)).get_kubernetes_config();
         assert resolved["admin_username"] == "metrics-admin";
+        assert resolved["metrics_endpoint"] == "/app-metrics";
+        for (key, want) in storage.items() {
+            assert resolved.get(key) == want , (key, resolved.get(key));
+        }
+    }
+    # Left unset they are the declaration's own defaults. The loader restates
+    # them, and a copy that drifted would change what an app that never turned
+    # storage on is deployed with.
+    with tempfile.TemporaryDirectory() as project {
+        (Path(project) / "jac.toml").write_text(
+            '[project]\nname = "plain-app"\nversion = "0.0.1"\n'
+        );
+        resolved = JacScaleConfig(project_dir=Path(project)).get_kubernetes_config();
+        declared = KubernetesConfig();
+        for key in storage {
+            assert resolved.get(key) == getattr(declared, key) , (
+                key,
+                resolved.get(key)
+            );
+        }
     }
 }

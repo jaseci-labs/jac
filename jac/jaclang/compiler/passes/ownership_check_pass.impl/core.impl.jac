@@ -75,7 +75,6 @@ glob _MUTATING_CONTAINER_METHODS: frozenset[str] = frozenset(
 
 impl OwnershipCheckPass._run_impl(ir_in: Module) -> Module {
     self.owned_decl = {};
-    self.consumed_syms = set();
     self.borrow_meta = {};
     self.declared_borrows = set();
     self.e1304_borrow_ids = set();
@@ -575,14 +574,6 @@ impl OwnershipCheckPass._return_roots_at_param_borrow(nd: Expr | None) -> bool {
     return False;
 }
 
-impl OwnershipCheckPass._borrow_region(sym_id: SymId) -> (UniScopeNode | None) {
-    owner_id = self._borrow_owner_of(sym_id);
-    if owner_id is not None and owner_id in self.owned_decl {
-        return self.owned_decl[owner_id].find_parent_of_type(UniScopeNode);
-    }
-    return None;
-}
-
 impl OwnershipCheckPass._region_strictly_outlives(
     dest: UniScopeNode | None, region: UniScopeNode | None
 ) -> bool {
@@ -996,31 +987,10 @@ impl OwnershipCheckPass._transfer(nd: UniCFGNode, in_set: set[SymId]) -> set[Sym
     return out;
 }
 
-impl OwnershipCheckPass._solve_forward_dataflow(
-    cfg_nodes: list[UniCFGNode], transfer: DataflowTransfer
-) -> dict[int, set[SymId]] {
-    return solve_forward(cfg_nodes, transfer);
-}
-
-impl OwnershipCheckPass._solve_backward_dataflow(
-    cfg_nodes: list[UniCFGNode], transfer: DataflowTransfer
-) -> dict[int, set[SymId]] {
-    return solve_backward(cfg_nodes, transfer);
-}
-
 impl OwnershipCheckPass._run_dataflow(cfg_nodes: list[UniCFGNode]) -> None {
-    self.in_consumed = self._solve_forward_dataflow(
-        cfg_nodes,
-        lambda (nd: UniCFGNode, in_set: set[SymId]) -> set[SymId] { return self._transfer(
-            nd, in_set
-        ); }
-    );
-    self.consumed_syms = set();
+    self.in_consumed = solve_forward(cfg_nodes, self._transfer);
     for n in cfg_nodes {
-        out = self._transfer(n, self.in_consumed.get(id(n), set()));
-        for consumed in out {
-            self.consumed_syms.add(consumed);
-        }
+        self._transfer(n, self.in_consumed.get(id(n), set()));
     }
 }
 
@@ -1074,12 +1044,7 @@ impl OwnershipCheckPass._live_transfer(
 }
 
 impl OwnershipCheckPass._run_borrow_liveness(cfg_nodes: list[UniCFGNode]) -> None {
-    self.in_live_borrows = self._solve_backward_dataflow(
-        cfg_nodes,
-        lambda (nd: UniCFGNode, in_set: set[SymId]) -> set[SymId] { return self._live_transfer(
-            nd, in_set
-        ); }
-    );
+    self.in_live_borrows = solve_backward(cfg_nodes, self._live_transfer);
 }
 
 impl OwnershipCheckPass._reaching_transfer(
@@ -1097,12 +1062,7 @@ impl OwnershipCheckPass._reaching_transfer(
 }
 
 impl OwnershipCheckPass._run_reaching_borrows(cfg_nodes: list[UniCFGNode]) -> None {
-    self.in_reaching_borrows = self._solve_forward_dataflow(
-        cfg_nodes,
-        lambda (nd: UniCFGNode, in_set: set[SymId]) -> set[SymId] { return self._reaching_transfer(
-            nd, in_set
-        ); }
-    );
+    self.in_reaching_borrows = solve_forward(cfg_nodes, self._reaching_transfer);
 }
 
 impl OwnershipCheckPass._classify_access(nd: Name) -> AccessKind {

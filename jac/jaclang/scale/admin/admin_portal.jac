@@ -51,6 +51,15 @@ obj JacAPIServerAdmin {
         username: str | None = None, Authorization: str | None = None
     ) -> TransportResponse;
 
+    def admin_list_provisioned_users(
+        Authorization: str | None = None
+    ) -> TransportResponse;
+
+    def admin_delete_provisioned_users(
+        Authorization: str | None = None
+    ) -> TransportResponse;
+
+    def warn_provisioned_users -> None;
     def reset_password(
         current_password: str, new_password: str, Authorization: str | None = None
     ) -> TransportResponse;
@@ -74,6 +83,6 @@ obj JacAPIServerAdmin {
     def admin_get_metrics(Authorization: str | None = None) -> TransportResponse;
     def serve_admin_page -> Response;
     def serve_admin_index -> Response;
-    def serve_admin_asset(path: str) -> Response;
+    def serve_admin_asset(path: str, request: (Request | None) = None) -> Response;
     def get_admin_dist_dir -> Path;
 }

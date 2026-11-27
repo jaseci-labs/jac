@@ -104,7 +104,6 @@ def _cold_rebuild -> tuple[int, dict[str, any], int] {
     for knob in [
         "JAC_HANDOFF",
         "JAC_NO_UNIT_EVICT",
-        "JAC_PRECOMPILE_LIMIT",
         "JAC_UNIT_COLLECT_EVERY",
         "JAC_UNIT_COLLECT_GROWTH_MB"
     ] {

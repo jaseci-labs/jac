@@ -165,6 +165,7 @@ Each value is checked against the type declared for it, and a mismatch answers `
 
 - **A JSON body** already carries types, so a value must be the declared type. `"12"` is refused for an `int`, and `19.99` is refused rather than truncated. The conversions that lose nothing are allowed: `3.0` for an `int`, and `3` for a `float`.
 - **Query, path, header and form values** are always text, so they are parsed into the declared type. `?limit=20` binds `limit` as the integer `20`, and a lone value fills a `list[T]`.
+- **`datetime`, `date`, `time` and `UUID`** have no JSON type, so from either source they take an ISO 8601 or UUID string, and the OpenAPI schema lists them as strings with the matching `format`. A sized type such as `u8` or `f32` follows the `int` or `float` rules above, and a value outside its range is refused.
 
 Browser input values are strings, so convert them before sending them to a numeric field: `int(e.target.value)`.
 
@@ -735,10 +736,26 @@ Returns on success:
   "ok": true,
   "data": {
     "user_id": "550e8400-...",
-    "message": "Password updated successfully"
+    "message": "Password updated successfully",
+    "token": "eyJhbGciOiJIUzI1NiIs..."
   }
 }
 ```
+
+A password change ends every session of the account, on every device, including the token that made the call. The answer carries a replacement token for the caller, which keeps its second-factor assurance; a client must store it and use it from then on. A password reset ends every session in the same way, without a replacement.
+
+### Ending Sessions
+
+Every token carries the session epoch of its account, and a token is accepted only while that epoch is current. A password change, a password reset, `POST /user/logout-all` and disabling the account (`status = "disabled"`) advance it, so every token issued before is refused from the next check on, refresh included, on every worker. Enabling the account again does not bring those tokens back. Tokens issued before this check existed carry no epoch and count as epoch 0, so they keep working until the account's first change.
+
+```bash
+curl -X POST http://localhost:8000/user/logout-all \
+  -H "Authorization: Bearer <token>"
+```
+
+An open WebSocket rechecks its session at each heartbeat and before the messages it runs, reusing a successful check for up to 5 seconds, and closes with reason `revoked` once the session has ended or the check fails. A request that was already authorized when the session ended still finishes. A fleet app provisions the users of a gateway's tokens (`provision_unknown_users`) only when its own env sets `JAC_DB_URL`, so it holds an identity store of its own; an app on the fleet's database, the default, checks the account and its epoch itself, and refuses a deleted or invented account rather than recreating it. On a provisioning app the epoch is the gateway's to enforce. The gateway checks forwarded HTTP credentials and removes both the bearer and session cookie when the bearer is refused, preserving credential precedence. For proxied WebSockets it checks query tokens before connecting, checks first-message and refresh tokens before forwarding them, and rechecks active sessions in both directions and while idle, reusing successful checks for up to 5 seconds. A refused session or a failed check closes the relay with reason `revoked`. A token for an account the gateway does not hold passes through unchanged, for the service that holds the account to check. A provisioning app does not renew gateway tokens, and `/user/logout-all` there answers `409 NOT_SUPPORTED`; call it on the gateway. Direct access to a provisioning app bypasses the gateway's epoch enforcement and must be restricted by the deployment. An app on the fleet's database renews sessions, ends them with `/user/logout-all`, and enforces the epoch itself, like the gateway.
+
+Until #10738 was fixed, an app on the fleet's database also provisioned, so a token for a deleted account made it write a blank record (no identities, credentials or SSO link) into the gateway's store; while that record exists, the deleted account's old token validates and renews again. The gateway logs the number of such records at start-up. `GET /admin/provisioned-users` lists them, with `holds_data` marking a record whose root has data under it, and `DELETE /admin/provisioned-users` deletes those without data and returns the others in `kept_with_data`, for an operator to review and delete one by one with `DELETE /admin/users/{user_id}`. Each record is checked again as it is deleted, so one that gained an identity or data since the listing is left alone and appears in neither list. Both are admin-only, and answer `409 NOT_SUPPORTED` on a provisioning app, where blank records are expected.
 
 Returns HTTP 400 if the current password is incorrect or the new password is empty.
 
@@ -1177,7 +1194,8 @@ Errors: `400 INVALID_TOKEN`, `400 POLICY_VIOLATION`. A password the policy rejec
 | POST | `/user/login` | No | Authenticate and get JWT |
 | POST | `/user/refresh-token` | No (token in body) | Refresh an existing JWT |
 | GET | `/user/me` | Yes (Bearer) | Get the authenticated user's profile |
-| PUT | `/user/password` | Yes (Bearer) | Update password |
+| PUT | `/user/password` | Yes (Bearer) | Update password; ends every other session and answers a replacement token |
+| POST | `/user/logout-all` | Yes (Bearer) | End every session of the account, this one included |
 | POST | `/user/add-identity` | Yes (Bearer) | Attach an email/username identity to the current user |
 | POST | `/user/send-verification` | Yes (Bearer) | Dispatch a verification email for an unverified email identity |
 | POST | `/user/verify-identity` | No (token in body) | Confirm an email identity via the token sent by email |
@@ -2082,7 +2100,7 @@ Serving an app (`jac run <app>`) also brings up every service app it bridges to,
 - **Fleet**: `jac run <app> --fleet`, or `[scale.gateway] colocate = false`, runs each service app as its own local process behind the served app's gateway (one public port, one `/docs`, one `/metrics`, `X-Trace-Id` threaded through every hop). Peers are wired with `JAC_APP_<APP>_URL`. `jac scale status` / `logs` / `restart` / `stop` manage the members.
 - **Peer URLs are used as given.** A fleet member (and a deployed pod) mounts its endpoints at its root -- `/walker/<name>`, `/function/<name>` -- and the gateway strips the app's public route (`/api/<app>`) before forwarding. A consumer therefore never appends the route it compiled against to a peer URL: `JAC_APP_<APP>_URL=http://127.0.0.1:8011` is called at `http://127.0.0.1:8011/walker/<name>`. Only a route registered _together with_ a URL is appended -- `JAC_APP_<APP>_ROUTE`, or `sv_client.register(app, url, route)` -- which is how a consumer is pointed at a public gateway instead of a member.
 - **HTTP forwarding.** The serving HTTP client skips provisional `1xx` response headers until the final response; `101 Switching Protocols` remains terminal for WebSocket upgrades. The gateway removes `Expect` when forwarding requests to a service.
-- **Service identity between members.** Set `JAC_BRIDGE_TOKEN` on every member: consumers send it as a bearer on bridged calls (when no end-user `Authorization` is being forwarded), and a provider whose own `JAC_BRIDGE_TOKEN` matches the presented bearer runs the walker or function as the fixed service user `__bridge__`, which satisfies `requires_auth` endpoints and owns its own root. A mismatching bearer is still a 401; a provider without the variable set never honors it.
+- **Service identity between members.** Set `JAC_BRIDGE_TOKEN` on every member: consumers send it as a bearer on bridged calls (when no end-user `Authorization` is being forwarded), and a provider whose own `JAC_BRIDGE_TOKEN` matches the presented bearer runs the walker or function as the fixed service user `__bridge__`, which satisfies `requires_auth` endpoints and owns its own root. A mismatching bearer is still a 401; a provider without the variable set never honors it. The same bearer also answers `GET /admin/schedules` on a member, which is how the fleet gateway lists every service's static tasks for an admin; it opens no other `/admin` route, but a holder of the secret can read that listing, including each run's `error` text.
 - **Deployed**: `jac scale deploy` is always a fleet; see [Service Apps in Kubernetes](jac-scale-kubernetes.md#service-apps-in-kubernetes).
 
 Startup is **fail-fast**: if any service app fails to come up (missing entry file, syntax error, port in use), the served app exits at startup with the underlying error.

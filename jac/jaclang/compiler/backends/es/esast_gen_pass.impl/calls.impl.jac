@@ -61,6 +61,10 @@ impl EsastGenPass._prepare_dynamic_import(
         }
     }
     self.module_import_paths[js_spec] = resolved;
+    if export_name is None {
+        stem = os.path.basename(resolved).split(".")[0];
+        export_name = stem if stem.isidentifier() else None;
+    }
     return (js_spec, export_name);
 }
 
@@ -1401,7 +1405,7 @@ impl EsastGenPass._lower_func_call(here: uni.FuncCall) -> None {
                 _args_strs = [json.dumps(_dyn_spec)];
                 _kwargs = {};
                 if _dyn_export is not None {
-                    _kwargs["fromlist"] = _dyn_export;
+                    _kwargs["default_export"] = _dyn_export;
                 }
             }
             _ctx = ESEmitCtx(

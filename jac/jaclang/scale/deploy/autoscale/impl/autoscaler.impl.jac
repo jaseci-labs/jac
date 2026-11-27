@@ -136,7 +136,7 @@ impl Autoscaler.destroy_collection(
     );
 }
 
-impl Autoscaler.preflight(self: Autoscaler) -> list[str] {
+impl Autoscaler.preflight(self: Autoscaler, namespace: str) -> list[str] {
     return [];
 }
 
