@@ -3,6 +3,7 @@ import os;
 import platform;
 import shutil;
 import subprocess;
+import time;
 import urllib.request;
 import zipfile;
 import from pathlib { Path }
@@ -43,6 +44,8 @@ def _version_key(version: str) -> tuple[int, ...];
 def _cached(major: int) -> (str | None);
 
 def _system(major: int) -> (str | None);
+
+def _read_url(url: str) -> str;
 
 def _published(slug: str) -> list[str];
 
