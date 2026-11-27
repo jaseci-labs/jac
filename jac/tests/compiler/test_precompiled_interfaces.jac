@@ -40,6 +40,34 @@ test "precompiled interfaces are independent of the staging directory" {
     }
 }
 
+test "precompiled placement of a nested module resolves after relocation" {
+    import from jaclang.compiler.driver.jir { JirPaths, SEC_PATH_ROOT, SEC_PLACEMENT }
+    import from jaclang.compiler.placement.placement_export { summary_from_bytes }
+    with TemporaryDirectory() as directory {
+        base_path = Path(directory).resolve();
+        package = _package(base_path / "build");
+        nested = package / "nested";
+        nested.mkdir();
+        (nested / "__init__.jac").write_text("");
+        (package / "model.jac").write_text("obj Box { has value: int; }\n");
+        source = nested / "api.jac";
+        source.write_text(
+            "import from ..model { Box }\n" + "def make() -> Box { return Box(42); }\n"
+        );
+        data = precompile_unit(str(source), str(package), collect=False);
+        assert data is not None;
+        placement = read_section_bytes(data, SEC_PLACEMENT);
+        assert placement is not None;
+        installed = base_path / "installed" / "library";
+        paths = JirPaths.from_bytes(
+            read_section_bytes(data, SEC_PATH_ROOT), str(installed)
+        );
+        summary = summary_from_bytes(placement, paths.resolve);
+        assert summary is not None;
+        assert summary.mod_path == str(installed / "nested" / "api.jac");
+    }
+}
+
 test "precompiled modules carry their type interface on cold and cached builds" {
     import contextlib;
     import from jaclang.compiler.driver.application { prepare_application }

@@ -32,7 +32,12 @@ glob _PG_IDENTITY_SCHEMA: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_identity_lookups_user
         ON identity_lookups (user_id)
     """
-     ];
+     ],
+     _PG_PROVISIONED_WHERE: str = """
+          AND COALESCE(u.doc->'identities', '[]'::jsonb) = '[]'::jsonb
+          AND COALESCE(u.doc->'credentials', '[]'::jsonb) = '[]'::jsonb
+          AND NOT EXISTS (SELECT 1 FROM sso_lookups s WHERE s.user_id = u.user_id)
+          AND NOT EXISTS (SELECT 1 FROM identity_lookups l WHERE l.user_id = u.user_id)""";
 
 
 def _pg_json_default(o: object) -> str;
@@ -163,6 +168,10 @@ impl PgIdentityStorage._update_fields(user_id: str, fields: dict[str, any]) -> b
     if not safe_fields {
         return False;
     }
+    if safe_fields.get('status') == 'disabled'
+        and self._end_sessions(user_id, safe_fields) is not None {
+        return True;
+    }
     rows = self.store.rows(
         """
         UPDATE identity_users SET doc = doc || CAST(:p AS jsonb)
@@ -194,6 +203,65 @@ impl PgIdentityStorage._update_credentials(
         """,
         {'u': user_id, 'p': json.dumps(patch, `default=_pg_json_default)}
     );
+}
+
+impl PgIdentityStorage._end_sessions(
+    user_id: str, patch: dict[str, any], expected: (int | None) = None
+) -> int | None {
+    current = """
+        CASE WHEN doc->'session_epoch' IS NULL THEN 0
+             WHEN jsonb_typeof(doc->'session_epoch') = 'number'
+                  AND (doc->>'session_epoch') ~ '^[0-9]+$'
+             THEN (doc->>'session_epoch')::bigint
+             ELSE -1
+        END
+    """;
+    rows = self.store.rows(
+        f"""
+        UPDATE identity_users
+        SET doc = jsonb_set(
+            doc || CAST(:p AS jsonb), '{{session_epoch}}', to_jsonb({current} + 1)
+        )
+        WHERE user_id = :u
+          AND {current} >= 0
+          AND (CAST(:e AS bigint) IS NULL OR {current} = CAST(:e AS bigint))
+        RETURNING (doc->>'session_epoch')::bigint
+        """,
+        {'u': user_id, 'p': json.dumps(patch, `default=_pg_json_default), 'e': expected}
+    );
+    return int(rows[0][0]) if rows else None;
+}
+
+impl PgIdentityStorage.credential_state(
+    user_id: str
+) -> tuple[list[dict[str, any]], any] {
+    rows = self.store.rows(
+        'SELECT doc FROM identity_users WHERE user_id = :u', {'u': user_id}
+    );
+    if not rows {
+        return ([], None);
+    }
+    doc = _pg_load_doc(rows[0][0]);
+    return (
+        doc.get('credentials') or [],
+        doc['session_epoch'] if 'session_epoch' in doc else 0
+    );
+}
+
+impl PgIdentityStorage.session_state(user_id: str) -> dict[str, any] | None {
+    rows = self.store.rows(
+        'SELECT doc FROM identity_users WHERE user_id = :u', {'u': user_id}
+    );
+    if not rows {
+        return None;
+    }
+    doc = _pg_load_doc(rows[0][0]);
+    return {
+        'user_id': doc.get('user_id') or user_id,
+        'root_id': doc.get('root_id') or None,
+        'status': doc.get('status') or 'active',
+        'session_epoch': doc['session_epoch'] if 'session_epoch' in doc else 0
+    };
 }
 
 impl PgIdentityStorage._get_oauth_grants(user_id: str) -> list[dict[str, any]] {
@@ -482,6 +550,80 @@ impl PgIdentityStorage.list_all_users(limit: int, offset: int) -> list[dict[str,
         {'g': Con.GUEST.value, 'l': str(limit), 'o': str(offset)}
     );
     return [_pg_public(r[0]) for r in rows];
+}
+
+impl PgIdentityStorage.list_provisioned_users -> list[dict[str, any]] {
+    rows = self.store.rows(
+        """
+        SELECT u.user_id, u.doc->>'root_id', u.doc->>'created_at'
+        FROM identity_users u
+        WHERE TRUE"""
+            + _PG_PROVISIONED_WHERE
+            + """
+        ORDER BY u.doc->>'created_at'
+        """,
+        {}
+    );
+    anchors_table = self.store.rows("SELECT to_regclass('anchors') IS NOT NULL", {});
+    has_graph = bool(anchors_table and anchors_table[0][0]);
+    found: list[dict[str, any]] = [];
+    for (user_id, root_id, created_at) in rows {
+        holds_data = False;
+        if has_graph and root_id {
+            holds_data = bool(
+                self.store.rows(
+                    """
+                    SELECT 1 FROM anchors
+                    WHERE root_id = CAST(:r AS uuid) AND id <> CAST(:r AS uuid)
+                    LIMIT 1
+                    """,
+                    {'r': str(root_id)}
+                )
+            );
+        }
+        found.append(
+            {
+                'user_id': str(user_id),
+                'root_id': root_id,
+                'created_at': created_at,
+                'holds_data': holds_data
+            }
+        );
+    }
+    return found;
+}
+
+impl PgIdentityStorage.count_provisioned_users -> int {
+    rows = self.store.rows(
+        "SELECT COUNT(*) FROM identity_users u WHERE TRUE" + _PG_PROVISIONED_WHERE, {}
+    );
+    return int(rows[0][0]) if rows else 0;
+}
+
+impl PgIdentityStorage.delete_if_provisioned(user_id: str) -> bool {
+    anchors_table = self.store.rows("SELECT to_regclass('anchors') IS NOT NULL", {});
+    no_data = '';
+    if anchors_table and anchors_table[0][0] {
+        no_data = """
+          AND NOT EXISTS (
+              SELECT 1 FROM anchors a
+              WHERE a.root_id = CAST(u.doc->>'root_id' AS uuid)
+                AND a.id <> CAST(u.doc->>'root_id' AS uuid)
+          )""";
+    }
+
+    rows = self.store.rows(
+        """
+        DELETE FROM identity_users u
+        WHERE u.user_id = :u"""
+            + _PG_PROVISIONED_WHERE
+            + no_data
+            + """
+        RETURNING u.user_id
+        """,
+        {'u': user_id}
+    );
+    return bool(rows);
 }
 
 impl _pg_json_default(o: object) -> str {

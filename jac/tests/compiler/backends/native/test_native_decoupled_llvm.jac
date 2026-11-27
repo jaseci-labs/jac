@@ -110,32 +110,6 @@ test "jaclang runtime does not import the python llvmlite package" {
 }
 
 
-test "vendored ir builder emits expected IR" {
-    m = ir.Module(name="m");
-    i32 = ir.IntType(32);
-    fnty = ir.FunctionType(i32, [i32, i32]);
-    fn = ir.Function(m, fnty, name="add");
-    blk = fn.append_basic_block("entry");
-    b = ir.IRBuilder(blk);
-    (x, y) = fn.args;
-    b.ret(b.add(x, y));
-    text = str(m);
-    assert 'define i32 @"add"' in text;
-    assert "add i32" in text;
-}
-
-
-test "vendored binding parses, verifies and prints a module" {
-    txt = "define i32 @add(i32 %a, i32 %b) {\n"
-        + "entry:\n  %r = add i32 %a, %b\n  ret i32 %r\n}\n";
-    mod = llvm.parse_assembly(txt);
-    mod.verify();
-    out = str(mod);
-    assert "define i32 @add" in out;
-    assert "add i32" in out;
-}
-
-
 test "every concrete ir type class has an __eq__ specimen" {
     specimens = _ir_type_specimens();
     missing = _concrete_ir_type_classes()

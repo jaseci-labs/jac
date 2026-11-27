@@ -269,6 +269,9 @@ impl native_closure_blocker(
         if pinned_module_space(dep) == 'server' {
             return (f"'{name}' is pinned to the server", True);
         }
+        if package_host_edge(dep) {
+            return (f"'{name}' is a jaclang host module, never compiled native", False);
+        }
         summary = dependency_summary(prog, dep);
         if summary is None {
             return (f"'{name}' has no placement facts", False);
@@ -597,14 +600,14 @@ impl solve_module_placement(
         }
     }
 
-    def _stamp(elem: uni.UniNode, ctx: CodeContext) {
+    def _stamp(elem: uni.UniNode, ctx: CodeContext, keep_server: bool = False) {
         already = isinstance(elem, uni.ContextAwareNode) and elem.code_context == ctx;
         _stamp_context_element(elem, ctx);
         if not already {
             stamp_count[0] += 1;
         }
         if (
-            dual
+            (dual or keep_server)
             and ctx == CodeContext.CLIENT
             and isinstance(elem, uni.ContextAwareNode)
         ) {
@@ -633,6 +636,7 @@ impl solve_module_placement(
         }
     }
     client_tops: list[uni.UniNode] = [];
+    anchored_client: list[uni.UniNode] = [];
     native_tops: list[uni.UniNode] = [];
     inferable: list[uni.UniNode] = [];
     for (sidx, stmt) in enumerate(module.body) {
@@ -640,7 +644,9 @@ impl solve_module_placement(
             continue;
         }
         if stmt.code_context == CodeContext.CLIENT {
-            if sidx not in pinned_idx {
+            if sidx in pinned_idx or stmt.codespace_dual {
+                anchored_client.append(stmt);
+            } else {
                 client_tops.append(stmt);
             }
             continue;
@@ -662,7 +668,10 @@ impl solve_module_placement(
         client_tops = [];
         native_tops = [];
     }
-    if ((not client_tops and not native_tops and not has_seeds) or not inferable) {
+    if (
+        (not client_tops and not native_tops and not anchored_client and not has_seeds)
+        or not inferable
+    ) {
         _invalidate_stale_codegen();
         return stamp_count[0];
     }
@@ -693,19 +702,34 @@ impl solve_module_placement(
         }
         na_ref_ids.update(body_refs[id(elem)]);
     }
-    for elem in inferable {
-        uses_map[id(elem)] = body_refs[id(elem)];
+    anchor_ref_ids: set[int] = set();
+    for elem in anchored_client {
+        anchor_ref_ids.update(body_refs[id(elem)]);
     }
-    def _hard_closure(hc_seed_ids: set[int]) -> set[int] {
-        result: set[int] = set(hc_seed_ids);
+    tops = [
+        top
+        for top in module.body
+        if isinstance(top, uni.ContextAwareNode) and top.top_element is top
+    ];
+    def _read_on_server(eid: int) -> bool {
+        return any(
+            id(top) != eid
+                and (top.code_context != CodeContext.CLIENT or top.codespace_dual)
+                and eid in body_refs.get(id(top), set()) for top in tops
+        );
+    }
+    def _closure(
+        seed_ids: set[int], elems: list[uni.UniNode], excluded: any
+    ) -> set[int] {
+        result: set[int] = set(seed_ids);
         grew = True;
         while grew {
             grew = False;
-            for elem in inferable {
-                if (id(elem) in result or _is_sv_import(elem)) {
+            for elem in elems {
+                if id(elem) in result or excluded(elem) {
                     continue;
                 }
-                if not result.isdisjoint(uses_map[id(elem)]) {
+                if not result.isdisjoint(body_refs.get(id(elem), set())) {
                     result.add(id(elem));
                     grew = True;
                 }
@@ -713,11 +737,26 @@ impl solve_module_placement(
         }
         return result;
     }
+    def _is_import(elem: uni.UniNode) -> bool {
+        return isinstance(elem, uni.Import);
+    }
+    client_bound = _closure(
+        {
+            id(top)
+            for top in tops
+            if top.code_context == CodeContext.CLIENT and not top.codespace_dual
+        },
+        tops,
+        _is_import
+    );
+    for elem in inferable {
+        uses_map[id(elem)] = body_refs[id(elem)];
+    }
     refusals = prog.analysis.placement_refusals.get(os.path.realpath(mod_path), {});
     cl_refused: set[int] = refusals.get('client', set());
     na_refused: set[int] = refusals.get('native', set());
-    cl_star = _hard_closure(cl_seed_ids) - cl_refused;
-    na_star = _hard_closure(na_seed_ids) - na_refused;
+    cl_star = _closure(cl_seed_ids, inferable, _is_sv_import) - cl_refused;
+    na_star = _closure(na_seed_ids, inferable, _is_sv_import) - na_refused;
     hard_remaining: list[uni.UniNode] = [];
     for elem in inferable {
         in_cl = id(elem) in cl_star;
@@ -759,7 +798,12 @@ impl solve_module_placement(
                     not na_sources.isdisjoint(refs)
                     or (id(elem) in na_ref_ids and _pullable_native(elem))
                 );
-            if (want_cl and want_na) {
+            want_anchor = not want_cl
+                and id(elem) not in cl_refused
+                and id(elem) in anchor_ref_ids
+                and _pullable_by_client_reference(elem, module, body_refs)
+                and not (_is_sv_import(elem) and _read_on_server(id(elem)));
+            if ((want_cl or want_anchor) and want_na) {
                 continue;
             }
             if want_na {
@@ -782,6 +826,19 @@ impl solve_module_placement(
                     cl_sources.add(id(elem));
                 }
                 cl_ref_ids.update(refs);
+                changed = True;
+            } elif want_anchor {
+                _stamp(
+                    elem,
+                    CodeContext.CLIENT,
+                    keep_server=_read_on_server(id(elem))
+                        if isinstance(elem, uni.Import)
+                        else id(elem) not in client_bound
+                );
+                _note(
+                    elem, "pulled client: referenced by a pinned or dual client element"
+                );
+                anchor_ref_ids.update(refs);
                 changed = True;
             } else {
                 remaining.append(elem);

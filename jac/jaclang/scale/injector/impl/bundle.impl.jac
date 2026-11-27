@@ -596,6 +596,20 @@ impl staged_jac_toml(sanitized: (str | None), entry_module: str) -> (str | None)
         or serialize_toml(new_doc);
 }
 
+impl shipped_jac_toml(project_dir: str, fleet: (FleetSpec | None)) -> (str | None) {
+    return staged_jac_toml(
+        sanitized_jac_toml(Path(project_dir).resolve()),
+        sealed_entry_module(project_dir, fleet)
+    );
+}
+
+impl shipped_tomls(project_dir: str, fleet: (FleetSpec | None)) -> dict[str, str] {
+    top = shipped_jac_toml(project_dir, fleet);
+    tomls = {"jac.toml": top} if top is not None else {};
+    tomls.update(nested_sanitized_tomls(Path(project_dir).resolve()));
+    return tomls;
+}
+
 impl require_serve_manifest(stage: Path, detail: str = "") -> Path {
     serve_manifest = stage / SERVE_MANIFEST_REL;
     if not serve_manifest.is_file() {
@@ -956,7 +970,8 @@ impl seal_input_digest(
         app_name,
         "fat" if fat else "thin",
         os.environ.get("JAC_SEAL_SKIP_VENV", ""),
-        sanitized or ""
+        sanitized or "",
+        active_profile_name(None)
     ];
     if bake_client {
         parts.append("client");
@@ -977,7 +992,13 @@ impl client_input_digest(
         base,
         sources,
         jac_binary,
-        ["client", entry_rel, sanitized or "", *client_build_env()],
+        [
+            "client",
+            entry_rel,
+            sanitized or "",
+            active_profile_name(None),
+            *client_build_env()
+        ],
         tomls
     );
 }
@@ -1107,9 +1128,25 @@ impl _bundle_ships(raw: bytes, member: str) -> bool {
     }
 }
 
-impl _seal_reusable(raw: bytes, manifest: str, bake_client: bool) -> bool {
+impl sealed_tomls(raw: bytes) -> dict[str, str] {
+    tomls: dict[str, str] = {};
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as sealed {
+        for member in sealed.getmembers() {
+            if member.isfile() and Path(member.name).name == "jac.toml" {
+                handle = sealed.extractfile(member);
+                if handle is not None {
+                    tomls[member.name] = handle.read().decode("utf-8");
+                }
+            }
+        }
+    }
+    return tomls;
+}
+
+impl _seal_reusable(raw: bytes, manifest: str, bake_client: bool, fat: bool) -> bool {
     return _bundle_ships(raw, manifest)
-        and (not bake_client or _bundle_ships(raw, BAKED_CLIENT_INDEX));
+        and (not bake_client or _bundle_ships(raw, BAKED_CLIENT_INDEX))
+        and (not fat or _bundle_ships(raw, VENDORED_MANIFEST));
 }
 
 impl _remember_seal(
@@ -1176,7 +1213,7 @@ impl pack_jab(
             f"while staging the app bundle."
         );
     }
-    sanitized = staged_jac_toml(sanitized_jac_toml(base), entry_module);
+    sanitized = shipped_jac_toml(project_dir, fleet);
     app_name = sealed_app_name(project_dir, fleet);
     tomls = nested_sanitized_tomls(base);
     def input_key(tree: Path, files: list[Path]) -> str {
@@ -1202,8 +1239,10 @@ impl pack_jab(
     key = input_key(base, seal_sources);
     import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL }
     shared = seal_cache_setting(project_dir);
+    fat = fat_bundle_setting(project_dir)[0];
     cached = _cached_seal(_seal_cache_dir(base), key);
-    if cached is not None and _seal_reusable(cached, SERVE_MANIFEST_REL, bake_client) {
+    if cached is not None
+        and _seal_reusable(cached, SERVE_MANIFEST_REL, bake_client, fat) {
         logger.info(
             f"Reusing the sealed bundle for unchanged inputs ({key[:12]}); skipping the seal."
         );
@@ -1213,7 +1252,7 @@ impl pack_jab(
     } elif shared is not None {
         cached = _cached_seal(shared, key);
         if cached is not None
-            and _seal_reusable(cached, SERVE_MANIFEST_REL, bake_client) {
+            and _seal_reusable(cached, SERVE_MANIFEST_REL, bake_client, fat) {
             logger.info(
                 f"Reusing the sealed bundle for unchanged inputs ({key[:12]}) from "
                 f"the shared seal cache {shared}; skipping the seal."
@@ -1257,7 +1296,9 @@ impl pack_jab(
                 logger.warning(
                     f"Fat bundle vendoring failed; shipping a thin bundle "
                     f"(pods will install python deps from PyPI at boot). "
-                    f"Set [scale] fat_bundle = true to make this fatal. {exc}"
+                    f"Set [scale] fat_bundle = true to make this fatal, or "
+                    f"fat_bundle = false to ship thin bundles that later "
+                    f"deploys reuse. {exc}"
                 );
             }
         }

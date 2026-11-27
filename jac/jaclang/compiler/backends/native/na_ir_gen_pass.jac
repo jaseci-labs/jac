@@ -1589,7 +1589,15 @@ walker NaIRGenPass(CompilerPass) {
     ) -> None;
 
     def _enum_ctor_layout(enum_name: str) -> (EnumLayout | None);
-    def _enum_ctor_target(nd: uni.FuncCall) -> (str | None);
+    def _enum_class_target(target: (uni.Expr | None)) -> (str | None);
+    def _enum_member_value(
+        enum_name: str, lay: EnumLayout, idx: int
+    ) -> (ir.Value | None);
+
+    def _codegen_enum_subscript(
+        nd: uni.AtomTrailer, enum_name: str
+    ) -> (ir.Value | None);
+
     def _emit_enum_ctor_refusal(nd: uni.FuncCall, enum_name: str, why: str) -> None;
     def _codegen_enum_ctor(nd: uni.FuncCall, enum_name: str) -> (ir.Value | None);
     def _build_enum_string_table(
@@ -1616,10 +1624,6 @@ walker NaIRGenPass(CompilerPass) {
     def _exc_jmp_symbols -> tuple[str, str];
     def _exc_setjmp_fn -> ir.Function;
     def _exc_longjmp_fn -> ir.Function;
-    def _exc_builtin_sjlj -> bool;
-    def _native_tls_on -> bool;
-    def _native_sjlj_on -> bool;
-    def _unchecked_views_on -> bool;
     def _heap_extern(kind: str) -> ir.Function;
     def _heap_usable_size(b: ir.IRBuilder, block: ir.Value, name: str) -> ir.Value;
     def _direct_c_entry(fn: ir.Function) -> bool;
@@ -2172,6 +2176,10 @@ walker NaIRGenPass(CompilerPass) {
 
     def _empty_container_for_field(
         ftype: (ir.Type | None), label: str
+    ) -> (ir.Value | None);
+
+    def _codegen_field_default(
+        expr: uni.Expr, ftype: (ir.Type | None), fname: str
     ) -> (ir.Value | None);
 
     def _opt_unwrap_attr(obj_val: ir.Value) -> ir.Value;

@@ -9,7 +9,7 @@ glob logger: logging.Logger = logging.getLogger(__name__);
 def validate_events_url(url: (str | None));
 
 
-def fleet_provisions_unknown_users(sv_name: str) -> bool;
+def fleet_provisions_unknown_users(sv_name: str, own_store: bool = False) -> bool;
 
 
 obj FleetIdentityExtension(ServerExtension) {
@@ -47,7 +47,7 @@ obj EventsExtension(ServerExtension) {
 }
 
 
-obj AdminExtension(ServerExtension, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv) {
+obj AdminExtension(ServerExtension, JacAPIServerAdminSurface) {
     def validate(server: JacAPIServer) -> list[str];
     def register(server: JacAPIServer) -> None;
 }

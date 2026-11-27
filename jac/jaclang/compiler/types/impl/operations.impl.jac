@@ -25,6 +25,67 @@ impl _has_gradual_type_args(t: TypeBase) -> bool {
     return False;
 }
 
+impl operand_carries_none(evaluator: TypeEvaluator, ty: TypeBase) -> bool {
+    if not isinstance(ty, UnionType) {
+        return False;
+    }
+    has_none = False;
+    for member in ty.types {
+        inst = evaluator._convert_to_instance(member);
+        if isinstance(inst, AnyType) or inst.is_any_instance() {
+            return False;
+        }
+        if evaluator.is_none_type(inst) {
+            has_none = True;
+        }
+    }
+    return has_none;
+}
+
+impl _every_member_accepts(
+    evaluator: TypeEvaluator, receiver: TypeBase, method: str, arg: Expr
+) -> bool {
+    members = receiver.types if isinstance(receiver, UnionType) else [receiver];
+    for member in members {
+        if isinstance(member, (AnyType, UnknownType)) or member.is_any_instance() {
+            continue;
+        }
+        if evaluator.get_type_of_magic_method_call(member, method, [arg], None)
+            is None {
+            return False;
+        }
+    }
+    return True;
+}
+
+impl none_unsafe_operand(
+    evaluator: TypeEvaluator,
+    magic: str,
+    rmagic: str,
+    left: tuple[TypeBase, Expr],
+    right: tuple[TypeBase, Expr]
+) -> (TypeBase | None) {
+    (left_type, left_node) = left;
+    (right_type, right_node) = right;
+    left_none = operand_carries_none(evaluator, left_type);
+    right_none = operand_carries_none(evaluator, right_type);
+    if left_none
+        and (
+            right_none
+            or not _every_member_accepts(evaluator, right_type, rmagic, left_node)
+        ) {
+        return left_type;
+    }
+    if right_none
+        and (
+            left_none
+            or not _every_member_accepts(evaluator, left_type, magic, right_node)
+        ) {
+        return right_type;
+    }
+    return None;
+}
+
 impl get_numeric_promotion_type(
     evaluator: TypeEvaluator,
     left_type: TypeBase,
@@ -209,71 +270,16 @@ impl get_type_of_binary_operation(
                 return UnknownType(is_diagnosed=True);
             }
         }
+        (magic, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];
         if isinstance(left_type, TypeVarType) {
-            (magic, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];
-
-            if left_type.constraints {
-                for constraint_type in left_type.constraints {
-                    if isinstance(constraint_type, ClassType) {
-                        result = evaluator.get_type_of_magic_method_call(
-                            constraint_type, magic, [expr.right], None
-                        );
-                        if not result {
-                            evaluator.emit_diag(
-                                E1010, expr, op=magic, type=str(constraint_type)
-                            );
-                        }
-                    }
-                }
-                return UnknownType();
-            }
-            if left_type.bound and isinstance(left_type.bound, ClassType) {
-                result = evaluator.get_type_of_magic_method_call(
-                    left_type.bound, magic, [expr.right], None
-                );
-                if result {
-                    return result;
-                }
-
-                evaluator.emit_diag(E1010, expr, op=magic, type=str(left_type.bound));
-                return UnknownType();
-            }
-
-            evaluator.emit_diag(E1010, expr, op=magic, type=left_type.name);
-            return UnknownType();
+            return evaluator._typevar_magic_call(
+                left_type, magic, [expr.right], expr, E1010, op=magic
+            );
         }
         if isinstance(right_type, TypeVarType) {
-            (magic, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];
-
-            if right_type.constraints {
-                for constraint_type in right_type.constraints {
-                    if isinstance(constraint_type, ClassType) {
-                        result = evaluator.get_type_of_magic_method_call(
-                            constraint_type, rmagic, [expr.left], None
-                        );
-                        if not result {
-                            evaluator.emit_diag(
-                                E1010, expr, op=rmagic, type=str(constraint_type)
-                            );
-                        }
-                    }
-                }
-                return UnknownType();
-            }
-            if right_type.bound and isinstance(right_type.bound, ClassType) {
-                result = evaluator.get_type_of_magic_method_call(
-                    right_type.bound, rmagic, [expr.left], None
-                );
-                if result {
-                    return result;
-                }
-
-                evaluator.emit_diag(E1010, expr, op=rmagic, type=str(right_type.bound));
-                return UnknownType();
-            }
-
-            evaluator.emit_diag(E1010, expr, op=rmagic, type=right_type.name);
-            return UnknownType();
+            return evaluator._typevar_magic_call(
+                right_type, rmagic, [expr.left], expr, E1010, op=rmagic
+            );
         }
     }
 
@@ -315,6 +321,25 @@ impl get_type_of_binary_operation(
             }
         }
         (magic, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];
+
+        if expr.op.name in NONE_UNSAFE_BINARY_OPERATORS {
+            unsafe = none_unsafe_operand(
+                evaluator,
+                magic,
+                rmagic,
+                (left_type, expr.left),
+                (right_type, expr.right)
+            );
+            if unsafe is not None {
+                evaluator.emit_diag(
+                    E1160,
+                    expr.left if unsafe is left_type else expr.right,
+                    op=expr.op.value,
+                    type=str(unsafe)
+                );
+                return UnknownType(is_diagnosed=True);
+            }
+        }
 
         if expr.op.name in ARITHMETIC_OPERATORS
             or expr.op.name in BITWISE_OPERATORS

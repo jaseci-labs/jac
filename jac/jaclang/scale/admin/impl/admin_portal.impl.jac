@@ -23,6 +23,7 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
     }
 
     self.bootstrap_admin();
+    self.warn_provisioned_users();
 
     server = self.server;
     if server is None {
@@ -144,6 +145,50 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
             tags=['Admin'],
             summary='List users',
             description='List all users (admin only)'
+        )
+    );
+    def list_provisioned_users_handler(request: Request) -> TransportResponse {
+        authorization = request.headers.get('Authorization');
+        return self.admin_list_provisioned_users(authorization);
+    }
+    server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/admin/provisioned-users',
+            callback=list_provisioned_users_handler,
+            parameters=[],
+            response_model=None,
+            tags=['Admin'],
+            summary='List provisioned account records',
+            description=(
+                'List blank account records (no identities, credentials or SSO '
+                'link) that fleet apps wrote on this store for tokens of '
+                'deleted or unknown accounts before #10738 was fixed. Each '
+                'keeps a deleted account\'s old token valid. `holds_data` marks '
+                'records whose root has data under it.'
+            )
+        )
+    );
+    def delete_provisioned_users_handler(request: Request) -> TransportResponse {
+        authorization = request.headers.get('Authorization');
+        return self.admin_delete_provisioned_users(authorization);
+    }
+    server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.DELETE,
+            path='/admin/provisioned-users',
+            callback=delete_provisioned_users_handler,
+            parameters=[],
+            response_model=None,
+            tags=['Admin'],
+            summary='Delete provisioned account records',
+            description=(
+                'Delete the blank account records listed by GET '
+                '/admin/provisioned-users, except those whose root holds data, '
+                'which are returned in `kept_with_data` for an operator to '
+                'review and delete one by one. Refused (409) on an app that '
+                'provisions accounts on its own store.'
+            )
         )
     );
     def get_user_handler(request: Request, username: str) -> TransportResponse {
@@ -482,7 +527,7 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
     );
 
     def serve_admin_catchall_handler(request: Request, path: str) -> Response {
-        return self.serve_admin_asset(path);
+        return self.serve_admin_asset(path, request);
     }
     server.add_endpoint(
         JEndPoint(
@@ -592,6 +637,7 @@ impl JacAPIServerAdmin.admin_login(
         );
     }
     user_id = result.get('user_id', '');
+    login_epoch = result.get('session_epoch');
 
     if not self._require_user_manager().is_admin(user_id) {
         return TransportResponse.fail(
@@ -644,7 +690,9 @@ impl JacAPIServerAdmin.admin_login(
         assurance = second_factor_claims([METHOD_PASSWORD, str(proof['method'])]);
     }
     requires_reset = self._require_user_manager().requires_password_reset(user_id);
-    token = self._require_user_manager().create_jwt_token(user_id, assurance=assurance);
+    token = self._require_user_manager().create_jwt_token(
+        user_id, assurance=assurance, session_epoch=login_epoch
+    );
     return TransportResponse.success(
         data={
             'message': 'Login successful',
@@ -669,7 +717,8 @@ impl JacAPIServerAdmin.reset_password(
         );
     }
     token = Authorization[7:];
-    user_id = self._require_user_manager().validate_jwt_token(token);
+    session = self._require_user_manager().validate_jwt_token_detail(token);
+    user_id = session['user_id'] if session['status'] == 'ok' else None;
     if not user_id {
         return TransportResponse.fail(
             code='UNAUTHORIZED',
@@ -693,7 +742,9 @@ impl JacAPIServerAdmin.reset_password(
     return TransportResponse.success(
         data={
             'message': 'Password updated successfully',
-            'token': self._require_user_manager().refresh_jwt_token(token) or token
+            'token': self._require_user_manager().replacement_token(
+                str(user_id), session.get('claims'), result.get('session_epoch')
+            )
         },
         meta=Meta(extra={'http_status': 200})
     );
@@ -886,6 +937,79 @@ impl JacAPIServerAdmin.admin_expire_legacy_credentials(
     return TransportResponse.success(
         data=result, meta=Meta(extra={'http_status': 200})
     );
+}
+
+impl JacAPIServerAdmin.admin_list_provisioned_users(
+    Authorization: str | None = None
+) -> TransportResponse {
+    error = self.require_admin(Authorization);
+    if error {
+        return error;
+    }
+    result = self._require_user_manager().list_provisioned_users();
+    if 'error' in result {
+        return TransportResponse.fail(
+            code='NOT_SUPPORTED',
+            message=str(result['error']),
+            meta=Meta(extra={'http_status': 409})
+        );
+    }
+    return TransportResponse.success(
+        data=result, meta=Meta(extra={'http_status': 200})
+    );
+}
+
+impl JacAPIServerAdmin.admin_delete_provisioned_users(
+    Authorization: str | None = None
+) -> TransportResponse {
+    error = self.require_admin(Authorization);
+    if error {
+        return error;
+    }
+    result = self._require_user_manager().delete_provisioned_users();
+    if 'error' in result {
+        return TransportResponse.fail(
+            code='NOT_SUPPORTED',
+            message=str(result['error']),
+            meta=Meta(extra={'http_status': 409})
+        );
+    }
+    deleted = list(result.get('deleted', []));
+    kept = list(result.get('kept_with_data', []));
+    logger.warning(
+        f"Deleted {len(deleted)} provisioned account record(s); kept "
+        f"{len(kept)} whose root holds data"
+    );
+    return TransportResponse.success(
+        data={'deleted': deleted, 'kept_with_data': kept, 'count': len(deleted)},
+        meta=Meta(extra={'http_status': 200})
+    );
+}
+
+impl JacAPIServerAdmin.warn_provisioned_users -> None {
+    import os;
+    if os.environ.get('JAC_SV_NAME', '').strip() not in ('', '__gateway__') {
+        return;
+    }
+    manager = self.user_manager;
+    if manager is None {
+        return;
+    }
+    try {
+        count = manager.count_provisioned_users();
+    } except Exception as e {
+        logger.debug(f"could not count provisioned account records: {e}");
+        return;
+    }
+    if count {
+        logger.warning(
+            f"{count} blank account record(s) on this store were written by fleet "
+            "apps for tokens of deleted or unknown accounts (before #10738 was "
+            "fixed); each keeps a deleted account's old token valid. Review them "
+            "at GET /admin/provisioned-users and remove them with DELETE "
+            "/admin/provisioned-users."
+        );
+    }
 }
 
 impl JacAPIServerAdmin.admin_delete_user(
@@ -1474,29 +1598,37 @@ impl JacAPIServerAdmin.serve_admin_index -> Response {
     return FileResponse(path=str(dist_dir / "index.html"), media_type="text/html");
 }
 
-impl JacAPIServerAdmin.serve_admin_asset(path: str) -> Response {
+impl JacAPIServerAdmin.serve_admin_asset(
+    path: str, request: (Request | None) = None
+) -> Response {
+    accept = request.headers.get("accept", "") if request is not None else "";
+    wants_html = "text/html" in accept;
+    if path and not wants_html and "application/json" in accept {
+        return not_found(f"/admin/{path}");
+    }
     dist_dir = resolve_console(self.get_admin_dist_dir(), self.admin_console);
     if isinstance(dist_dir, Response) {
         return dist_dir;
     }
-
-    has_extension = '.' in path.split('/')[-1] if path else False;
-    if has_extension {
-        try {
-            asset_path = (dist_dir / path).resolve();
-            if not asset_path.is_relative_to(dist_dir.resolve()) {
-                return Response(content="Forbidden", status_code=403);
-            }
-        } except Exception {
-            return Response(content="Invalid path", status_code=400);
-        }
-        if asset_path.is_file() {
-            guess_result = mimetypes.guess_type(str(asset_path));
-            content_type = guess_result[0]
-                if guess_result[0]
-                else "application/octet-stream";
-            return FileResponse(path=str(asset_path), media_type=content_type);
-        }
+    index = str(dist_dir / "index.html");
+    if not path {
+        return FileResponse(path=index, media_type="text/html");
     }
-    return FileResponse(path=str(dist_dir / "index.html"), media_type="text/html");
+    try {
+        asset_path = (dist_dir / path).resolve();
+        inside = asset_path.is_relative_to(dist_dir.resolve());
+    } except (OSError, ValueError) {
+        inside = False;
+    }
+    if inside and asset_path.is_file() {
+        guess_result = mimetypes.guess_type(str(asset_path));
+        content_type = guess_result[0]
+            if guess_result[0]
+            else "application/octet-stream";
+        return FileResponse(path=str(asset_path), media_type=content_type);
+    }
+    if wants_html {
+        return FileResponse(path=index, status_code=404, media_type="text/html");
+    }
+    return not_found(f"/admin/{path}");
 }

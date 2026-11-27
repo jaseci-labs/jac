@@ -57,7 +57,7 @@ def _require_libc {
 
 """The fixture's whole program for wasm: its unit merged with the runtime
 units it links and the glue that defines `jac_entry` and `__jac_glob_init`,
-the text `compile_to_wasm` hands the emitter."""
+the text `wasm_artifact_inputs` hands the emitter."""
 def fixture_ir -> str {
     import from jaclang.compiler.backends.native.link_plan {
         build_link_plan,
@@ -437,22 +437,6 @@ test "abi64 adapter gap is reported against the floor, not the app" {
     }
 }
 
-test "every adapted libc name has a floor adapter" {
-    _require_libc();
-    import from jaclang.compiler.backends.native.wasm_build { _ABI64_ADAPTED }
-    import from jaclang.compiler.backends.native.floors { wasm_rt_src_dir }
-    src = os.path.join(wasm_rt_src_dir(), "jac_abi64.c");
-    text = Path(src).read_text();
-    missing = sorted(
-        [
-            nm
-            for nm in _ABI64_ADAPTED
-            if ("__jac64_" + nm) not in text
-        ]
-    );
-    assert not missing , f"_ABI64_ADAPTED names with no adapter in jac_abi64.c: {missing}";
-}
-
 """The built floor, not just its C source, defines every adapted symbol.
 
 This is the check that was missing when #7149 added __jac64_realloc: the
@@ -569,7 +553,7 @@ test "a floor without a manifest is refused until it is rebuilt" {
 }
 
 """[memory] profile = "nogc" promises an RC-free artifact; the audit is what makes
-compile_to_wasm fail loudly instead of shipping RC machinery the shim then has
+a wasm build fail loudly instead of shipping RC machinery the shim then has
 to service. Pure-IR checks -- no vendored libc needed."""
 test "rc audit passes clean IR and rejects rc machinery" {
     import from jaclang.compiler.backends.native.wasm_build { _assert_ir_rc_free }

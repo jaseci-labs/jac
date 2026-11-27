@@ -11,7 +11,6 @@ glob MAGIC = b"JIR\x00",
      FORMAT_VERSION: int = 30,
      HEADER_SIZE: int = 32,
      HEADER_FMT: str = "<4sHHIIIIII",
-     EXTERNAL_REF: int = 0xFFFFFF,
      SECTIONS_MAGIC: any = b"JIRX",
      SEC_BYTECODE: int = 0x02,
      SEC_MTIR: int = 0x03,
@@ -78,9 +77,7 @@ obj NativeStamp {
     def matches(other: NativeStamp) -> bool;
 }
 
-def current_native_stamp(
-    codegen_identity: str, triple: str, producer: str = ""
-) -> NativeStamp;
+def current_native_stamp(codegen_identity: str, triple: str) -> NativeStamp;
 
 def native_section_variants(data: (bytes | None)) -> dict[str, bytes];
 
@@ -111,7 +108,6 @@ obj JirHeader {
         string_pool_size: int = 0,
         flags: int = 0;
 
-    def to_bytes -> bytes;
     def is_compatible -> bool;
 }
 
@@ -130,8 +126,7 @@ def _module_codespace_mode(source_path: str) -> str;
 
 glob COMPILER_DIGEST_ROSTER_MARK: str = "roster",
      COMPILER_DIGEST_SUFFIXES: tuple[str, ...] = (".jac", ".py"),
-     COMPILER_DIGEST_SKIP_DIRS: tuple[str, ...] = ("tests", "test", "__pycache__"),
-     COMPILER_DIGEST_SKIP: tuple[str, ...] = ();
+     COMPILER_DIGEST_SKIP_DIRS: tuple[str, ...] = ("tests", "test", "__pycache__");
 
 def compiler_input_rules(pkg_dir: str) -> tuple[tuple[str, ...], tuple[str, ...]];
 
@@ -147,10 +142,7 @@ glob _COMPILER_DIGEST_CACHE: list[str] = [],
      _COMPILER_INPUT_ROWS: dict[str, list[tuple[str, str]]] = {},
      _PY_EMITTER_DIGESTS: dict[str, str] = {};
 
-glob PY_EMITTER_ROOTS: tuple[str, ...] = ("compiler/backends/py", ),
-     PY_EMITTER_EXCLUDED: tuple[str, ...] = ();
-
-def _manifest_compiler_digest(pkg_dir: str) -> str;
+glob PY_EMITTER_ROOTS: tuple[str, ...] = ("compiler/backends/py", );
 
 def running_compiler_digest -> str;
 
@@ -159,8 +151,6 @@ def _rel_under(rel: str, roots: tuple[str, ...]) -> bool;
 def py_emitter_digest -> str;
 
 def require_exact_compiler_products;
-
-def _handoff -> dict[str, object];
 
 def dev_source -> str;
 
@@ -217,13 +207,11 @@ def unit_source_digest(path: str) -> str;
 
 def _compute_module_key_uncached(source_path: str) -> str;
 
+def _section_table(data: bytes) -> dict[int, bytes];
+
 def read_section_bytes(data: bytes, sec_type: int) -> (bytes | None);
 
 def _read_key_section(data: bytes, sec_type: int) -> (str | None);
-
-def read_modkey(data: bytes) -> (str | None);
-
-def read_envkey(data: bytes) -> (str | None);
 
 def _ct_dep_rows(text: str) -> list[tuple[(str, str, str)]];
 
@@ -269,8 +257,6 @@ def definition_digest(path: str, qualname: str) -> str;
 
 def _compute_definition_digest(files: list[str], qualname: str) -> str;
 
-def rebase_placement_section(raw: bytes, base: str) -> bytes;
-
 def rebase_ct_deps_section(raw: bytes, base: str) -> bytes;
 
 def _stale_ct_rows(
@@ -295,16 +281,12 @@ def deps_section(rows: list[DepRow]) -> bytes;
 
 def read_dep_rows(data: bytes, base_dir: str = "") -> list[DepRow];
 
-def read_dep_hashes(data: bytes, base_dir: str = "") -> list[tuple[str, str]];
-
 def native_deps_section(dep_digests: dict[str, str]) -> bytes;
 
 def parse_native_dep_rows(raw: bytes, anchor: str = "") -> list[tuple[str, str]];
 
-def _dep_row_path(stored: str, base_dir: str) -> str;
-
 def read_native_dep_hashes(
-    data: bytes, stamp: NativeStamp, base_dir: str = "", anchor: str = ""
+    data: bytes, stamp: NativeStamp, anchor: str = ""
 ) -> list[tuple[str, str]];
 
 def compute_stub_module_key(source_path: str) -> str;

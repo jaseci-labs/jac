@@ -468,7 +468,8 @@ test "E2036: an impl, overloads, a self-import and a glob assignment are not dup
 test "E2036: a Python module may redefine a name" {
     prog = JacProgram();
     prog.compile(
-        use_str="def pick() -> int:\n    return 1\n\n\ndef pick() -> int:\n    return 2\n",
+        use_str="from os.path import join\nfrom shlex import join\n\n\n"
+            + "def pick() -> int:\n    return 1\n\n\ndef pick() -> int:\n    return 2\n",
         file_path="redefine.py"
     );
     assert not has_diagnostic_code(prog, "E2036");
@@ -492,10 +493,42 @@ test "E2036: a local def, obj or glob that reuses an imported name is rejected" 
 }
 
 test "E2036: an import after the local definition still collides" {
-    (_, prog) = parse_and_validate(
-        "def Thing -> int {\n    return 7;\n}\n\nimport from rec { Thing }\n"
-    );
-    assert count_diagnostic_code(prog, "E2036") == 1;
+    # Imports of one name in one scope must agree; one inside a branch is checked, not recorded.
+    allowed = [
+        "import from os.path { join } import from os.path { join }",
+        "import os; import os.path; import os as os;",
+        "import os.path as p; import from os { path as p }",
+        "include b; import from c { b }",
+        "import from b { A } def f -> None { import from c { A } }",
+        "obj C { with entry { import from os.path { join } } } import from shlex { join }",
+        "def f(x: bool) -> None { if x { import from b { A } } else { import from c { A } } }",
+        "with entry { try { import from b { A } } except ImportError { import from c { A } } }"
+    ];
+    clashes = [
+        "def Thing -> int {\n    return 7;\n}\n\nimport from rec { Thing }\n",
+        "import from os.path { join } import from shlex { join }",
+        "import from b { A } import from b { A } import from c { A }",
+        "import from b { A as X } import from b { C as X }",
+        "import from .b { A } import from pkg.b { A }",
+        "import os.path as p; import shlex as p;",
+        "import from os.path { join } with entry { import from shlex { join } }",
+        "with entry { import from b { A } } import from c { A }",
+        "def f(x: bool) -> None { import from b { A } if x { import from c { A } } }",
+        "def f(x: bool) -> None { if x { import from c { A } } import from b { A } }",
+        "def join -> int { return 1; } def f(x: bool) -> None { import from .test { join } if x { import from shlex { join } } }",
+        "def join -> int { return 1; } with entry { if True { import from shlex { join } } }"
+    ];
+    # The self-import is the local join, so it clashes with shlex as the def does.
+    self_import = [
+        "def join -> int { return 1; } with entry { if True { import from .test { join } } import from shlex { join } }"
+    ];
+    for (expected, sources) in [(0, allowed), (1, clashes), (2, self_import)] {
+        for source in sources {
+            (_, prog) = parse_and_validate(source);
+            got = count_diagnostic_code(prog, "E2036");
+            assert got == expected , f"{source}: expected {expected} E2036, got {got}";
+        }
+    }
 }
 
 test "E2036: a module import and an enum or type alias collide too" {

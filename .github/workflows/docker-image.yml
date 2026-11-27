@@ -28,8 +28,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # One native runner per architecture: the Dockerfile runs the binary, and the
+  # bundled CPython does not load under qemu-user on an x86 host.
   image:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux-x86_64
+            runner: ubuntu-24.04
+          - arch: arm64
+            platform: linux-aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     permissions:
       # GitHub only exposes draft releases to tokens with push access.
@@ -50,13 +62,14 @@ jobs:
           echo "::error::DOCKERHUB_USERNAME/DOCKERHUB_TOKEN are required to publish the Docker image."
           exit 1
 
-      - name: Download and verify the existing release binaries
+      - name: Download and verify the existing release binary
         if: env.DOCKERHUB_USERNAME != ''
-        id: release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ inputs.tag }}
+          ARCH: ${{ matrix.arch }}
+          PLATFORM: ${{ matrix.platform }}
         run: |
           set -euo pipefail
           if [ "$TAG" = dev ]; then
@@ -67,23 +80,64 @@ jobs:
             echo "::error::Expected a canonical v<version> release tag or dev."
             exit 1
           fi
-          for arch in amd64 arm64; do
-            case "$arch" in
-              amd64) platform=linux-x86_64 ;;
-              arm64) platform=linux-aarch64 ;;
-            esac
-            asset="jac-${VERSION}-${platform}"
-            mkdir -p "ctx/$arch"
-            gh release download "$TAG" --pattern "$asset" --pattern "$asset.sha256" --dir "ctx/$arch"
-            ( cd "ctx/$arch" && sha256sum --check "$asset.sha256" )
-            mv "ctx/$arch/$asset" "ctx/$arch/jac"
-            chmod +x "ctx/$arch/jac"
-          done
+          asset="jac-${VERSION}-${PLATFORM}"
+          mkdir -p "ctx/$ARCH"
+          gh release download "$TAG" --pattern "$asset" --pattern "$asset.sha256" --dir "ctx/$ARCH"
+          ( cd "ctx/$ARCH" && sha256sum --check "$asset.sha256" )
+          mv "ctx/$ARCH/$asset" "ctx/$ARCH/jac"
+          chmod +x "ctx/$ARCH/jac"
           cp docker/jaclang.Dockerfile ctx/Dockerfile
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
         if: env.DOCKERHUB_USERNAME != ''
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        if: env.DOCKERHUB_USERNAME != ''
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push linux/${{ matrix.arch }} by digest
+        id: build
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: ctx
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=jaseci/jaclang,push-by-digest=true,name-canonical=true,push=true
+
+      - name: Record the digest
+        if: env.DOCKERHUB_USERNAME != ''
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p digests
+          touch "digests/${DIGEST#sha256:}"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: env.DOCKERHUB_USERNAME != ''
+        with:
+          name: docker-digest-${{ matrix.arch }}
+          path: digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Tag both per-arch images as one multi-arch manifest.
+  merge:
+    needs: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: env.DOCKERHUB_USERNAME != ''
+        with:
+          pattern: docker-digest-*
+          path: digests
+          merge-multiple: true
 
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
         if: env.DOCKERHUB_USERNAME != ''
@@ -100,43 +154,46 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          VERSION: ${{ steps.release.outputs.version }}
+          TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
+          VERSION="${TAG#v}"
           IMAGE=jaseci/jaclang
-          TAGS="$IMAGE:$VERSION"
+          TAGS="-t $IMAGE:$VERSION"
           if [ "$VERSION" != dev ]; then
             # Preserve the release workflow's backport rule: latest never
             # moves to an older version when an old image is rebuilt.
             latest_tag="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2>/dev/null || echo "")"
             if [ "$(printf '%s\n%s\n' "${latest_tag#v}" "$VERSION" | sort -V | tail -1)" = "$VERSION" ]; then
-              TAGS="$TAGS,$IMAGE:latest"
+              TAGS="$TAGS -t $IMAGE:latest"
             else
               echo "Backport: $latest_tag stays latest; publishing $IMAGE:$VERSION only."
             fi
           fi
           echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push (linux/amd64, linux/arm64)
-        id: build
+      - name: Create and push the multi-arch manifest
         if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
-        with:
-          context: ctx
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.tags.outputs.tags }}
+        working-directory: digests
+        env:
+          TAGS: ${{ steps.tags.outputs.tags }}
+        run: |
+          set -euo pipefail
+          [ "$(ls | wc -l)" -eq 2 ] || { echo "::error::Expected one digest per architecture."; exit 1; }
+          # shellcheck disable=SC2086
+          docker buildx imagetools create $TAGS $(printf 'jaseci/jaclang@sha256:%s ' *)
 
       - name: Summarize published image
         if: env.DOCKERHUB_USERNAME != ''
         env:
           TAGS: ${{ steps.tags.outputs.tags }}
-          DIGEST: ${{ steps.build.outputs.digest }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
+          set -euo pipefail
+          IMAGE="$(sed -E 's/^-t ([^ ]+).*/\1/' <<<"$TAGS")"
+          docker buildx imagetools inspect "$IMAGE"
           {
             echo "## Docker image"
             echo "Release binaries: $RELEASE_TAG"
-            echo "Tags: $TAGS"
-            echo "Digest: $DIGEST"
+            echo "Tags: ${TAGS//-t /}"
           } >> "$GITHUB_STEP_SUMMARY"

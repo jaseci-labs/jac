@@ -184,7 +184,13 @@ POST {base}/function/{funcName}            # public function
 ```
 
 with a `Bearer` token from `localStorage["jac_token"]` and a
-`JSON.stringify`d body. A `401` drops the token and reloads. Calls route
+`JSON.stringify`d body. A `401` that rejects the stored token drops it and
+reloads the page, whichever app answered. Desktop profiles put a fresh token
+back on every load, so a profile gets one such reset: after it, a rejection
+leaves the session alone until the token has expired or the profile changes.
+A call that went out with no token still reloads, which is what fetches a
+fresh session once an expired one has been dropped.
+Calls route
 through `__cachedEndpointCall`, an LRU+TTL cache driven by compiler-emitted
 `__jacEndpointEffects__` metadata: endpoints tagged *reader* are cached and
 deduped, *writer* endpoints fetch then invalidate overlapping readers
@@ -484,7 +490,7 @@ program, or Python via `ctypes`) can load across a process/module boundary.
 Native code reaches the *client* by compiling to wasm.
 `jac build --native --target wasm32` (and the client bundler's `_emit_na_wasm`,
 which serves `/static/<stem>.wasm`) both route through
-`wasm_build.compile_to_wasm`: it sets the `wasm32-unknown-unknown` triple,
+`pipeline_runner.wasm_artifact_inputs`: it sets the `wasm32-unknown-unknown` triple,
 compiles AOT, honors the project's `[memory]` settings (`profile = "nogc"`
 builds headerless and audits the IR for `__rc_*` machinery), runs `opt2`
 **without** `internalize` (so defined functions stay exported), and links

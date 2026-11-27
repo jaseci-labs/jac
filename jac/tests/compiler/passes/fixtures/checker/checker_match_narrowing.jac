@@ -38,10 +38,10 @@ def test_match_case_narrowing(
     animal: Animal
 ) -> str {
     match animal {
-        case Dog():
-            # animal is narrowed to Dog here
+        case Dog() as dog:
+            # animal is narrowed to Dog here, and the capture dog is a Dog
             # But Dog is still an Animal, so this should work
-            return process_animal(animal);  # <-- Should be Ok
+            return process_animal(animal) + dog.bark();  # <-- Should be Ok
 
 
         case Cat():

@@ -61,27 +61,51 @@ impl scale_local_serve(
     return 0;
 }
 
+impl _ensure_target_tooling(target: str, dry_run: bool = False) {
+    if target in ('kubernetes', 'kubernetes-microservice') {
+        ensure_deploy_tooling(dry_run);
+    }
+}
+
 impl scale_deploy(
     filename: str,
     target: str,
     enable_tls: bool,
     dry_run: bool,
     show_yaml: bool,
-    served_app: str = ""
+    served_app: str = "",
+    from_build: str = "",
+    plan_out: str = ""
 ) -> int {
     mark_scale_runtime();
     try {
-        if target in ('kubernetes', 'kubernetes-microservice') {
-            ensure_deploy_tooling(dry_run);
-        }
+        _ensure_target_tooling(target, dry_run);
         import from jaclang.scale.runtime.realizer.kubernetes_realizer {
             KubernetesRealizer
         }
         return KubernetesRealizer(served_app=served_app).realize(
-            filename, target, enable_tls, dry_run, show_yaml
+            filename, target, enable_tls, dry_run, show_yaml, from_build, plan_out
         );
     } except Exception as e {
         console.error(f"Deploy failed: {e}", emoji=False);
+        return 1;
+    }
+}
+
+impl scale_build(
+    filename: str, target: str, out: str, arch: str, served_app: str = ""
+) -> int {
+    mark_scale_runtime();
+    try {
+        _ensure_target_tooling(target);
+        import from jaclang.scale.runtime.realizer.kubernetes_realizer {
+            KubernetesRealizer
+        }
+        return KubernetesRealizer(served_app=served_app).build(
+            filename, target, out, arch
+        );
+    } except Exception as e {
+        console.error(f"Build failed: {e}", emoji=False);
         return 1;
     }
 }
@@ -179,6 +203,17 @@ impl _print_deployment_status(status_data: dict[str, any]) -> None {
             f"  {comp.get('name', ''):18s}  {label:22s}  {pods_str:>6s}",
             style=status_style.get(s, 'muted')
         );
+        disk = comp.get('disk');
+        if disk {
+            console.print(
+                f"  {'':18s}  Disk {format_bytes(disk['used'])} of "
+                f"{format_bytes(disk['total'])} ({disk['percent']}%)",
+                style='muted'
+            );
+        }
+    }
+    for warning in status_data.get('warnings', []) {
+        console.warning(warning, emoji=False);
     }
 
     if urls {
@@ -300,16 +335,30 @@ impl scale_cmd(
     component: str = "",
     enable_tls: bool = False,
     dry_run: bool = False,
-    show_yaml: bool = False
+    show_yaml: bool = False,
+    from_build: str = "",
+    plan_out: str = "",
+    out: str = "",
+    arch: str = ""
 ) -> int {
-    if action == "deploy" {
+    if action in ("deploy", "build") {
         (app_file, served_app, problem) = _resolve_deploy_target(service_name);
         if problem {
             console.error(problem, emoji=False);
             return 1;
         }
+        if action == "build" {
+            return scale_build(app_file, target, out, arch, served_app=served_app);
+        }
         return scale_deploy(
-            app_file, target, enable_tls, dry_run, show_yaml, served_app=served_app
+            app_file,
+            target,
+            enable_tls,
+            dry_run,
+            show_yaml,
+            served_app=served_app,
+            from_build=from_build,
+            plan_out=plan_out
         );
     }
     if action in ("status", "destroy") and service_name.endswith(".jac") {

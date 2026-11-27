@@ -1,12 +1,3 @@
-impl catalog_origin -> (CatalogOrigin | None) {
-    return _ORIGIN[0] if _ORIGIN else None;
-}
-
-impl _opened(path: str, offset: int, length: int) {
-    _OPENED_FROM.clear();
-    _OPENED_FROM.append(CatalogOrigin(path=path, offset=offset, length=length));
-}
-
 impl jaclang_pkg_dir -> str {
     import jaclang;
     return os.path.dirname(os.path.realpath(str(jaclang.__file__)));
@@ -90,11 +81,7 @@ impl dev_catalog_path(pkg_dir: str) -> str {
 
 impl _open_file(path: str, pkg_dir: str) -> StubCatalog | None {
     try {
-        found = open_catalog_file(path, pkg_dir);
-        if found is not None {
-            _opened(path, 0, len(found.buf));
-        }
-        return found;
+        return open_catalog_file(path, pkg_dir);
     } except Exception as e {
         sys.stderr.write(f"jac: ignoring unreadable stub catalog {path}: {e}\n");
         return None;
@@ -105,11 +92,7 @@ impl _open_region(
     exe: str, offset: int, length: int, pkg_dir: str
 ) -> StubCatalog | None {
     try {
-        found = open_catalog_region(exe, offset, length, pkg_dir);
-        if found is not None {
-            _opened(exe, offset, length);
-        }
-        return found;
+        return open_catalog_region(exe, offset, length, pkg_dir);
     } except Exception as e {
         sys.stderr.write(f"jac: ignoring unreadable embedded stub catalog: {e}\n");
         return None;
@@ -248,8 +231,6 @@ impl _publish(cat: StubCatalog | None) -> StubCatalog | None {
     if cat is not None and not _CATALOG_CACHE {
         _CATALOG_CACHE.append(cat);
         set_active(cat);
-        _ORIGIN.clear();
-        _ORIGIN.extend(_OPENED_FROM);
     }
     return cat;
 }
@@ -267,17 +248,11 @@ impl open_catalog -> StubCatalog | None {
     if found is None {
         return None;
     }
-    _opened(
-        found.path,
-        int(found.record.get("offset", 0)),
-        int(found.record.get("length", 0))
-    );
     return _publish(found.record.get("catalog"));
 }
 
 impl reset_catalog_cache {
     _CATALOG_CACHE.clear();
     _DIGEST_CACHE.clear();
-    _ORIGIN.clear();
     set_active(None);
 }

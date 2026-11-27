@@ -2,8 +2,11 @@ import os;
 import sys;
 
 def _discover_project_config(
-    profile: str | None = None, tolerate_invalid: bool = False
+    profile: str | None = None, tolerate_invalid: bool = False, command_name: str = ""
 ) -> bool;
+
+glob _PIN_CHECKED_COMMANDS: tuple[str, ...] = ("build", );
+
 
 def _exit_on_invalid_jac_toml(exc: any);
 
@@ -121,7 +124,8 @@ impl run_selected_command(command_name: str) -> None {
     args_dict = vars(args);
     manifest_valid = _discover_project_config(
         profile=args_dict.get('profile') or None,
-        tolerate_invalid=meta.tolerates_invalid_manifest
+        tolerate_invalid=meta.tolerates_invalid_manifest,
+        command_name=command_name
     );
     if script_args {
         args_dict['args'] = script_args;
@@ -142,7 +146,7 @@ impl run_selected_command(command_name: str) -> None {
 }
 
 impl _discover_project_config(
-    profile: str | None = None, tolerate_invalid: bool = False
+    profile: str | None = None, tolerate_invalid: bool = False, command_name: str = ""
 ) -> bool {
     try {
         import from jaclang.project.config { get_config }
@@ -151,6 +155,9 @@ impl _discover_project_config(
         config = get_config(profile=profile);
         if config is not None {
             add_venv_to_path(config);
+            if command_name in _PIN_CHECKED_COMMANDS {
+                warn_unmet_jac_version(str(config.project.jac_version or "").strip());
+            }
         }
     } except MalformedJacTomlError as exc {
         _exit_on_malformed_jac_toml(exc);
@@ -161,6 +168,38 @@ impl _discover_project_config(
         _exit_on_invalid_jac_toml(exc);
     } except Exception {}
     return True;
+}
+
+impl warn_unmet_jac_version(pin: str) {
+    running = resolve_cli_version();
+    if not pin or not running or satisfies(running, pin) {
+        return;
+    }
+    console.warning(
+        f"this project targets jac {pin} ([project] jac-version) but this is jac "
+        f"{running}; a deploy builds with the pinned toolchain, so this result may not hold there"
+    );
+}
+
+impl warn_unmet_project_pins(paths: list[str]) {
+    import from pathlib { Path }
+
+    seen: set[str] = set();
+    for path in paths {
+        if not path {
+            continue;
+        }
+        try {
+            config = get_config_for_path(Path(path));
+        } except Exception {
+            continue;
+        }
+        if config is None or str(config.project_root) in seen {
+            continue;
+        }
+        seen.add(str(config.project_root));
+        warn_unmet_jac_version(str(config.project.jac_version or "").strip());
+    }
 }
 
 impl _exit_on_invalid_jac_toml(exc: any) {

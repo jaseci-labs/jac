@@ -426,8 +426,9 @@ impl _build_logql(
     }
     if trace_id {
         escaped_tid = trace_id.replace("\\", "\\\\").replace('"', '\\"');
+        short = escaped_tid.split("-")[0];
         pipeline.append(
-            f'|~ "trace_id\\":\\"{escaped_tid}|\\\\[trace={escaped_tid[:8]}\\\\]"'
+            f'|~ "trace_id\\":\\\\s*\\"{escaped_tid}|\\\\[trace={short}\\\\]"'
         );
     }
     if search {

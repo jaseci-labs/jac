@@ -421,3 +421,8 @@ impl fleet_member_names(project_dir: str = "") -> list[str] {
         return [];
     }
 }
+
+
+impl owns_identity_store(app_env: dict[str, any]) -> bool {
+    return bool(str(app_env.get("JAC_DB_URL") or "").strip());
+}

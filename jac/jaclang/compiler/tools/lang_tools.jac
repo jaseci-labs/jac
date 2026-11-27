@@ -3,6 +3,7 @@ import inspect;
 import json;
 import os;
 import sys;
+import from typing { cast }
 
 obj AstKidInfo {
     has name: str,
@@ -14,13 +15,8 @@ obj UniNodeInfo {
     has cls: type,
         name: str = '',
         doc: (str | None) = None,
-        class_name_snake: str = '',
         init_sig: inspect.Signature = inspect.Signature(),
         kids: list[AstKidInfo] = [];
-
-    with entry {
-        type_map: ClassVar[dict[(str, type)]] = {};
-    }
 
     def postinit -> None;
     def process(cls: type[uni.UniNode]) -> None;

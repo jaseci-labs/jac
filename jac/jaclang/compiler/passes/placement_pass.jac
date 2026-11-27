@@ -25,13 +25,11 @@ obj NativeLegality {
         owners: dict[int, UniNode] = {},
         refs: dict[int, set[int]] = {},
         anchored_by: dict[int, set[int]] = {},
-        tops: dict[int, UniNode] = {},
         elements: dict[int, NativeRefusal] = {},
         blockers: list[NativeRefusal] = [],
         module: list[NativeRefusal] = [],
         reach: list[NativeRefusal] = [],
         reached: dict[int, int] = {},
-        late: dict[str, list[NativeRefusal]] = {},
         requires: dict[int, NativeRefusal] = {},
         module_requires: list[NativeRefusal] = [],
         preferences: dict[int, NativeRefusal] = {};
@@ -45,8 +43,6 @@ obj NativeLegality {
     def unit_refused(owner: UniNode) -> bool;
     def module_refused -> bool;
     def settle -> None;
-    def static_units -> int;
-    def late_units -> int;
     def unmet -> list[tuple[NativeRefusal, NativeRefusal]];
 }
 
@@ -76,8 +72,7 @@ def settle_native_module(
 
 walker PlacementPass(CompilerPass) {
     static has contract: PassContract = PassContract(
-        requires=(AnalysisFact.TYPE_OF, ),
-        provides=(AnalysisFact.CAPABILITY, AnalysisFact.CLIENT_CAPABILITY, )
+        requires=(AnalysisFact.TYPE_OF, ), provides=(AnalysisFact.CAPABILITY, )
     );
 
     def _emit_refusal(refusal: NativeRefusal, required_by: str) -> None;

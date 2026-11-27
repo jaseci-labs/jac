@@ -176,6 +176,7 @@ obj Session(Memory) {
         _hop_groups_token: (tuple[int, int] | None) postinit,
         _queued: list[UUID] postinit,
         _last_conflict: set[UUID] postinit,
+        _txn_open: bool postinit,
         _scan_clean: bool postinit,
         _scan_sealed: bool postinit,
         _scan_safe: bool postinit;
@@ -245,7 +246,7 @@ obj Session(Memory) {
     def _leave_queue -> None;
     def _commit_txn -> None;
     def _rollback_txn -> None;
-    def _replay_txn(cause: Exception, exhausted: bool = False) -> None;
+    def _lose_on_conflict(cause: (Exception | None)) -> None;
     def _reclaim_dead_txn -> None;
     def _ensure_txn -> None;
     def _txn_isolation -> TxnIsolation;

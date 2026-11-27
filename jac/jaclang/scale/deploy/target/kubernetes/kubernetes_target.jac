@@ -1,3 +1,7 @@
+glob DB_DATA_PATH: str = '/var/lib/jac/pgdata',
+     DB_DISK_TIMEOUT_S: int = 10,
+     DB_DISK_WARN_PERCENT: int = 80;
+
 obj KubernetesTargetBase(DeploymentTarget) {
     has config: KubernetesConfig,
         logger: (Logger | None) = None,
@@ -33,4 +37,5 @@ obj KubernetesTargetBase(DeploymentTarget) {
     def get_service_url(app_name: str) -> (str | None);
     def enable_tls(app_name: str);
     def get_full_status(app_name: str) -> dict[str, any];
+    def _database_disk(app_name: str, namespace: str) -> (dict[str, any] | None);
 }

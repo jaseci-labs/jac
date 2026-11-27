@@ -1,5 +1,4 @@
 import os;
-import time;
 import from contextvars { ContextVar }
 
 class TypeshedUnavailableError(RuntimeError) {}
@@ -7,8 +6,6 @@ class TypeshedUnavailableError(RuntimeError) {}
 def no_passes(request: ProductRequest) -> PassSchedule;
 
 def unavailable_schedule(request: ProductRequest) -> (PassSchedule | None);
-
-def empty_schedule(request: ProductRequest) -> (PassSchedule | None);
 
 def no_action(program: JacProgram, module: Module) -> bool;
 
@@ -32,7 +29,6 @@ obj ProductSpec {
         tiered: bool = False,
         acts: bool = False,
         cached: bool = False,
-        tool: bool = False,
         on_import_error: ImportFallback = ImportFallback.RAISE;
 }
 
@@ -71,28 +67,6 @@ def native_lower_passes(request: ProductRequest) -> PassSchedule;
 def native_toolchain_blocker -> str;
 
 def native_object_passes(request: ProductRequest) -> PassSchedule;
-
-def format_passes(request: ProductRequest) -> PassSchedule;
-
-def format_lintfix_passes(request: ProductRequest) -> PassSchedule;
-
-def lint_passes(request: ProductRequest) -> PassSchedule;
-
-def python_ast_passes(request: ProductRequest) -> PassSchedule;
-
-def python_symbols_passes(request: ProductRequest) -> PassSchedule;
-
-def grammar_passes(request: ProductRequest) -> PassSchedule;
-
-def cfg_dot_passes(request: ProductRequest) -> PassSchedule;
-
-def normalize_passes(request: ProductRequest) -> PassSchedule;
-
-def unparse_passes(request: ProductRequest) -> PassSchedule;
-
-def doc_passes(request: ProductRequest) -> PassSchedule;
-
-def format_text_passes(request: ProductRequest) -> PassSchedule;
 
 def place_module(program: JacProgram, module: Module) -> bool;
 
@@ -135,7 +109,7 @@ glob IR_LOADS: list[str] = [
          'jaclang.compiler.symbol_utils',
          'jaclang.compiler.expr_keys',
          'jaclang.compiler.type_registry',
-         'jaclang.compiler.driver.bccache',
+         'jaclang.compiler.driver.annex_discovery',
          'jaclang.compiler.frontend.codeinfo',
          'jaclang.compiler.frontend.diagnostic_utils',
          'jaclang.project.modresolver',
@@ -208,7 +182,7 @@ glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
          CompilationProduct.LAYOUT: ProductSpec(passes=layout_passes, cached=True),
          CompilationProduct.CODEGEN: ProductSpec(
              passes=codegen_passes,
-             bootstrap=empty_schedule,
+             bootstrap=no_passes,
              loads=CODEGEN_LOADS,
              tier_with=[CompilationProduct.IR, CompilationProduct.NATIVE_LOWER],
              tiered=True,
@@ -217,7 +191,7 @@ glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
          CompilationProduct.PY_IR: ProductSpec(passes=py_ir_passes),
          CompilationProduct.FROZEN: ProductSpec(
              passes=frozen_passes,
-             bootstrap=empty_schedule,
+             bootstrap=no_passes,
              tier_with=[CompilationProduct.CODEGEN],
              tiered=True,
              on_import_error=ImportFallback.REPORT
@@ -243,23 +217,6 @@ glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
              needs=[CompilationProduct.NATIVE_LOWER],
              passes=native_object_passes,
              drop=drop_native_object
-         ),
-         CompilationProduct.FORMAT: ProductSpec(passes=format_passes),
-         CompilationProduct.FORMAT_LINTFIX: ProductSpec(passes=format_lintfix_passes),
-         CompilationProduct.LINT: ProductSpec(passes=lint_passes),
-         CompilationProduct.PYTHON_AST: ProductSpec(
-             passes=python_ast_passes, tool=True
-         ),
-         CompilationProduct.PYTHON_SYMBOLS: ProductSpec(
-             passes=python_symbols_passes, tool=True
-         ),
-         CompilationProduct.GRAMMAR: ProductSpec(passes=grammar_passes, tool=True),
-         CompilationProduct.CFG_DOT: ProductSpec(passes=cfg_dot_passes, tool=True),
-         CompilationProduct.NORMALIZE: ProductSpec(passes=normalize_passes, tool=True),
-         CompilationProduct.UNPARSE: ProductSpec(passes=unparse_passes, tool=True),
-         CompilationProduct.DOC: ProductSpec(passes=doc_passes, tool=True),
-         CompilationProduct.FORMAT_TEXT: ProductSpec(
-             passes=format_text_passes, tool=True
          )
      },
      _LOADING: ContextVar[list[CompilationProduct]] = ContextVar(
@@ -328,16 +285,11 @@ def require(
 
 def invalidate(program: JacProgram, module: Module, product: CompilationProduct);
 
+def mark_failed(program: JacProgram, module: Module, product: CompilationProduct);
+
 def execute_passes(
     program: JacProgram,
     module: Module,
     passes: PassSchedule,
     cancel_token: (CancelToken | None) = None
 ) -> Module;
-
-def run_utility(
-    product: CompilationProduct,
-    ir: any,
-    program: JacProgram,
-    cancel_token: (CancelToken | None) = None
-) -> any;

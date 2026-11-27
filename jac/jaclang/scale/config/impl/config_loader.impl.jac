@@ -74,7 +74,13 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
                 10.0
             ],
             'prometheus_admin_password': 'Adminpassword123',
-            'k8s_metrics_enabled': True
+            'k8s_metrics_enabled': True,
+            'storage_enabled': False,
+            'storage_class': '',
+            'prometheus_storage': '10Gi',
+            'loki_storage': '10Gi',
+            'tempo_storage': '5Gi',
+            'loki_retention': '168h'
         },
         'admin': {
             'enabled': True,
@@ -182,6 +188,17 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, any
     k8s_config['monitoring_enabled'] = monitoring['enabled'];
     k8s_config['k8s_metrics_enabled'] = monitoring['k8s_metrics_enabled'];
     k8s_config['prometheus_admin_password'] = monitoring['prometheus_admin_password'];
+    k8s_config['metrics_endpoint'] = monitoring['endpoint'];
+    k8s_config['monitoring_storage_enabled'] = monitoring['storage_enabled'];
+    k8s_config['monitoring_storage_class'] = monitoring['storage_class'];
+    for key in [
+        'prometheus_storage',
+        'loki_storage',
+        'tempo_storage',
+        'loki_retention'
+    ] {
+        k8s_config[key] = monitoring[key];
+    }
 
     k8s_config['admin_username'] = self.get_admin_config().get('username', 'admin');
 
@@ -303,7 +320,13 @@ impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, any
         'k8s_metrics_enabled': monitoring_config.get('k8s_metrics_enabled', True),
         'prometheus_admin_password': monitoring_config.get(
             'prometheus_admin_password', 'Adminpassword123'
-        )
+        ),
+        'storage_enabled': monitoring_config.get('storage_enabled', False),
+        'storage_class': monitoring_config.get('storage_class', ''),
+        'prometheus_storage': monitoring_config.get('prometheus_storage', '10Gi'),
+        'loki_storage': monitoring_config.get('loki_storage', '10Gi'),
+        'tempo_storage': monitoring_config.get('tempo_storage', '5Gi'),
+        'loki_retention': monitoring_config.get('loki_retention', '168h')
     };
 }
 

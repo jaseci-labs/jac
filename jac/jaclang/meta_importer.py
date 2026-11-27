@@ -40,7 +40,6 @@ _jac0_hash = (
     else b""
 )
 
-# Inline logging config (previously in jaclang.compiler.driver.log)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
 
 

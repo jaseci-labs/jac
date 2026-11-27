@@ -2,6 +2,7 @@ import threading;
 import time;
 import heapq;
 import datetime;
+import json;
 import logging;
 import math;
 import os;
@@ -93,7 +94,10 @@ obj Scheduler {
         _in_flight: dict[int, tuple[str, threading.Thread]] = {},
         _flight_lock: threading.Lock = threading.Lock(),
         _overlapping: set[str] = set(),
-        _listeners: dict[str, Callable[[RunOutcome], None]] = {};
+        _listeners: dict[str, Callable[[RunOutcome], None]] = {},
+        record: (Callable[[str, str], None] | None) = None,
+        recall: (Callable[[str], (str | None)] | None) = None,
+        _last: dict[str, dict[str, any]] = {};
 
     static def instance -> Scheduler;
     def register(
@@ -106,6 +110,7 @@ obj Scheduler {
     def _tick(task: ScheduledTask, due: datetime.datetime) -> None;
     def _claim_key(task: ScheduledTask) -> str;
     def _may_fire(task: ScheduledTask, due: datetime.datetime) -> bool;
+    def _mark_failing(key: str, failing: bool, message: str) -> None;
     def _run_key(task: ScheduledTask) -> str;
     def _hold_owner -> str;
     def _take_hold(task: ScheduledTask) -> bool;
@@ -119,6 +124,10 @@ obj Scheduler {
     def _worker -> str;
     def _skip(task: ScheduledTask, due: datetime.datetime, reason: str) -> None;
     def _report(outcome: RunOutcome) -> None;
+    def _last_key(name: str) -> str;
+    def _remember(outcome: RunOutcome) -> None;
+    def last_run_of(name: str) -> (dict[str, any] | None);
+    def schedules -> list[dict[str, any]];
     def stop(timeout: (float | None) = None) -> None;
     def `wait -> None;
     def has_pending -> bool;

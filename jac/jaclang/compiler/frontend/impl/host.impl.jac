@@ -186,8 +186,8 @@ impl HostServices.native_lowering_failed(
     program: JacProgram, path: str, detail: str
 ) {}
 
-impl HostServices.native_fact(kind: str, key: str) -> str {
-    return "";
+impl HostServices.git_ignored_under(root_dir: str) -> list[str] {
+    return [];
 }
 
 impl HostServices.save_native_debug_ir(path: str, text: str) {}
@@ -250,12 +250,6 @@ impl HostServices.native_pipeline_available -> tuple[bool, str] {
 
 impl HostServices.compile_module(
     program: JacProgram, file_path: str, use_str: (str | None), options: CompileOptions
-) -> Module {
-    raise RuntimeError("no compiler host is installed");
-}
-
-impl HostServices.build_module(
-    program: JacProgram, file_path: str, use_str: (str | None)
 ) -> Module {
     raise RuntimeError("no compiler host is installed");
 }

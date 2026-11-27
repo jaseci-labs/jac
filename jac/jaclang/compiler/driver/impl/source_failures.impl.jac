@@ -34,17 +34,25 @@ impl _compiler_source_root -> str {
     return os.path.realpath(jaclang_pkg_root());
 }
 
-impl _jac_source_failure_path(err: BaseException) -> (str | None) {
+impl _cause_chain(err: BaseException) -> list[any] {
+    chain: list[any] = [];
     cursor: any = err;
     for _ in range(8) {
         if cursor is None {
             break;
         }
+        chain.append(cursor);
+        cursor = cursor?.__cause__ or cursor?.__context__;
+    }
+    return chain;
+}
+
+impl _jac_source_failure_path(err: BaseException) -> (str | None) {
+    for cursor in _cause_chain(err) {
         path = cursor?.jac_source_path;
         if isinstance(path, str) and path {
             return path;
         }
-        cursor = cursor?.__cause__ or cursor?.__context__;
     }
     return None;
 }
@@ -66,11 +74,7 @@ impl fail_loud_on_compiler_source(err: ImportError) -> None {
 
 impl compiler_source_failure_origin(err: BaseException) -> (str | None) {
     `root = _compiler_source_root() + os.sep;
-    cursor: any = err;
-    for _ in range(8) {
-        if cursor is None {
-            break;
-        }
+    for cursor in _cause_chain(err) {
         for cand in (cursor?.jac_source_path, cursor?.path) {
             if isinstance(cand, str) and cand {
                 real = os.path.realpath(cand);
@@ -84,7 +88,6 @@ impl compiler_source_failure_origin(err: BaseException) -> (str | None) {
             and (name == 'jaclang' or name.startswith('jaclang.')) {
             return name;
         }
-        cursor = cursor?.__cause__ or cursor?.__context__;
     }
     return None;
 }
@@ -106,11 +109,7 @@ impl import_error_re_enters(err: BaseException, file_path: str) -> (str | None) 
     if not isinstance(err, ImportError) or not module_import_in_flight(file_path) {
         return None;
     }
-    cursor: any = err;
-    for _ in range(8) {
-        if cursor is None {
-            break;
-        }
+    for cursor in _cause_chain(err) {
         name = cursor?.name;
         if isinstance(name, str) and name {
             spec = sys.modules.get(name)?.__spec__;
@@ -118,7 +117,6 @@ impl import_error_re_enters(err: BaseException, file_path: str) -> (str | None) 
                 return name;
             }
         }
-        cursor = cursor?.__cause__ or cursor?.__context__;
     }
     return None;
 }

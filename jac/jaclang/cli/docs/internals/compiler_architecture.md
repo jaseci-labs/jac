@@ -213,14 +213,13 @@ native placement comes from a forced codespace or the placement solver's
 verdict. Every other plain `.jac` module goes through placement inference
 instead.
 
-The coercion helpers live in
-[`compiler.jac:_coerce_module`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/pipeline.jac#L250)
-and two wrappers around it:
+`JacProgram.parse_source` applies a declared codespace by calling
+`Module.set_code_context`:
 
-| Helper | Triggered by | What it does |
-|--------|--------------|--------------|
-| `_coerce_client_module` | `.jac` extension | Marks the module's nodes `CodeContext.CLIENT` |
-| `_coerce_native_module` | Forced placement (`CompileOptions(force_codespace='native')` -- set by `jac build <file> --native` -- or an AOT build under the native default codespace), else a passing placement-solver verdict | Marks the module's nodes `CodeContext.NATIVE` |
+| Codespace | Triggered by | What it does |
+|-----------|--------------|--------------|
+| `client` | `.jac` extension | Marks the module's nodes `CodeContext.CLIENT` |
+| `native` | Forced placement (`CompileOptions(force_codespace='native')` -- set by `jac build <file> --native` -- or an AOT build under the native default codespace), else a passing placement-solver verdict | Marks the module's nodes `CodeContext.NATIVE` |
 
 From this point on, every declaration carries a `CodeContext` enum value that
 downstream passes use to dispatch to the correct backend.
@@ -559,21 +558,19 @@ invisible to the Python codegen and vice versa.
 
 | Pass | Source | Output |
 |------|--------|--------|
-| `JcirGenPass` | [`compiler/passes/jcir_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/jcir_gen_pass.jac) (+ [impl](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/impl/jcir_gen_pass.impl.jac)) | The compact codegen IR container (`module.gen.jcir`) |
-| `JcirBytecodeGenPass` | [`compiler/passes/jcir_bc_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/jcir_bc_gen_pass.jac) (+ [impl](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/impl/jcir_bc_gen_pass.impl.jac)) | Python `ast.Module`, unparsed source, and `types.CodeType` via `compile()` |
+| `JcirGenPass` | [`compiler/backends/py/jcir_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/py/jcir_gen_pass.jac) (+ [impl](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/compiler/backends/py/jcir_gen_pass.impl)) | The module's Python `ast.Module` (`module.gen.py_tree`) |
+| `JcirBytecodeGenPass` | [`compiler/backends/py/jcir_bc_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/py/jcir_bc_gen_pass.jac) (+ [impl](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/py/impl/jcir_bc_gen_pass.impl.jac)) | `module.gen.py_ast` and `types.CodeType` bytecode via `compile()` |
 
-`JcirGenPass` makes every lowering decision -- it just writes container
-opcodes instead of building `ast` objects directly. The container format is
-declared in [`compiler/driver/codegen_ir.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/codegen_ir.jac);
-`JcirBytecodeGenPass` is a thin seat over `transcribe` and `compile_ir` in
-[`compiler/driver/codegen_shim.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/codegen_shim.jac),
-which rebuild the Python AST, source, and code object from the container
-bytes.
+`JcirGenPass` makes every lowering decision. It builds a recipe tree of
+`CgNode` records (class name, field names, field values, one location) and
+turns the finished module recipe into real `ast` objects with
+`build_py_module`. `JcirBytecodeGenPass` compiles that tree and marshals the
+code object; `generated_python` in
+[`compiler/backends/py/codegen_shim.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/py/codegen_shim.jac)
+unparses it on demand for tooling.
 
-There are no longer any back-references from the Python AST to the Jac tree.
-The Python AST is reconstructed from the container inside
-`JcirBytecodeGenPass` and dies there, so nothing downstream holds a handle
-back to the originating nodes.
+There are no back-references from the Python AST to the Jac tree, so
+nothing downstream holds a handle back to the originating nodes.
 
 Archetype `has` fields use Jac object descriptors. Nonconstant defaults
 lower to internal `ObjectField(default_factory=lambda: …)` calls; constant
@@ -705,11 +702,10 @@ graph TD
     STR --> NaStr
 ```
 
-Thirteen emitter families are defined: one per primitive type (`int`,
+Twelve emitter families are defined: one per primitive type (`int`,
 `float`, `complex`, `str`, `bytes`, `list`, `dict`, `set`, `frozenset`,
 `tuple`, `range`), plus `BuiltinEmitter` for top-level functions like
-`print()`, `len()`, `range()`, `sorted()`, and `ExceptionEmitter` for the
-exception machinery. The codegen pass calls `StrEmitter.emit_op_add(...)`
+`print()`, `len()`, `range()` and `sorted()`. The codegen pass calls `StrEmitter.emit_op_add(...)`
 and the backend's subclass produces an ES `BinaryExpression` or an LLVM
 `call @str_concat`; the Python backend emits an ordinary `BinOp` whose
 semantics come from CPython directly.
@@ -879,14 +875,12 @@ A short index, organised by the role each file plays in the pipeline.
 
 **Server backend**
 
-- [`compiler/passes/jcir_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/jcir_gen_pass.jac)
-  / [impl](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/impl/jcir_gen_pass.impl.jac)
-- [`compiler/passes/jcir_bc_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/jcir_bc_gen_pass.jac)
-  / [impl](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/impl/jcir_bc_gen_pass.impl.jac)
-- [`compiler/driver/codegen_ir.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/codegen_ir.jac)
-  -- the container format
-- [`compiler/driver/codegen_shim.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/codegen_shim.jac)
-  -- `transcribe` / `compile_ir`
+- [`compiler/backends/py/jcir_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/py/jcir_gen_pass.jac)
+  / [impl](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/compiler/backends/py/jcir_gen_pass.impl)
+- [`compiler/backends/py/jcir_bc_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/py/jcir_bc_gen_pass.jac)
+  / [impl](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/py/impl/jcir_bc_gen_pass.impl.jac)
+- [`compiler/backends/py/codegen_shim.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/py/codegen_shim.jac)
+  -- `generated_python`
 - [`compiler/backends/es/primitives_es.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/es/primitives_es.jac) and [`compiler/backends/native/primitives_native.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/native/primitives_native.jac)
 - [`runtime/runtime.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtime/runtime.jac)
   -- `JacRuntimeInterface`
@@ -918,8 +912,8 @@ A short index, organised by the role each file plays in the pipeline.
 
 - [`compiler/driver/jir.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/jir.jac)
   -- section format
-- [`compiler/driver/bccache.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/bccache.jac)
-  -- cache layout
+- [`compiler/driver/annex_discovery.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/annex_discovery.jac)
+  -- annex file discovery
 
 ---
 

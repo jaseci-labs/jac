@@ -67,7 +67,48 @@ obj NamedChild(Named) {
     }
 }
 
+glob seed: int = 1;
+
+def base_level -> int {
+    return 2;
+}
+
+obj Opts {
+    has level: int = seed,
+        bonus: int = base_level(),
+        names: list[str] = (saved := ["w"]),
+        tags: list[str] = [];
+}
+
+obj OptsChild(Opts) {
+    def init(seed: int) {
+        def base_level -> int {
+            return seed;
+        }
+        self.names = ["stale"];
+        super.init();
+    }
+}
+
+obj OptsPart(Opts) {
+    def init {
+        super.init(7);
+    }
+}
+
+def make_opts(seed: int) -> Opts {
+    return Opts();
+}
+
 with entry {
+    for i in range(2) {
+        oc = OptsChild(7);
+        mo = make_opts(7);
+        mo.names.append(f"d{i}");
+        print(oc.level, oc.bonus, oc.names, oc.tags, mo.level, mo.bonus, mo.names);
+        op = OptsPart();
+        print(op.level, op.bonus, op.names, op.tags);
+    }
     sq = Square(3.0);
     print(sq.kind.value, sq.side, sq.area());
     for i in range(3) {

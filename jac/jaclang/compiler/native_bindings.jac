@@ -37,13 +37,11 @@ glob NATIVE_FILE_CLASSES: dict[str, str] = {
 obj NativeBinding {
     has stub_module: str,
         name: str,
-        native_path: str,
         decl: (UniNode | None) = None,
         params: list[str] = [],
         variadic: bool = False,
         members: set[str] = set(),
-        fields: set[str] = set(),
-        mismatches: list[str] = [];
+        fields: set[str] = set();
 }
 
 obj InterfaceSig {
@@ -58,10 +56,6 @@ obj NativeBindings {
     def surface(
         prog: JacProgram, stub_module: str, base_dir: str
     ) -> (dict[str, NativeBinding] | None);
-
-    def lookup(
-        prog: JacProgram, stub_module: str, name: str, base_dir: str
-    ) -> (NativeBinding | None);
 }
 
 def is_pub(nd: UniNode) -> bool;

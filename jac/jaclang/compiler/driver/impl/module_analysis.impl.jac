@@ -48,10 +48,6 @@ impl ModuleAnalysis.has_full_ir -> bool {
         and self.program.analysis.provides(self.module, AnalysisFact.CFG_SUCC);
 }
 
-impl cancelled(options: CompileOptions) -> bool {
-    return options.cancel_token is not None and options.cancel_token.is_set();
-}
-
 impl always(task: ModuleAnalysis) -> bool {
     return True;
 }
@@ -62,7 +58,8 @@ impl run_parse(task: ModuleAnalysis) {
 
 impl run_head(task: ModuleAnalysis) {
     task.module_path = os.path.normpath(task.path);
-    before = task.program.count_module_blocking_errors(task.module_path);
+    (program, path) = (task.program, task.module_path);
+    before = program.count_module_errors(path, blocking=True);
     if task.options.symtab_ir_only {
         task.require(CompilationProduct.SYMBOLS);
     } else {
@@ -70,7 +67,7 @@ impl run_head(task: ModuleAnalysis) {
             CompilationProduct.IR, ProductRequest(gen_mtir=not task.options.no_cgen)
         );
     }
-    task.blocked = task.program.count_module_blocking_errors(task.module_path) > before;
+    task.blocked = program.count_module_errors(path, blocking=True) > before;
 }
 
 impl admits_placement(task: ModuleAnalysis) -> bool {
@@ -113,7 +110,7 @@ impl run_analysis(task: ModuleAnalysis) {
         and not _is_decl_stub
         and not _annex_of_base
         and (candidate or _client or not _unasked);
-    task.placement_only = _analyze and _unasked and not task.native and not _client;
+    placement_only = _analyze and _unasked and not task.native and not _client;
     errors_mark = len(program.errors_had);
     blocked_before = task.blocked;
     if _analyze
@@ -121,10 +118,10 @@ impl run_analysis(task: ModuleAnalysis) {
         and not task.require(CompilationProduct.ANALYSIS) {
         task.blocked = True;
     }
-    if task.placement_only
+    if placement_only
         and not blocked_before
         and len(program.errors_had) > errors_mark
-        and not cancelled(task.options) {
+        and not cancelled(task.options.cancel_token) {
         import from jaclang.compiler.placement.placement_facts { settle_server }
         del program.errors_had[errors_mark:];
         settle_server(module);
@@ -160,7 +157,7 @@ impl run_boundaries(task: ModuleAnalysis) {
 impl run_plan(task: ModuleAnalysis, steps: tuple[PlanStep, ...]) {
     times = task.program.analysis.phase_time;
     for step in steps {
-        if cancelled(task.options) {
+        if cancelled(task.options.cancel_token) {
             break;
         }
         started = time.perf_counter();

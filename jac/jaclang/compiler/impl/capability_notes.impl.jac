@@ -37,10 +37,6 @@ impl capability_notes_of(
     return out;
 }
 
-impl forget_capability_notes(prog: JacProgram, mod_path: str) {
-    prog.analysis.capability_notes.pop(os.path.realpath(mod_path), None);
-}
-
 impl placement_neutral(nd: UniNode) -> bool {
     if nd.in_native_context() or nd.in_client_context() {
         return False;

@@ -1212,6 +1212,15 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " scalar's storage only to a C function, where the write lands.",
          blocks_codegen=True
      ),
+     E1160 = _err(
+         "E1160",
+         Category.TYPE,
+         "Operator \"{op}\" has a possibly-None operand of type \"{type}\"",
+         help="A `T | None` value has no arithmetic, bitwise, or shift behavior"
+         " on its None case, so the operator would crash at runtime. Guard the"
+         " value first, e.g. `if x is not None { ... }`. Equality (`==`, `!=`)"
+         " and `is None` checks work on the optional directly and need no guard."
+     ),
      E1162 = _err(
          "E1162",
          Category.TYPE,
@@ -1827,7 +1836,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E2036",
          Category.SEMANTIC,
          "Duplicate definition of '{name}': the {prior} binds it too.",
-         help="A module-level name is bound once, by one definition or by one import or wire. Uses are checked against one binding while another can be the one that runs, so rename or remove one of them, or bind the import under another name with `as`. Use `impl {name}` to give a declaration its body, or `@overload` for alternative signatures."
+         help="A module-level name is bound once, by one definition or by one import or wire, and in any scope (a module with its impl files, a function, an impl body, a test) an import binds a name to one thing; repeating the same import is fine. Uses are checked against one binding while another can be the one that runs, so rename or remove one of them, or bind the import under another name with `as`. Use `impl {name}` to give a declaration its body, or `@overload` for alternative signatures."
      ),
      E2037 = _err(
          "E2037",

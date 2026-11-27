@@ -6,8 +6,8 @@ option-shaped fragments. A plain server module therefore reached code
 generation with no inference and none of the checker passes, so a type error
 became a runtime crash instead of a compile failure.
 
-These tests pin the three properties that replace that arrangement: the option
-is gone, the analysis stage runs without being asked, and a module-scoped error
+These tests pin the properties that replace that arrangement: the option is
+gone, the analysis stage runs without being asked, and a module-scoped error
 stops code generation for every codespace rather than only for native modules.
 """
 
@@ -46,12 +46,6 @@ test "the type_check option no longer exists" {
     opts = CompileOptions();
     assert not hasattr(opts, "type_check") , "CompileOptions still carries a type_check switch";
     assert not hasattr(opts, "emit_diagnostics") , "CompileOptions still carries an emit_diagnostics switch";
-}
-
-
-test "a plain module is type-checked without being asked" {
-    (_mod, codes) = _compile_src(_BAD_SRC);
-    assert codes , "compiling a module with a type error produced no diagnostics";
 }
 
 

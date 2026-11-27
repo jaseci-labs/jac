@@ -193,10 +193,7 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     _sf_b.ret_void();
     self.rc_safe_free_fn = sf_fn;
 
-    import os;
-    _pool_on = not self._rc_debug_codegen
-        and self.rc_threaded_gv is not None
-        and not os.environ.get("JAC_NO_ALLOC_POOL");
+    _pool_on = not self._rc_debug_codegen and self.rc_threaded_gv is not None;
     pool_classes = 6;
     pool_cap = 262144;
     self.rc_free_block_fn = sf_fn;

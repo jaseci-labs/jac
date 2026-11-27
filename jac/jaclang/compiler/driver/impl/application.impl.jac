@@ -1,32 +1,9 @@
-impl _stamp(path: str, previous: any = None) -> tuple[int, int, str] {
-    st = os.stat(path);
-    if (
-        isinstance(previous, (list, tuple))
-        and len(previous) == 3
-        and previous[0] == st.st_mtime_ns
-        and previous[1] == st.st_size
-    ) {
-        return (st.st_mtime_ns, st.st_size, previous[2]);
-    }
-    settled = time.time_ns() - st.st_mtime_ns > LISTING_SETTLE_NS;
-    return (
-        st.st_mtime_ns if settled else -1,
-        st.st_size,
-        compute_content_sha256(path)
-    );
-}
-
 impl _runtime_output(name: str) -> bool {
     return name.endswith(('.log', '.db', '.db-wal', '.db-shm', '.sqlite', '.sqlite3'));
 }
 
-impl _inventory(
-    `root: any,
-    inputs: bool = False,
-    previous: (dict[str, tuple[int, int, str]] | None) = None
-) -> dict[str, tuple[int, int, str]] {
-    previous = previous or {};
-    result: dict[str, tuple[int, int, str]] = {};
+impl _inventory(`root: any, inputs: bool = False) -> dict[str, str] {
+    result: dict[str, str] = {};
     for (directory, dirs, files) in os.walk(`root) {
         dirs[:] = sorted(
             d
@@ -38,26 +15,22 @@ impl _inventory(
                 continue;
             }
             path = os.path.join(directory, name);
-            result[path] = _stamp(path, previous.get(path));
+            result[path] = compute_content_sha256(path);
         }
     }
     for toml_path in Path(`root).`glob('jac*.toml') {
-        result[str(toml_path)] = _stamp(str(toml_path), previous.get(str(toml_path)));
+        result[str(toml_path)] = compute_content_sha256(str(toml_path));
     }
     return result;
 }
 
 impl _client_inventory(
-    `root: str,
-    dirs: list[str],
-    files: list[str],
-    previous: (dict[str, tuple[int, int, str]] | None) = None
-) -> dict[str, tuple[int, int, str]] {
-    previous = previous or {};
-    result: dict[str, tuple[int, int, str]] = {};
+    `root: str, dirs: list[str], files: list[str]
+) -> dict[str, str] {
+    result: dict[str, str] = {};
     def take(path: str) {
         if os.path.isfile(path) {
-            result[path] = _stamp(path, previous.get(path));
+            result[path] = compute_content_sha256(path);
         }
     }
     for name in sorted(os.listdir(`root)) {
@@ -83,10 +56,6 @@ impl _client_inventory(
     return result;
 }
 
-impl _digests(inventory: dict[str, tuple[int, int, str]]) -> dict[str, str] {
-    return {path: stamp[2] for (path, stamp) in inventory.items()};
-}
-
 impl _identity -> tuple[str, str | None, str] {
     return (
         compiler_generation(),
@@ -96,19 +65,7 @@ impl _identity -> tuple[str, str | None, str] {
 }
 
 impl _write(path: any, value: any) {
-    path.parent.mkdir(parents=True, exist_ok=True);
-    tmp: str = "";
-    try {
-        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream {
-            tmp = stream.name;
-            marshal.dump(value, stream);
-        }
-        os.replace(tmp, path);
-    } finally {
-        if (tmp and os.path.exists(tmp)) {
-            os.unlink(tmp);
-        }
-    }
+    atomic_write(path, marshal.dumps(value));
 }
 
 impl _sections(path: any, program: any) -> dict[int, bytes] {
@@ -155,20 +112,6 @@ impl _semantic_metadata(revision: PreparedApplication, program: any) {
     }
 }
 
-impl _import_edges_of(rows: list[str]) -> list[tuple[bool, str, list[str]]] {
-    edges: list[tuple[bool, str, list[str]]] = [];
-    for row in rows {
-        parts = row.split(EDGE_SEP);
-        if len(parts) != 3 {
-            continue;
-        }
-        edges.append(
-            (parts[0] == "1", parts[1], parts[2].split(",") if parts[2] else [])
-        );
-    }
-    return edges;
-}
-
 impl _tree_source(
     program: any, mod: uni.Module, imported: bool = True
 ) -> ManifestSource {
@@ -183,7 +126,7 @@ impl _tree_source(
         path=mod.loc.mod_path if mod.loc else '',
         app=mod.app or '',
         persistence=mod.persistence,
-        edges=_import_edges_of(import_edge_rows(mod)) if imported else [],
+        edges=import_edges(mod) if imported else [],
         interop=mod.gen.interop_manifest,
         client=mod.gen.client_manifest
     );
@@ -338,6 +281,36 @@ impl _check(program: any, before: any) {
     }
 }
 
+impl _surface_sources(manifests: list[dict[str, any]], `root: str) -> set[str] {
+    return {
+        os.path.realpath(os.path.join(`root, rec['src'])) for metadata in manifests
+        for rec in (metadata.get('surface') or {}).values()
+        if rec.get('src')
+    };
+}
+
+impl _drain(pending: set[str], code: dict[str, any], expand: any) {
+    while pending {
+        path = pending.pop();
+        if path not in code {
+            pending.update(expand(path) - code.keys());
+        }
+    }
+}
+
+impl _name_applications(applications: list[PreparedApplication]) {
+    for application in applications {
+        application.name = application.manifests.get(application.entry, {}).get(
+            'app', ''
+        );
+    }
+}
+
+impl _drop_client(revision: PreparedApplication) {
+    revision.client_compiler = None;
+    revision.client_dist = '';
+}
+
 impl _prepare_sealed(
     `entry: str, program: any, image_root: str, entries: list[str]
 ) -> PreparedApplication {
@@ -381,14 +354,10 @@ impl _prepare_sealed(
             );
         }
     }
-    pending = set(entries);
-    for metadata in list(manifest['module_manifests'].values()) + [manifest] {
-        for rec in (metadata.get('surface') or {}).values() {
-            if rec.get('src') {
-                pending.add(os.path.realpath(os.path.join(image_root, rec['src'])));
-            }
-        }
-    }
+    pending = set(entries)
+        | _surface_sources(
+            list(manifest['module_manifests'].values()) + [manifest], image_root
+        );
     for path in list(pending) {
         parent = Path(path).parent;
         while parent.is_relative_to(image_root) {
@@ -402,11 +371,7 @@ impl _prepare_sealed(
         }
     }
     compiler = program._get_compiler();
-    while pending {
-        path = pending.pop();
-        if path in revision.code {
-            continue;
-        }
+    def expand(path: str) -> set[str] {
         if Path(path).suffix == '.py' {
             code = compiler.get_bytecode(path, program);
             if code is None {
@@ -415,8 +380,7 @@ impl _prepare_sealed(
                 );
             }
             revision.code[path] = code;
-            pending.update(imports_of(code, path) - revision.code.keys());
-            continue;
+            return imports_of(code, path);
         }
         sealed = compiler._sealed_jir_data(path);
         if sealed is None {
@@ -443,8 +407,9 @@ impl _prepare_sealed(
             );
         }
         revision.native[path] = compiler.get_native_interop_setup(path, program);
-        pending.update(imports_of(revision.code[path], path) - revision.code.keys());
+        return imports_of(revision.code[path], path);
     }
+    _drain(pending, revision.code, expand);
     revision.applications = [
         PreparedApplication(
             image_root,
@@ -455,9 +420,7 @@ impl _prepare_sealed(
             dev=False
         ) for path in entries[1:]
     ];
-    for application in [revision, *revision.applications] {
-        application.name = revision.manifests[application.entry].get('app', '');
-    }
+    _name_applications([revision, *revision.applications]);
     publish(revision);
     return revision;
 }
@@ -516,7 +479,7 @@ impl prepare_application(
     with PREPARATION_LOCK {
         previous = get_effective_default_codespace_override();
         set_effective_default_codespace('server');
-        watched = bool(os.environ.get('JAC_KERNEL_TIMING'));
+        watched = bool(os.environ.get('JAC_PREPARE_TRACEBACK'));
         if watched {
             import faulthandler;
             try {
@@ -575,12 +538,8 @@ impl prepare_application(
                     revision = applications[0];
                     for application in applications {
                         _warn_private_declarations(application, console);
-                        application.name = application.manifests.get(
-                            application.entry, {}
-                        ).get(
-                            'app', ''
-                        );
                     }
+                    _name_applications(applications);
                     revision.services = tuple(entries[1:]);
                     revision.applications = applications[1:];
                     publish(revision);
@@ -674,7 +633,7 @@ impl _prepare_revision(
             candidate = marshal.load(stream);
         }
     } except (OSError, ValueError, EOFError, TypeError) {}
-    stamps = candidate if isinstance(candidate, dict) else {};
+    held = candidate if isinstance(candidate, dict) else {};
     client_dirs: list[str] = [];
     if client {
         import from jaclang.client.config_loader { JacClientConfig }
@@ -685,16 +644,14 @@ impl _prepare_revision(
             `entry
         );
     }
-    client_files: list[str] = list(stamps.get('client_files') or []);
-    inventory = _client_inventory(
-        `root, client_dirs, client_files, stamps.get('inventory')
-    )
+    client_files: list[str] = list(held.get('client_files') or []);
+    inventory = _client_inventory(`root, client_dirs, client_files)
         if client
-        else _inventory(inventory_root, inputs=True, previous=stamps.get('inventory'));
+        else _inventory(inventory_root, inputs=True);
     key = (
         _FORMAT,
         _identity(),
-        _digests(inventory),
+        inventory,
         sorted(inputs.items()),
         entries,
         client,
@@ -711,30 +668,18 @@ impl _prepare_revision(
         import from jaclang.compiler.driver.jir { cache_mode }
         if candidate is not None
             and not cache_mode()[0]
-            and (candidate['key'] == key) {
-            outputs = {
-                path: _stamp(path, stamp)
-                for (path, stamp) in candidate['outputs'].items()
-            };
-            if all(
-                outputs[path][2] == stamp[2]
-                for (path, stamp) in candidate['outputs'].items()
+            and (candidate['key'] == key)
+            and all(
+                compute_content_sha256(path) == digest
+                for (path, digest) in candidate['outputs'].items()
             )
-                and all(
-                    (ct_dep_digest(path, with_annexes=True) == digest)
-                    for (path, digest) in (
-                        candidate['dependencies'] | candidate['client_modules']
-                    ).items()
-                ) {
-                record = candidate;
-                if inventory != record['inventory'] or outputs != record['outputs'] {
-                    record['inventory'] = inventory;
-                    record['outputs'] = outputs;
-                    try {
-                        _write(cache, record);
-                    } except OSError {}
-                }
-            }
+            and all(
+                (ct_dep_digest(path, with_annexes=True) == digest)
+                for (path, digest) in (
+                    candidate['dependencies'] | candidate['client_modules']
+                ).items()
+            ) {
+            record = candidate;
         }
     } except (OSError, ValueError, EOFError, TypeError, KeyError) {}
     builder = None;
@@ -749,8 +694,7 @@ impl _prepare_revision(
     if (record is not None) {
         console.print('  Restoring prepared application', file=sys.stderr);
         if not record['has_client'] {
-            revision.client_compiler = None;
-            revision.client_dist = '';
+            _drop_client(revision);
         }
         if revision.client_compiler is not None {
             revision.client_compiler.jac_client_compiler.na_wasm_modules = set(
@@ -801,15 +745,14 @@ impl _prepare_revision(
         revision.client_compiler.compile(None, Path(`entry));
         if not dev {
             bundler = revision.client_compiler.vite_bundler;
-            bundler.build(
-                entry_file=(revision.client_compiler.compiled_dir / '_entry.js')
-            );
+            compiled_dir = revision.client_compiler.compiled_dir;
+            assert compiled_dir is not None;
+            bundler.build(entry_file=(compiled_dir / '_entry.js'));
         }
         revision.client_compiler._emit_na_wasm(Path(`entry));
         _check(program, before);
     } else {
-        revision.client_compiler = None;
-        revision.client_dist = '';
+        _drop_client(revision);
     }
     routes = prepare_route_metadata(os.path.dirname(`entry), program);
     for path in entries {
@@ -823,37 +766,22 @@ impl _prepare_revision(
         resolve_imports
     }
     sections = {};
-    previous_code: dict[str, any] = candidate.get('code') or {}
-        if isinstance(candidate, dict)
-        else {};
-    previous_specs: dict[str, list[tuple[int, str, (tuple[str, ...] | None)]]] = candidate.get(
-        'import_specs'
-    )
-        or {}
-        if isinstance(candidate, dict)
-        else {};
+    previous_code: dict[str, any] = held.get('code') or {};
+    previous_specs: dict[str, list[tuple[int, str, (tuple[str, ...] | None)]]] = (
+        held.get('import_specs') or {}
+    );
     specs_of: dict[str, list[tuple[int, str, (tuple[str, ...] | None)]]] = {};
-    pending = `set(entries);
+    pending = `set(entries)
+        | _surface_sources(list(revision.manifests.values()), `root);
     for path in entries {
         pending.update(package_sources(path, `root));
     }
-    for manifest in revision.manifests.values() {
-        for rec in (manifest.get('surface') or {}).values() {
-            if rec.get('src') {
-                pending.add(os.path.realpath(os.path.join(`root, rec['src'])));
-            }
-        }
-    }
-    while pending {
-        path = pending.pop();
-        if path in revision.code
-            or (
-                path not in entries
-                and compiler.selfhost.is_selfhost(
-                    compiler.selfhost.resolve(path, program)
-                )
+    def expand(path: str) -> set[str] {
+        if path not in entries
+            and compiler.selfhost.is_selfhost(
+                compiler.selfhost.resolve(path, program)
             ) {
-            continue;
+            return set();
         }
         _capture_input(path, inputs);
         code = compiler.get_bytecode(path, program);
@@ -879,9 +807,9 @@ impl _prepare_revision(
             if known is not None and previous_code.get(path) == code
             else import_specs(code, path);
         specs_of[path] = specs;
-        resolved = resolve_imports(specs, path, `root);
-        pending.update(resolved - revision.code.keys());
+        return resolve_imports(specs, path, `root);
     }
+    _drain(pending, revision.code, expand);
 
     project_facts: dict[str, tuple[str, any]] = {
         path: (mod.app or '', mod.persistence)
@@ -929,19 +857,12 @@ impl _prepare_revision(
         );
         client_files = sorted(read);
     }
-    settled = _client_inventory(`root, client_dirs, client_files, inventory)
+    current = _client_inventory(`root, client_dirs, client_files)
         if client
-        else _inventory(inventory_root, inputs=True, previous=inventory);
-    current = _digests(settled);
-    changed_read = any(
-        current.get(path, '') != digest for (path, digest) in read.items()
-    );
-    if (not client and current != _digests(inventory))
-        or any(
-            current.get(path) != digest
-            for (path, digest) in _digests(inventory).items()
-        )
-        or changed_read
+        else _inventory(inventory_root, inputs=True);
+    if (not client and current != inventory)
+        or any(current.get(path) != digest for (path, digest) in inventory.items())
+        or any(current.get(path, '') != digest for (path, digest) in read.items())
         or any(
             ct_dep_digest(path, with_annexes=True) != digest
             for (path, digest) in client_modules.items()
@@ -951,7 +872,6 @@ impl _prepare_revision(
         );
     }
     if client {
-        inventory = settled;
         key = (key[0], key[1], current) + tuple(key[3:]);
     }
     _write(
@@ -972,8 +892,6 @@ impl _prepare_revision(
             manifests=revision.manifests,
             sections=sections,
             outputs=outputs,
-            inventory=inventory,
-            client_dirs=client_dirs,
             client_files=client_files,
             client_modules=client_modules,
             dependencies=inputs

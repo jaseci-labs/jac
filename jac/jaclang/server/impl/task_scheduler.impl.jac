@@ -280,20 +280,28 @@ impl Scheduler._may_fire(task: ScheduledTask, due: datetime.datetime) -> bool {
     try {
         won = bool(claim_fn(key, tick_of(due)));
     } except Exception as e {
-        if key not in self._failing_claims {
-            self._failing_claims.add(key);
-            logger.warning(
-                f"could not claim the {due.isoformat()} tick of '{task.name}': {e}; "
-                "skipping its ticks until a claim succeeds"
-            );
-        }
+        self._mark_failing(
+            key,
+            True,
+            f"could not claim the {due.isoformat()} tick of '{task.name}': {e}; "
+            "skipping its ticks until a claim succeeds"
+        );
         return False;
     }
-    if key in self._failing_claims {
-        self._failing_claims.discard(key);
-        logger.info(f"tick claims for '{task.name}' are succeeding again");
-    }
+    self._mark_failing(
+        key, False, f"tick claims for '{task.name}' are succeeding again"
+    );
     return won;
+}
+
+impl Scheduler._mark_failing(key: str, failing: bool, message: str) -> None {
+    if failing and key not in self._failing_claims {
+        self._failing_claims.add(key);
+        logger.warning(message);
+    } elif not failing and key in self._failing_claims {
+        self._failing_claims.discard(key);
+        logger.info(message);
+    }
 }
 
 impl Scheduler._run_key(task: ScheduledTask) -> str {
@@ -320,19 +328,15 @@ impl Scheduler._hold_run(task: ScheduledTask) -> bool {
     try {
         held = self._take_hold(task);
     } except Exception as e {
-        if key not in self._failing_claims {
-            self._failing_claims.add(key);
-            logger.warning(
-                f"could not take the run hold of '{task.name}': {e}; "
-                "skipping its ticks until a hold succeeds"
-            );
-        }
+        self._mark_failing(
+            key,
+            True,
+            f"could not take the run hold of '{task.name}': {e}; "
+            "skipping its ticks until a hold succeeds"
+        );
         return False;
     }
-    if key in self._failing_claims {
-        self._failing_claims.discard(key);
-        logger.info(f"run holds for '{task.name}' are succeeding again");
-    }
+    self._mark_failing(key, False, f"run holds for '{task.name}' are succeeding again");
     return held;
 }
 
@@ -707,6 +711,9 @@ impl Scheduler._report(outcome: RunOutcome) -> None {
             );
         }
     }
+    if outcome.status != "skipped" {
+        self._remember(outcome);
+    }
     for (name, listener) in list(self._listeners.items()) {
         try {
             listener(outcome);
@@ -714,4 +721,87 @@ impl Scheduler._report(outcome: RunOutcome) -> None {
             logger.warning(f"run listener '{name}' failed on {outcome.task}: {e}");
         }
     }
+}
+
+impl Scheduler._last_key(name: str) -> str {
+    return f"sched-last:{self.namespace}:{name}";
+}
+
+impl Scheduler._remember(outcome: RunOutcome) -> None {
+    last: dict[str, any] = {
+        "tick": outcome.tick.isoformat(),
+        "worker": outcome.worker,
+        "status": outcome.status,
+        "duration_ms": round(outcome.duration * 1000, 1),
+        "error": outcome.error,
+        "finished_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
+    };
+    self._last[outcome.task] = last;
+    if self.record is None {
+        return;
+    }
+    record_fn: any = self.record;
+    key = self._last_key(outcome.task);
+    try {
+        record_fn(key, json.dumps(last));
+    } except Exception as e {
+        self._mark_failing(
+            key,
+            True,
+            f"could not record the last run of '{outcome.task}': {e}; "
+            "other workers list an older run until a record succeeds"
+        );
+        return;
+    }
+    self._mark_failing(
+        key, False, f"last-run records for '{outcome.task}' are succeeding again"
+    );
+}
+
+impl Scheduler.last_run_of(name: str) -> (dict[str, any] | None) {
+    local = self._last.get(name);
+    if self.recall is None {
+        return local;
+    }
+    recall_fn: any = self.recall;
+    key = self._last_key(name);
+    read_key = f"{key}#read";
+    try {
+        raw = recall_fn(key);
+        shared = json.loads(raw) if raw else None;
+    } except Exception as e {
+        self._mark_failing(
+            read_key,
+            True,
+            f"could not read the last run of '{name}': {e}; "
+            "showing this worker's own last run until a read succeeds"
+        );
+        return local;
+    }
+    self._mark_failing(
+        read_key, False, f"last-run reads for '{name}' are succeeding again"
+    );
+    if shared is None {
+        return local;
+    }
+    if local is not None and (shared.get("tick") or "") < local["tick"] {
+        return local;
+    }
+    return shared;
+}
+
+impl Scheduler.schedules -> list[dict[str, any]] {
+    return [
+        {
+            "name": task.name,
+            "kind": "walker" if task.is_walker else "function",
+            "interval": task.spec.interval,
+            "cron": task.spec.cron,
+            "date": task.spec.date,
+            "next_run": task.next_run.isoformat()
+                if task.next_run is not None
+                else None,
+            "last_run": self.last_run_of(task.name)
+        } for task in self._tasks
+    ];
 }

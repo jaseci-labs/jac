@@ -32,7 +32,6 @@ impl NativeUnitRegistry.note_slow_step(verb: str, path: str, started: float) {
 
 impl NativeUnitRegistry.clear {
     self.entries.clear();
-    self.not_native.clear();
     self.compiled_paths.clear();
     self.failures.clear();
 }
@@ -49,7 +48,6 @@ impl NativeUnitRegistry.release_products {
 impl NativeUnitRegistry.forget(path: str) {
     real = os.path.realpath(path);
     self.entries.pop(real, None);
-    self.not_native.pop(real, None);
     self.failures.pop(real, None);
 }
 
@@ -113,39 +111,6 @@ impl NativeUnitRegistry._event(name: str) {
     stat_note(name);
 }
 
-impl NativeUnitRegistry._add_time(name: str, seconds: float) {
-    times = self.prog.analysis.phase_time;
-    times[name] = times.get(name, 0.0) + seconds;
-}
-
-impl NativeUnitRegistry._timed(name: str, started: float) {
-    self._add_time(name, time.perf_counter() - started);
-}
-
-impl NativeUnitRegistry.phase_summary -> str {
-    times = self.prog.analysis.phase_time;
-    events = self.prog.analysis.cache_events;
-    frontend = ", ".join(
-        f"{phase.lower()} {times.get('NATIVE_FRONTEND_' + phase, 0.0):.1f}"
-        for phase in ("PARSE", "IR", "PLACEMENT", "ANALYSIS", "BOUNDARIES")
-    );
-    return (
-        f"  Native phases: analysis {times.get('NATIVE_ANALYSIS', 0.0):.1f}s "
-        f"({frontend}), lowering {times.get('NATIVE_LOWER', 0.0):.1f}s, "
-        f"optimize {times.get('NATIVE_OPTIMIZE', 0.0):.1f}s, "
-        f"emit {times.get('NATIVE_EMIT', 0.0):.1f}s, "
-        f"gc settle {times.get('NATIVE_GC_SETTLE', 0.0):.1f}s; "
-        f"units analysed/lowered/optimized/emitted "
-        f"{events.get('native_unit_analysis', 0)}/"
-        f"{events.get('native_unit_lower', 0)}/"
-        f"{events.get('native_unit_codegen', 0)}/"
-        f"{events.get('native_object_emit', 0)}; "
-        f"interface hits {events.get('native_iface_hit', 0)}, "
-        f"dependency misses {events.get('native_dep_miss', 0)}, "
-        f"lowered inside a consumer {events.get('native_nested_lower', 0)}"
-    );
-}
-
 impl NativeUnitRegistry.note_codegen(path: str, object_emitted: bool = True) {
     self.compiled_paths.append(os.path.realpath(path));
     self._event("native_unit_codegen");
@@ -168,15 +133,11 @@ impl NativeUnitRegistry.stamp_for(
 ) -> NativeStamp {
     opts = options if options is not None else self._options();
     return current_native_stamp(
-        opts.unit_codegen_identity(path),
-        opts.effective_triple(),
-        running_compiler_digest()
+        opts.unit_codegen_identity(path), opts.effective_triple()
     );
 }
 
-impl NativeUnitRegistry._module_jir(
-    resolved: str, stamp: (NativeStamp | None) = None
-) -> (tuple[bytes, str] | None) {
+impl NativeUnitRegistry._module_jir(resolved: str) -> (tuple[bytes, str] | None) {
     try {
         cache_path = get_module_cache_path(resolved);
         why = module_cache_invalid_reason(resolved, cache_path);
@@ -199,14 +160,13 @@ impl NativeUnitRegistry._entry_fresh(ent: NativeUnitEntry) -> bool {
 }
 
 impl NativeUnitRegistry._register(
-    resolved: str, iface: NativeIface, stamp: NativeStamp, source: str, digest: str = ""
+    resolved: str, iface: NativeIface, stamp: NativeStamp, digest: str = ""
 ) -> NativeUnitEntry {
     ent = NativeUnitEntry(
         path=resolved,
         digest=digest or iface.digest(),
         iface=iface,
         stamp=stamp,
-        source=source,
         source_key=NativeUnitRegistry._source_key(resolved)
     );
     self.entries[resolved] = ent;
@@ -221,14 +181,9 @@ impl NativeUnitRegistry.record(
     compile_deps: bytes = b""
 ) -> NativeUnitEntry {
     resolved = os.path.realpath(path);
-    ent = self._register(resolved, iface, self.stamp_for(options, resolved), "compile");
+    ent = self._register(resolved, iface, self.stamp_for(options, resolved));
     ent.compile_deps = compile_deps;
     ent.dep_digests = dict(dep_digests or {});
-    gen = self._live_gen(resolved);
-    if gen is not None {
-        ent.object_bytes = gen.native_object;
-        ent.bitcode = gen.native_bitcode;
-    }
     return ent;
 }
 
@@ -298,11 +253,11 @@ impl NativeUnitRegistry.recorded_native_deps(
     if live is not None and live.stamp.matches(stamp) {
         return sorted(live.dep_digests.items());
     }
-    found = self._module_jir(resolved, stamp);
+    found = self._module_jir(resolved);
     if found is None {
         return [];
     }
-    return read_native_dep_hashes(found[0], stamp, found[1], resolved);
+    return read_native_dep_hashes(found[0], stamp, resolved);
 }
 
 impl NativeUnitRegistry._deps_match(
@@ -339,7 +294,7 @@ impl NativeUnitRegistry._read_from_disk(
     check_deps: bool,
     options: (CompileOptions | None) = None
 ) -> (NativeUnitEntry | None) {
-    found = self._module_jir(resolved, stamp);
+    found = self._module_jir(resolved);
     if found is None {
         return None;
     }
@@ -366,13 +321,13 @@ impl NativeUnitRegistry._read_from_disk(
         return None;
     }
     iface.resolve_deps(resolved);
-    dep_digests = read_native_dep_hashes(data, stamp, base_dir, resolved);
+    dep_digests = read_native_dep_hashes(data, stamp, resolved);
     if check_deps and not self._deps_match(dep_digests, options) {
         self._dep_miss(resolved);
         return None;
     }
     ent = self._register(
-        resolved, iface, stamp, "disk", digest=NativeIface.read_digest(payload) or ""
+        resolved, iface, stamp, digest=NativeIface.read_digest(payload) or ""
     );
     ent.compile_deps = compile_deps;
     ent.compile_deps_base = base_dir;
@@ -418,7 +373,7 @@ impl NativeUnitRegistry.ensure(
         return None;
     }
     (rebuild, _) = cache_mode();
-    if not stale_deps and not rebuild and not options.no_ir_cache and not self.cold {
+    if not stale_deps and not rebuild and not options.no_ir_cache {
         found = self._read_from_disk(
             resolved, stamp, check_deps=check_deps, options=options
         );
@@ -428,9 +383,6 @@ impl NativeUnitRegistry.ensure(
         }
     }
     if not compile_on_miss or not os.path.isfile(resolved) {
-        return None;
-    }
-    if self.not_native.get(resolved) == NativeUnitRegistry._source_key(resolved) {
         return None;
     }
     return self.compile_unit(resolved, options, products=products);
@@ -455,10 +407,7 @@ impl NativeUnitRegistry.dep_iface(
         if ent is not None {
             return ent.iface;
         }
-        if resolved not in self.building
-            and os.path.isfile(resolved)
-            and self.not_native.get(resolved)
-                != NativeUnitRegistry._source_key(resolved) {
+        if resolved not in self.building and os.path.isfile(resolved) {
             session.defer(resolved);
         }
         return None;
@@ -490,7 +439,7 @@ impl NativeUnitRegistry.known_native_deps(
     if ent is not None and ent.stamp.matches(stamp) {
         return sorted(os.path.realpath(d) for d in ent.iface.deps);
     }
-    found = self._module_jir(resolved, stamp);
+    found = self._module_jir(resolved);
     if found is None {
         return [];
     }
@@ -503,7 +452,6 @@ impl NativeUnitRegistry.known_native_deps(
             return sorted(os.path.realpath(d) for d in iface.deps);
         }
     }
-    import from jaclang.compiler.driver.jir { read_dep_rows }
     import from jaclang.compiler.placement.placement_facts { native_unit }
     out: list[str] = [];
     for row in read_dep_rows(data, base_dir) {
@@ -522,11 +470,6 @@ impl NativeUnitRegistry.product_sections(path: str) -> dict[int, bytes] {
     ent = self.entries.get(resolved);
     if ent is None {
         return {};
-    }
-    import from jaclang.compiler.driver.jir {
-        SEC_NDEPS,
-        native_deps_section,
-        absolutize_ct_deps_section
     }
     stamp = ent.stamp;
     sections: dict[int, bytes] = {
@@ -609,11 +552,10 @@ impl NativeUnitRegistry.known_digest(path: str) -> str {
         return ent.digest;
     }
     stamp = self.stamp_for(None, resolved);
-    found = self._module_jir(resolved, stamp);
+    found = self._module_jir(resolved);
     import from jaclang.compiler.driver.compile_options { env_na_debug }
     if found is None {
         if env_na_debug() {
-            import sys;
             sys.stderr.write(
                 f"NA_DEBUG known_digest {resolved}: no valid module cache entry\n"
             );
@@ -623,7 +565,6 @@ impl NativeUnitRegistry.known_digest(path: str) -> str {
     raw = read_section_bytes(found[0], SEC_NIFACE);
     payload = native_section_payload(raw, stamp);
     if payload is None and env_na_debug() {
-        import sys;
         sys.stderr.write(
             f"NA_DEBUG known_digest {resolved}: no native interface for {stamp.key()}\n"
         );
@@ -638,7 +579,7 @@ impl NativeUnitRegistry._with_products(
     if ent is None or ent.bitcode is not None or ent.object_bytes is not None {
         return ent;
     }
-    found = self._module_jir(ent.path, ent.stamp);
+    found = self._module_jir(ent.path);
     if found is not None {
         data = found[0];
         cached = native_section_payload(
@@ -675,11 +616,9 @@ impl NativeUnitRegistry.emit_objects(
         return;
     }
     import from jaclang.compiler.backends.native.na_compile_pass { emit_unit_objects }
-    import from jaclang.compiler.driver.jir { write_module_cache }
     opts = options if options is not None else self._options();
     started = self.note_step("emit", detail=f"{len(pending)} objects in parallel");
     objects = emit_unit_objects(bitcodes, opts);
-    self._timed("NATIVE_EMIT", started);
     self.note_slow_step("emitting", "", started);
     for (ent, object_bytes) in zip(pending, objects) {
         ent.object_bytes = object_bytes;
@@ -694,22 +633,18 @@ impl NativeUnitRegistry.object_for(
     path: str, options: (CompileOptions | None) = None
 ) -> (bytes | None) {
     ent = self._with_products(path, options);
-    if ent is not None and ent.object_bytes is None {
-        if ent is not None and ent.bitcode is not None {
-            import from jaclang.compiler.backends.native.na_compile_pass {
-                emit_unit_object
-            }
-            import from jaclang.compiler.driver.jir { write_module_cache }
-            opts = options if options is not None else self._options();
-            started = self.note_step("emit", ent.path);
-            ent.object_bytes = emit_unit_object(ent.bitcode, opts);
-            self._timed("NATIVE_EMIT", started);
-            self.note_slow_step("emitting", ent.path, started);
-            self._event("native_object_emit");
-            write_module_cache(
-                ent.path, None, extra_sections=self.product_sections(ent.path)
-            );
+    if ent is not None and ent.object_bytes is None and ent.bitcode is not None {
+        import from jaclang.compiler.backends.native.na_compile_pass {
+            emit_unit_object
         }
+        opts = options if options is not None else self._options();
+        started = self.note_step("emit", ent.path);
+        ent.object_bytes = emit_unit_object(ent.bitcode, opts);
+        self.note_slow_step("emitting", ent.path, started);
+        self._event("native_object_emit");
+        write_module_cache(
+            ent.path, None, extra_sections=self.product_sections(ent.path)
+        );
     }
     return ent.object_bytes if ent is not None else None;
 }
@@ -722,14 +657,6 @@ impl NativeUnitRegistry.bitcode_for(
         ent = self.compile_unit(path, options);
     }
     return ent.bitcode if ent is not None else None;
-}
-
-impl NativeUnitRegistry._live_gen(resolved: str) -> (CodeGenTarget | None) {
-    mod = self.prog.find_module(resolved);
-    if mod is not None and mod.gen is not None and mod.gen.native_iface is not None {
-        return mod.gen;
-    }
-    return self.prog.hub.artifacts.get(resolved);
 }
 
 impl SessionHeap.take -> bool {
@@ -756,14 +683,11 @@ impl SessionHeap.take -> bool {
     return True;
 }
 
-impl SessionHeap.settle -> float {
-    if not self.held {
-        return 0.0;
+impl SessionHeap.settle {
+    if self.held {
+        gc.collect();
+        gc.freeze();
     }
-    started = time.perf_counter();
-    gc.collect();
-    gc.freeze();
-    return time.perf_counter() - started;
 }
 
 impl SessionHeap.release {
@@ -796,14 +720,11 @@ impl NativeBuildSession.postinit {
     self.prog = JacProgram();
     self.prog.options = self.options.clone_for_native_import();
     self.prog._natives = self.registry;
-    if self.registry.cold {
-        self.prog.iface_registry().cold = True;
-    }
 }
 
 impl NativeBuildSession.settle_heap {
     if self.heap.held and not self.discovery_open {
-        self.registry._add_time("NATIVE_GC_SETTLE", self.heap.settle());
+        self.heap.settle();
     }
 }
 
@@ -840,7 +761,6 @@ impl NativeBuildSession.lower(
             opts.no_cgen = True;
             started = self.registry.note_step("analyze", resolved);
             mod = self.prog.compile(resolved, use_str=use_str, options=opts);
-            self.registry._timed("NATIVE_ANALYSIS", started);
             self.registry._event("native_unit_analysis");
             self.registry.note_slow_step("analyzing", resolved, started);
             self.settle_heap();
@@ -871,7 +791,6 @@ impl NativeBuildSession.lower(
                 pending = self.deferred.pop();
                 self.discovery_open.pop();
             }
-            self.registry._timed("NATIVE_LOWER", started);
             if not pending {
                 break;
             }
@@ -923,7 +842,6 @@ impl NativeBuildSession.lower(
         self.registry.failures[resolved] = traceback.format_exc();
         import from jaclang.compiler.driver.compile_options { env_na_debug }
         if env_na_debug() {
-            import sys;
             sys.stderr.write(self.registry.failures[resolved]);
         }
         return None;
@@ -946,9 +864,7 @@ impl NativeBuildSession.lower(
 }
 
 impl NativeBuildSession.compact_ir(paths: list[str]) {
-    if self.options.native_debug
-        or self.options.dump_ir_path
-        or not (self.options.aot_mode or self.options.skip_native_engine) {
+    if _keeps_unit_ir(self.options) {
         return;
     }
     import from jaclang.compiler.backends.native.na_compile_pass {
@@ -1014,7 +930,7 @@ impl NativeBuildSession.unbound_symbols(
             if symbol not in defined
                 and (
                     (prefix and symbol.startswith(prefix))
-                    or (symbol + DEMOTED_SYMBOL_SUFFIX) in defined
+                    or (symbol + DEMOTED_SUFFIX) in defined
                 ) {
                 unbound.add(symbol);
             }
@@ -1054,9 +970,7 @@ impl NativeBuildSession.finish(paths: list[str]) {
 
 impl NativeBuildSession._optimize_in_parallel(paths: list[str]) -> set[str] {
     opts = self.prog.options;
-    if opts.native_debug
-        or opts.dump_ir_path
-        or not (opts.aot_mode or opts.skip_native_engine) {
+    if _keeps_unit_ir(opts) {
         return set();
     }
     todo: list[tuple[str, Module]] = [];
@@ -1097,7 +1011,6 @@ impl NativeBuildSession._optimize_in_parallel(paths: list[str]) -> set[str] {
         );
     }
     bitcodes = optimize_unit_bitcodes(bitcodes, opts, int(opts.opt_level or 0));
-    self.registry._timed("NATIVE_OPTIMIZE", started);
     self.registry.note_slow_step("optimizing", "", started);
     for ((path, mod), bitcode) in zip(todo, bitcodes) {
         mod.gen.native_bitcode = bitcode;
@@ -1138,7 +1051,6 @@ impl NativeBuildSession._finish(paths: list[str]) {
         if path not in optimized {
             started = self.registry.note_step("optimize", path);
             require(self.prog, mod, CompilationProduct.NATIVE_OBJECT);
-            self.registry._timed("NATIVE_OPTIMIZE", started);
             self.registry.note_slow_step("optimizing", path, started);
         }
         if len(self.prog.errors_had) > errors_before
@@ -1159,9 +1071,6 @@ impl NativeBuildSession._finish(paths: list[str]) {
 
 impl NativeBuildSession.close {
     try {
-        for (phase, seconds) in self.prog.analysis.phase_time.items() {
-            self.registry._add_time("NATIVE_FRONTEND_" + phase, seconds);
-        }
         self.lowered.clear();
         self.ir_snapshots.clear();
         self.source_keys.clear();
@@ -1170,6 +1079,13 @@ impl NativeBuildSession.close {
     } finally {
         self.heap.release();
     }
+}
+
+impl _keeps_unit_ir(opts: CompileOptions) -> bool {
+    if opts.native_debug or opts.dump_ir_path {
+        return True;
+    }
+    return not (opts.aot_mode or opts.skip_native_engine);
 }
 
 impl _ir_symbols(unit_ir: any) -> (tuple[set[str], set[str]] | None) {

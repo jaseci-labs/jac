@@ -3,8 +3,6 @@ import from pathlib { Path }
 
 import from typing { cast }
 
-import from typing { cast }
-
 obj PrefetchedTypes {
     has none_type_class: ClassType | None = None,
         object_class: ClassType | None = None,
@@ -46,7 +44,6 @@ obj PrefetchedTypes {
 
 obj MatchArgsToParamsResult {
     has arg_params: dict[(Expr | KWPair, Parameter | None)],
-        overload: FunctionType | None = None,
         argument_errors: bool = False;
 }
 
@@ -165,7 +162,7 @@ walker TypeEvaluator {
         _modules_in_compile: set[str] postinit,
         _mobui_module_cache: dict[str, bool] = {},
         _strict_site_cache: dict[int, bool] = {},
-        _sv_async_syms_cache: dict[int, set[int]] = {},
+        _sv_async_syms_cache: dict[int, set[tuple[int, str]]] = {},
         _and_narrowing_overrides: dict[int, TypeBase] = {},
         _type_guard_probes: set[int] = set(),
         _loop_written_keys_cache: dict[int, set[str]] = {},
@@ -296,12 +293,17 @@ walker TypeEvaluator {
     ) -> Symbol | None;
 
     def _metaclass_of(cls_type: ClassType) -> (ClassType | None);
+    def _metaclass_instance(cls_type: ClassType) -> (ClassType | None);
     def _declared_metaclass_member(
         cls_type: ClassType, name: str
     ) -> (ClassMember | None);
 
+    def _metaclass_call_constructs(result: TypeBase, cls_type: ClassType) -> bool;
     def _report_rejected_method_call(
-        receiver: ClassType, member: ClassMember, args: list[Expr], site: UniNode
+        receiver: ClassType,
+        member: ClassMember,
+        args: (Sequence[Expr | KWPair] | None),
+        site: UniNode
     ) -> None;
 
     def _extract_type_params(node_: Archetype) -> list[TypeVarType];
@@ -375,6 +377,16 @@ walker TypeEvaluator {
         arg_nodes: (Sequence[Expr | KWPair] | None),
         node_for_error: UniNode | None = None
     ) -> TypeBase | None;
+
+    def _typevar_magic_call(
+        tv: TypeVarType,
+        method_name: str,
+        arg_nodes: Sequence[Expr | KWPair],
+        site: UniNode,
+        diag: DiagnosticInfo,
+        via: CompileContext | None = None,
+        **diag_args: object
+    ) -> TypeBase;
 
     def slice_assignment_is_valid(target: Expr, value_node: Expr) -> bool;
     def is_sub_class(
@@ -696,6 +708,7 @@ walker TypeEvaluator {
     ) -> list[TypeBase];
 
     def class_constructor_callables(cls_type: ClassType) -> list[FunctionType];
+    def _member_signatures(member: ClassMember) -> list[FunctionType];
     def _infer_type_args_from_method(
         caller_type: ClassType, expr: FuncCall, matched_method: FunctionType | None
     ) -> list[TypeBase];
@@ -806,6 +819,8 @@ walker TypeEvaluator {
 
     def _type_matches_isinstance(t: TypeBase, target_type: TypeBase) -> bool;
     def _union_narrowed_types(types_list: list[TypeBase]) -> TypeBase;
+    def _union_of(types_list: list[TypeBase]) -> TypeBase;
+    def _join_types(types_list: list[TypeBase]) -> TypeBase | None;
     def _if_exit_type(
         target: NarrowingTarget,
         stmt: IfStmt,
@@ -814,7 +829,16 @@ walker TypeEvaluator {
     ) -> (TypeBase | None);
 
     def exclude_type_from_union(original: TypeBase, to_exclude: TypeBase) -> TypeBase;
-    def _get_type_from_match_pattern(pattern: MatchPattern) -> TypeBase | None;
+    def _pattern_alternatives(pattern: MatchPattern) -> list[MatchPattern];
+    def _get_type_from_match_pattern(
+        pattern: MatchPattern, strict: bool = False
+    ) -> TypeBase | None;
+
+    def _match_case_type(
+        subject: TypeBase, mcase: MatchCase, pattern: (MatchPattern | None)
+    ) -> TypeBase | None;
+
+    def _pattern_covers_class(alt: MatchPattern) -> bool;
     def _union_contains_none(union_type: TypeBase) -> bool;
     def _extract_isinstance_info(condition: Expr) -> tuple[str, TypeBase, bool] | None;
     def _isinstance_classinfo_is_exact(expr: Expr) -> bool;
