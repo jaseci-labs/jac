@@ -13175,8 +13175,7 @@ graph import scale {
             | tests.deploy.test_database_intent
             | tests.microservices.test_binary_injector { ApiException },
         deploy.autoscale.keda_autoscaler.KEDAAutoscaler.watch_scale_targets { watch },
-        deploy.target.kubernetes.cluster_provider
-            | deploy.target.kubernetes.database_provisioner { client },
+        deploy.target.kubernetes.database_provisioner { client },
         deploy.target.kubernetes.kubernetes_target {
             ApiException,
             ConfigException,
