@@ -637,6 +637,9 @@ impl EsastGenPass.exit_try_stmt with uni.TryStmt exit {
                     jac_node=except_node
                 );
             } elif exc_type_name {
+                if isinstance(except_node.ex_type, uni.Name) {
+                    exc_type_name = self._import_js_name(except_node.ex_type);
+                }
                 test_expr = self.sync_loc(
                     es.BinaryExpression(
                         operator='instanceof',

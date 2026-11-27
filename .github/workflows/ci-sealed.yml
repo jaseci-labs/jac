@@ -1066,7 +1066,13 @@ jobs:
           printf '\n[client.react_native]\nrelease = true\nproject_dir = ".jac/mobile-rn"\n\n[toolchains]\nsystem = false\n' >> "$RUNNER_TEMP/mobile-app/jac.toml"
           cd "$RUNNER_TEMP/mobile-app"
           jac setup --toolchain android
-          jac build --platform android mobile
+          # Gradle resolves its plugins from public repositories on every
+          # fresh SDK, and one unreachable repository fails the whole build.
+          for attempt in 1 2 3; do
+            jac build --platform android mobile && break
+            [ "$attempt" = 3 ] && exit 1
+            sleep $((attempt * 30))
+          done
           test -n "$(find .jac/mobile-rn/android/app/build/outputs/apk -name '*.apk' -print -quit)"
       - name: Upload the generated APK
         uses: actions/upload-artifact@v4

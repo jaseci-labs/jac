@@ -6,16 +6,6 @@ obj IngressDeployer {
         logger: (Logger | None) = None,
         kubectl: KubectlCluster = KubectlCluster();
 
-    def _deploy_nginx_controller(
-        app_name: str,
-        namespace: str,
-        provider: ClusterProvider,
-        apps_v1: any,
-        core_v1: any,
-        rbac_v1: any,
-        networking_v1: any
-    );
-
     def _resolve_ingress_class(app_name: str, namespace: str) -> str;
     def _ingress_path(
         path: str, svc: str, port: int, path_type: str = 'Prefix'
@@ -34,16 +24,6 @@ obj IngressDeployer {
         grafana_enabled: bool,
         networking_v1: any,
         core_v1: any
-    );
-
-    def start_controller(
-        app_name: str,
-        namespace: str,
-        provider: ClusterProvider,
-        apps_v1: any,
-        core_v1: any,
-        rbac_v1: any,
-        networking_v1: any
     );
 
     def finish_ingress(

@@ -48,7 +48,10 @@ obj ClientResponse {
         reader: any = None,
         writer: any = None,
         chunked: bool = False,
-        bodiless: bool = False;
+        bodiless: bool = False,
+        reusable: bool = False,
+        _conn: (_PooledConn | None) = None,
+        _drained: bool = False;
 
     def json -> any;
     def text -> str;
@@ -72,7 +75,11 @@ async def _open_stream(
     scheme: str, host: str, port: int, timeout: float
 ) -> tuple[any, any];
 
-async def _read_response_head(reader: any, timeout: float) -> tuple[int, str, Headers];
+async def _connect(origin: tuple[str, str, int], timeout: float) -> _PooledConn;
+
+async def _read_response_head(
+    reader: any, timeout: float
+) -> tuple[str, int, str, Headers];
 
 async def arequest(
     method: str,
@@ -82,7 +89,8 @@ async def arequest(
     data: (bytes | str | None) = None,
     timeout: float = DEFAULT_TIMEOUT,
     stream: bool = False,
-    params: (dict[str, any] | None) = None
+    params: (dict[str, any] | None) = None,
+    keep_alive: bool = False
 ) -> ClientResponse;
 
 async def aws_connect(

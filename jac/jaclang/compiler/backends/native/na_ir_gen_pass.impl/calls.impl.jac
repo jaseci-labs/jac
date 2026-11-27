@@ -4237,11 +4237,22 @@ impl NaIRGenPass._str_dict_helpers_of(value: ir.Value) -> (dict[str, any] | None
     return None;
 }
 
+impl NaIRGenPass._kw_spread_fail(
+    is_error: ir.Value, msg: str, deferred: (list[tuple[ir.Value, str]] | None)
+) -> None {
+    if deferred is None {
+        self._emit_runtime_raise(is_error, "TypeError", msg);
+    } else {
+        deferred.append((is_error, msg));
+    }
+}
+
 impl NaIRGenPass._bind_kw_spread(
     spread: ir.Value,
     helpers: dict[str, any],
     bind_records: list[dict[str, any]],
-    loc: str
+    loc: str,
+    deferred: (list[tuple[ir.Value, str]] | None) = None
 ) -> ir.Value {
     i64 = ir.IntType(64);
     matched: ir.Value = ir.Constant(i64, 0);
@@ -4255,7 +4266,7 @@ impl NaIRGenPass._bind_kw_spread(
             matched, self.builder.zext(present, i64), name="kwbind.matched"
         );
         if rec["alloca"] is None {
-            self._emit_runtime_raise(present, "TypeError", rec["dup_msg"]);
+            self._kw_spread_fail(present, rec["dup_msg"], deferred);
             continue;
         }
         _want = rec["erased_want"];
@@ -4267,20 +4278,20 @@ impl NaIRGenPass._bind_kw_spread(
             else rec["slot_type"];
         if not (_box and _want is None)
             and not self._kw_spread_value_fits(helpers["val_type"], _fit_type) {
-            self._emit_runtime_raise(
+            self._kw_spread_fail(
                 present,
-                "TypeError",
                 f"argument '{rec[
                     'name'
-                ]}' cannot take a value of the unpacked mapping's type"
+                ]}' cannot take a value of the unpacked mapping's type",
+                deferred
             );
             continue;
         }
         bound = self.builder.load(rec["flag"], name="kwbind.flag");
-        self._emit_runtime_raise(
+        self._kw_spread_fail(
             self.builder.and_(present, bound, name="kwbind.dup"),
-            "TypeError",
-            rec["dup_msg"]
+            rec["dup_msg"],
+            deferred
         );
         take = self.builder.and_(
             present, self.builder.not_(bound, name="kwbind.unset"), name="kwbind.do"

@@ -272,10 +272,12 @@ test "with storage on, each data volume is a claim the pod can write to, the rol
 }
 
 
-test "with storage off, the three pods are built as before and nothing storage set is left behind" {
+test "with storage off, the three pods are built as before: nothing storage set is left behind and no request that was not asked for" {
     off = _stored(False);
     for (component, spec, volume) in _data_pods(off) {
         template = spec["template"];
+        # Not a null either: that would clear a request another tool put on.
+        assert "resources" not in template["spec"]["containers"][0] , component;
         # Off is a patch too: what on sets is cleared, which changes nothing
         # for an app that never turned it on.
         assert volume
@@ -304,10 +306,35 @@ test "with storage off, the three pods are built as before and nothing storage s
     }
     assert _prometheus_args(off) == _prometheus_args(_stored(True))[:-2];
     assert "compactor" not in yaml.safe_load(off._loki_config());
+    # A request is sent for a key that is set and for no other. An empty
+    # string is how a profile unsets one, and an unquoted number arrives as a
+    # number.
+    asked = _stored(
+        False,
+        {
+            "prometheus_cpu_request": "100m",
+            "prometheus_memory_request": "768Mi",
+            "loki_cpu_request": "",
+            "loki_memory_request": " 1Gi ",
+            "tempo_cpu_request": 0.5
+        }
+    );
+    assert {
+        component: spec["template"]["spec"]["containers"][0].get("resources")
+        for (component, spec, _) in _data_pods(asked)
+    }
+        == {
+            "prometheus": {"requests": {"cpu": "100m", "memory": "768Mi"}},
+            "loki": {"requests": {"memory": "1Gi"}},
+            "tempo": {"requests": {"cpu": "0.5"}}
+        };
+    assert asked._request_problems() == [];
 }
 
 
-def _storage_target(retention: str, observability: bool = True) -> KubernetesTarget {
+def _storage_target(
+    retention: str, observability: bool = True, extra: (dict[str, any] | None) = None
+) -> KubernetesTarget {
     # The kubeconfig does not exist, so a deploy that got past the storage
     # check would fail on its first cluster call instead of reaching one.
     return KubernetesTarget(
@@ -321,6 +348,7 @@ def _storage_target(retention: str, observability: bool = True) -> KubernetesTar
                 "loki_retention": retention,
                 "kubeconfig": "/nonexistent/jac-10940-kubeconfig"
             }
+                | (extra or {})
         ),
         gateway_config={"logs": {"enabled": observability}},
         dry_run=True
@@ -328,11 +356,13 @@ def _storage_target(retention: str, observability: bool = True) -> KubernetesTar
 }
 
 
-test "storage settings that cannot be applied refuse the deploy before anything is applied" {
+test "monitoring settings that cannot be applied refuse the deploy before anything is applied" {
     assert _stored(True)._storage_problems() == [];
     # The size parser forgives "10 Gi" and "1_0Gi" and Kubernetes does not.
     # Loki crash-loops on a period it cannot parse. jac.toml is not
-    # type-checked, so an unquoted number arrives as a number.
+    # type-checked, so an unquoted number arrives as a number. Kubernetes
+    # takes "768m" as memory (under one byte) and "1Gi" as CPU, and that pod
+    # never schedules.
     for (key, bad) in [
         ("loki_storage", "1.5Gi"),
         ("tempo_storage", "500Mi"),
@@ -342,9 +372,16 @@ test "storage settings that cannot be applied refuse the deploy before anything 
         ("loki_retention", "2h"),
         ("loki_retention", "١٦٨h"),
         ("loki_retention", "9999999h"),
-        ("loki_retention", 168)
+        ("loki_retention", 168),
+        ("loki_memory_request", "768m"),
+        ("prometheus_cpu_request", "1Gi"),
+        ("tempo_memory_request", "512"),
+        ("tempo_memory_request", 512),
+        ("loki_cpu_request", "١٠٠m"),
+        ("prometheus_cpu_request", True)
     ] {
-        problems = _stored(True, {key: bad})._storage_problems();
+        checked = _stored(True, {key: bad});
+        problems = checked._storage_problems() + checked._request_problems();
         assert len(problems) == 1 and key in problems[0] , (key, bad, problems);
     }
     # A part this deploy does not run is not this deploy's to refuse.
@@ -352,9 +389,11 @@ test "storage settings that cannot be applied refuse the deploy before anything 
         ("tracing_enabled", "tempo_storage", "500Mi"),
         ("loki_enabled", "loki_storage", "ten"),
         ("loki_enabled", "loki_retention", "2h"),
-        ("monitoring_enabled", "prometheus_storage", "10 Gi")
+        ("monitoring_enabled", "prometheus_storage", "10 Gi"),
+        ("tracing_enabled", "tempo_memory_request", "768m")
     ] {
-        assert _stored(True, {off: False, key: bad})._storage_problems() == [] , (
+        skipped = _stored(True, {off: False, key: bad});
+        assert skipped._storage_problems() + skipped._request_problems() == [] , (
             off,
             key
         );
@@ -392,18 +431,32 @@ test "storage settings that cannot be applied refuse the deploy before anything 
     assert deployer._cluster_storage_problem("t", "t-ns", core_v1, storage_v1) == "";
     # The observability step runs after the app is applied, inside a try that
     # turns any error into a warning, so the deploy asks first and stops. An
-    # app that asked for no stack has nothing to refuse.
-    for (retention, observability, refused) in [
-        ("2h", True, True),
-        ("168h", True, False),
-        ("2h", False, False)
+    # app that asked for no stack has nothing to refuse. A request is checked
+    # with storage on or off, and a storage setting only with it on: an app
+    # that never turned storage on is not refused for one.
+    request = {"loki_memory_request": "768m"};
+    unstored = {"monitoring_storage_enabled": False};
+    for (retention, observability, extra, refused) in [
+        ("2h", True, request, ["loki_retention", "loki_memory_request"]),
+        ("168h", True, {}, []),
+        ("2h", False, request, []),
+        ("2h", True, unstored, []),
+        ("2h", True, unstored | request, ["loki_memory_request"])
     ] {
-        refusal = _storage_target(retention, observability)._monitoring_storage_refusal(
+        refusal = _storage_target(
+            retention, observability, extra
+        )._monitoring_settings_refusal(
             "t", check_cluster=False
         );
-        assert ("loki_retention" in refusal) == refused , (
+        named = [
+            key
+            for key in ["loki_retention", "loki_memory_request"]
+            if key in refusal
+        ];
+        assert named == refused and bool(refusal) == bool(refused) , (
             retention,
             observability,
+            extra,
             refusal
         );
     }

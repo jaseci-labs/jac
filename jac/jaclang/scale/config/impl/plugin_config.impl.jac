@@ -1156,6 +1156,36 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                         "type": "string",
                         "default": "168h",
                         "description": "How long Loki keeps logs when storage_enabled is set, as hours, days or weeks (e.g. 168h, 7d, 1w). At least 24h"
+                    },
+                    "prometheus_cpu_request": {
+                        "type": "string",
+                        "default": None,
+                        "description": "CPU request for the Prometheus container, e.g. '100m' or '0.5'. Unset by default: no request is sent, and one put on by another tool is left as it is. Setting or changing it replaces the pod once"
+                    },
+                    "prometheus_memory_request": {
+                        "type": "string",
+                        "default": None,
+                        "description": "Memory request for the Prometheus container, a whole number with a unit, e.g. '768Mi'. Unset by default. A pod with no memory request is among the first evicted when a node runs short of memory"
+                    },
+                    "loki_cpu_request": {
+                        "type": "string",
+                        "default": None,
+                        "description": "CPU request for the Loki container, e.g. '100m' or '0.5'. Unset by default: no request is sent, and one put on by another tool is left as it is. Setting or changing it replaces the pod once"
+                    },
+                    "loki_memory_request": {
+                        "type": "string",
+                        "default": None,
+                        "description": "Memory request for the Loki container, a whole number with a unit, e.g. '768Mi'. Unset by default. A pod with no memory request is among the first evicted when a node runs short of memory"
+                    },
+                    "tempo_cpu_request": {
+                        "type": "string",
+                        "default": None,
+                        "description": "CPU request for the Tempo container, e.g. '100m' or '0.5'. Unset by default: no request is sent, and one put on by another tool is left as it is. Setting or changing it replaces the pod once"
+                    },
+                    "tempo_memory_request": {
+                        "type": "string",
+                        "default": None,
+                        "description": "Memory request for the Tempo container, a whole number with a unit, e.g. '768Mi'. Unset by default. A pod with no memory request is among the first evicted when a node runs short of memory"
                     }
                 }
             },

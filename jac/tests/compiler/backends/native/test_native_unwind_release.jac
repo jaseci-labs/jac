@@ -79,7 +79,7 @@ test "raises through rc frames agree with the Python backend" {
 test "a raise releases the locals of every frame it crosses" {
     for memory in ["rc", "managed"] {
         (first, leaks) = debug_leaks("unwind_release_leaks.jac", memory);
-        assert first == "515100" , first;
+        assert first == "515100 20" , first;
         assert not leaks , f"{memory}: {len(leaks)} leaked, e.g. {leaks[:3]}";
     }
 }

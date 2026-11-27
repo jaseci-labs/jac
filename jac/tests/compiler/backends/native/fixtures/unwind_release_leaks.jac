@@ -54,6 +54,19 @@ def level1(n: int) -> int {
     return level2(n) + len(zs) + total;
 }
 
+def spread_fails(kind: type[Holder]) -> int {
+    caught = 0;
+    for n in range(20) {
+        key = "bogus" if n % 2 else "name";
+        try {
+            kind(name=f"h{n}", **{key: n});
+        } except TypeError {
+            caught += 1;
+        }
+    }
+    return caught;
+}
+
 def run -> int {
     caught = 0;
     for i in range(300) {
@@ -71,7 +84,7 @@ def run -> int {
 }
 
 with entry {
-    print(run());
+    print(run(), spread_fails(Holder));
     __rc_collect_cycles();
     __rc_debug_enable();
 }
