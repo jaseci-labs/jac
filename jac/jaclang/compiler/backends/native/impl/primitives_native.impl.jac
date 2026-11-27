@@ -6046,6 +6046,13 @@ impl NativeBuiltinEmitter.emit_int(
     if p._is_jacval_ty(arg_val.type) {
         return self._int_from_boxed(ctx, arg_val);
     }
+    if p._is_bytes_type(arg_val.type) {
+        decoded = p._emit_bytes_decode(arg_val, [], {}, None);
+        if decoded is None {
+            return None;
+        }
+        arg_val = decoded;
+    }
     base: (ir.Value | None) = None;
     if len(args) >= 2 and isinstance(args[1].type, ir.IntType) {
         base = b.trunc(args[1], ir.IntType(32), name="int.base")

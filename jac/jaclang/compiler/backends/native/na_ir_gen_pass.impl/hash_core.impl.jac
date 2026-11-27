@@ -1156,10 +1156,6 @@ impl NaIRGenPass._emit_cstr_hash_fn -> ir.Function {
     return fn;
 }
 
-"""Hash of a boxed `any` value that agrees with `_emit_jacval_eq`: a str hashes
-its contents, int and bool hash their value, a float with an integral value
-hashes as that int (so 1, 1.0 and True collide like their equality), any other
-float its bits, and every other tag its payload with the tag mixed in."""
 impl NaIRGenPass._jacval_hash_fn -> ir.Function {
     name = "__jac_jacval_hash";
     try {
@@ -1171,7 +1167,9 @@ impl NaIRGenPass._jacval_hash_fn -> ir.Function {
     i8 = ir.IntType(8);
     i64 = ir.IntType(64);
     dbl = ir.DoubleType();
-    fn = ir.Function(self.llvm_module, ir.FunctionType(i64, [self.jacval_type]), name=name);
+    fn = ir.Function(
+        self.llvm_module, ir.FunctionType(i64, [self.jacval_type]), name=name
+    );
     fn.linkage = "private";
     entry_bb = fn.append_basic_block("entry");
     str_bb = fn.append_basic_block("str");
@@ -1192,7 +1190,9 @@ impl NaIRGenPass._jacval_hash_fn -> ir.Function {
     sw.add_case(ir.Constant(i8, 7), bool_bb);
     bs = ir.IRBuilder(str_bb);
     sh = bs.call(
-        self._emit_cstr_hash_fn(), [bs.inttoptr(pay, i8.as_pointer(), name="s")], name="sh"
+        self._emit_cstr_hash_fn(),
+        [bs.inttoptr(pay, i8.as_pointer(), name="s")],
+        name="sh"
     );
     bs.ret(sh);
     bf = ir.IRBuilder(flt_bb);
@@ -1218,7 +1218,9 @@ impl NaIRGenPass._jacval_hash_fn -> ir.Function {
     nh = bn.mul(num, ir.Constant(i64, HASH_MUL_K), name="nh");
     bn.ret(bn.xor(nh, bn.lshr(nh, ir.Constant(i64, 32), name="nh.hi"), name="nhv"));
     bo = ir.IRBuilder(other_bb);
-    tagged = bo.xor(pay, bo.shl(bo.zext(tag, i64), ir.Constant(i64, 56)), name="tagged");
+    tagged = bo.xor(
+        pay, bo.shl(bo.zext(tag, i64), ir.Constant(i64, 56)), name="tagged"
+    );
     bo.branch(mix_bb);
     bm = ir.IRBuilder(mix_bb);
     mv = bm.phi(i64, name="mix.v");
