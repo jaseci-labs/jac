@@ -106,6 +106,8 @@ walker:pub get_user_orders {
 
 Parameters are classified: **path** (name matches `{...}` in path) → **file** (`UploadFile` type) → **query** (GET) → **body** (other methods). `@restspec` works on `def :pub` functions too. `protocol=APIProtocol.WEBHOOK` / `WEBSOCKET` variants: see `jac-sv-deploy`.
 
+A request key that can't be a Jac name (`from`, `class`, `async`, `hub.mode`) maps onto a renamed field with `params={"field_name": "request_key"}`: `@restspec(method=HTTPMethod.GET, params={"from_date": "from"})` binds `?from=...` to `has from_date`. OpenAPI and validation errors show `from`; a request sending `from_date` still binds.
+
 ## Choosing the status and reading the request
 
 A walker or function can read the request it is serving and choose its HTTP status. Both come from one import:

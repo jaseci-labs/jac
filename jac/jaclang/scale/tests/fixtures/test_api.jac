@@ -269,7 +269,7 @@ walker:protect UploadDocsOrText {
 # ============================================================================
 """Test 1: Webhook walker with multiple fields using @restspec(protocol=APIProtocol.WEBHOOK).
 This walker should be accessible ONLY via /webhook/PaymentReceived endpoint."""
-@restspec(protocol=APIProtocol.WEBHOOK)
+@restspec(protocol=APIProtocol.WEBHOOK, params={"currency": "currency.code"})
 walker:protect PaymentReceived {
     has payment_id: str,
         order_id: str,
@@ -329,7 +329,7 @@ walker:protect MinimalWebhook {
 # ============================================================================
 """Test 1: Async WebSocket walker with fields using @restspec(protocol=APIProtocol.WEBSOCKET).
 This walker should be accessible ONLY via ws://host/ws/EchoMessage endpoint."""
-@restspec(protocol=APIProtocol.WEBSOCKET)
+@restspec(protocol=APIProtocol.WEBSOCKET, params={"client_id": "client.id"})
 async walker:pub EchoMessage {
     has message: str,
         client_id: str = "anonymous";

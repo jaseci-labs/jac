@@ -49,7 +49,7 @@ def _takes_upload(param: APIParameter) -> bool;
 def _header_lookup(request: Request, name: str) -> (str | None);
 
 def _extract_raw(
-    param: APIParameter, request: Request, body_json: any
+    param: APIParameter, key: str, request: Request, body_json: any
 ) -> tuple[bool, any, ConvertMode];
 
 def _fresh_default(value: any) -> any;

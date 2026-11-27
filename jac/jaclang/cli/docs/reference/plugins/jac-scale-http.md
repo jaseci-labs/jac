@@ -252,10 +252,11 @@ The `@restspec` decorator customizes how walkers and functions are exposed as RE
 | `path` | `str` | `""` (auto-generated) | Custom URL path for the endpoint |
 | `protocol` | `APIProtocol` | `APIProtocol.HTTP` | Protocol for the endpoint (`HTTP`, `WEBHOOK`, or `WEBSOCKET`) |
 | `broadcast` | `bool` | `False` | Broadcast responses to all connected WebSocket clients (only valid with `WEBSOCKET` protocol) |
+| `params` | `dict[str, str]` | `{}` | Request key for a field or parameter, as `{"field_name": "request_key"}`. See [Request Keys](#request-keys) |
 | `produces` | `str` | `""` (`text/plain`) | `Content-Type` of the response body. Only meaningful with `envelope=False` |
 | `envelope` | `bool` | `True` | When `False`, the function's return value becomes the response body verbatim instead of being wrapped in the JSON envelope. **Functions only** |
 
-The first four options shape the **request** (how the endpoint is reached);
+The first five options shape the **request** (how the endpoint is reached);
 `produces` and `envelope` shape the **response** (what comes back).
 
 > **Note:** `APIProtocol` and `restspec` are builtins and do not require an import statement. `HTTPMethod` must be imported with `import from http { HTTPMethod }`.
@@ -314,6 +315,24 @@ walker :pub get_user_orders {
 ```
 
 Parameters are classified as: **path** (matches `{name}` in path) → **file** (`UploadFile` type) → **query** (GET) → **body** (other methods).
+
+### Request Keys
+
+A request key binds the field or parameter of the same name. For a key that
+cannot be a Jac name, such as a Python reserved word (`from`, `class`; error
+E0067) or a dotted key (`hub.mode`), rename the field and map it back:
+
+```jac
+@restspec(method=HTTPMethod.GET, path="/api/reports/{from}",
+          params={"from_date": "from", "hub_mode": "hub.mode"})
+walker :pub payments_report {
+    has from_date: str, hub_mode: str = "";
+}
+```
+
+The request key applies to path, query, form, body, upload, webhook and
+WebSocket keys, and is what OpenAPI and validation errors show. A request that
+sends the field name still binds, so Jac client code keeps working.
 
 ### Functions
 

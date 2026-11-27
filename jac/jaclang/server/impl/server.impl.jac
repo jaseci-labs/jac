@@ -2169,5 +2169,39 @@ impl restspec_fields(specs: dict[str, any]) -> dict[str, any] {
         }
         specs['scheme'] = '' if raw_s == 'jac' else raw_s;
     }
+    params = specs.get('params');
+    if params is not None
+        and (
+            not isinstance(params, dict)
+            or not all(
+                isinstance(field, str) and field and isinstance(key, str) and key
+                for (field, key) in params.items()
+            )
+            or len(set(params.values())) < len(params)
+        ) {
+        raise ValueError(
+            f"@restspec params={params!r} must map each field name to its own "
+            "request key, e.g. params={'from_date': 'from'}."
+        );
+    }
     return specs;
+}
+
+impl fields_from_request_keys(
+    request_keys: dict[str, str], data: dict[str, any]
+) -> dict[str, any] {
+    fields = {key: field for (field, key) in request_keys.items()};
+    bound = {
+        key: value
+        for (key, value) in data.items()
+        if key not in fields
+    };
+    bound.update(
+        {
+            fields[key]: value
+            for (key, value) in data.items()
+            if key in fields
+        }
+    );
+    return bound;
 }

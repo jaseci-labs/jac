@@ -230,7 +230,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E0067",
          Category.SEMANTIC,
          "'{name}' is a Python reserved word and cannot be used as a {context} name",
-         "Backtick escaping cannot help here — the generated Python for fields and parameters uses the name as a real identifier, which would be invalid. Rename the {context}."
+         "Backtick escaping cannot help here — the generated Python for fields and parameters uses the name as a real identifier, which would be invalid. Rename the {context}. A served walker or function keeps '{name}' as its request key with @restspec(params={{'<new name>': '{name}'}})."
      ),
      E0071 = _err("E0071", Category.SYNTAX, "Default 'except' clause must be last"),
      E0075 = _err("E0075", Category.SYNTAX, "Duplicate base class '{name}'"),

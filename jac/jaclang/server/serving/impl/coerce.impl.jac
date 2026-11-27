@@ -100,37 +100,37 @@ impl _header_lookup(request: Request, name: str) -> (str | None) {
 }
 
 impl _extract_raw(
-    param: APIParameter, request: Request, body_json: any
+    param: APIParameter, key: str, request: Request, body_json: any
 ) -> tuple[bool, any, ConvertMode] {
     if param.kind == ParameterType.PATH {
-        if param.name in request.path_params {
-            return (True, request.path_params[param.name], ConvertMode.TEXT);
+        if key in request.path_params {
+            return (True, request.path_params[key], ConvertMode.TEXT);
         }
         return (False, None, ConvertMode.STRICT);
     }
     if param.kind == ParameterType.QUERY {
         target = _param_target(param);
         if get_origin(target) is list {
-            values = request.query_params.getlist(param.name);
+            values = request.query_params.getlist(key);
             if values {
                 return (True, values, ConvertMode.TEXT);
             }
             return (False, None, ConvertMode.STRICT);
         }
-        if param.name in request.query_params {
-            return (True, request.query_params.get(param.name), ConvertMode.TEXT);
+        if key in request.query_params {
+            return (True, request.query_params.get(key), ConvertMode.TEXT);
         }
         return (False, None, ConvertMode.STRICT);
     }
     if param.kind == ParameterType.HEADER {
-        header_val = _header_lookup(request, param.name);
+        header_val = _header_lookup(request, key);
         if header_val is not None {
             return (True, header_val, ConvertMode.TEXT);
         }
         return (False, None, ConvertMode.STRICT);
     }
     if param.kind == ParameterType.FILE {
-        files = request.upload_files.get(param.name, []);
+        files = request.upload_files.get(key, []);
         if files {
             target = _without_none(_param_target(param));
             if get_origin(target) is list {
@@ -141,17 +141,17 @@ impl _extract_raw(
         return (False, None, ConvertMode.STRICT);
     }
     if param.kind == ParameterType.BODY {
-        if request.form_fields and param.name in request.form_fields {
-            form_values = request.form_fields[param.name];
+        if request.form_fields and key in request.form_fields {
+            form_values = request.form_fields[key];
             if len(form_values) == 1 {
                 return (True, form_values[0], ConvertMode.TEXT);
             }
             return (True, form_values, ConvertMode.TEXT);
         }
-        if isinstance(body_json, dict) and param.name in body_json {
-            return (True, body_json[param.name], ConvertMode.STRICT);
+        if isinstance(body_json, dict) and key in body_json {
+            return (True, body_json[key], ConvertMode.STRICT);
         }
-        files = request.upload_files.get(param.name, []);
+        files = request.upload_files.get(key, []);
         target = _param_target(param);
         if files and _accepts_upload(target) {
             if _accepts_upload_list(target)
@@ -188,7 +188,11 @@ impl bind_parameters(
         loc = str(param.kind.value)
             if isinstance(param.kind, ParameterType)
             else str(param.kind);
-        (found, raw, mode) = _extract_raw(param, request, body_json);
+        binds = param.field or param.name;
+        (found, raw, mode) = _extract_raw(param, param.name, request, body_json);
+        if not found and param.field {
+            (found, raw, mode) = _extract_raw(param, param.field, request, body_json);
+        }
         if not found {
             if param.required {
                 errors.append(
@@ -199,16 +203,16 @@ impl bind_parameters(
                     }
                 );
             } elif param.default_value is not None {
-                kwargs[param.name] = _fresh_default(param.default_value);
+                kwargs[binds] = _fresh_default(param.default_value);
             }
             continue;
         }
         if _takes_upload(param) {
-            kwargs[param.name] = raw;
+            kwargs[binds] = raw;
             continue;
         }
         try {
-            kwargs[param.name] = coerce_value(raw, _param_target(param), mode);
+            kwargs[binds] = coerce_value(raw, _param_target(param), mode);
         } except Exception as e {
             errors.append({'type': 'invalid', 'loc': [loc, param.name], 'msg': str(e)});
         }

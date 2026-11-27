@@ -78,6 +78,7 @@ impl WebhookExtension.webhook_parameters(
             )
         ];
     }
+    request_keys = server.introspector.route_spec(walker_name)?.params or {};
     fields = server.introspector.introspect_walker(
         server.introspector.target(walker_name)
     )['fields'];
@@ -87,7 +88,8 @@ impl WebhookExtension.webhook_parameters(
         }
         parameters.append(
             APIParameter(
-                name=field_name,
+                name=request_keys.get(field_name) or field_name,
+                field=field_name if field_name in request_keys else '',
                 data_type=fields[field_name]['type'],
                 required=fields[field_name]['required'],
                 default_value=fields[field_name]['default'],
@@ -145,6 +147,9 @@ impl WebhookExtension.run_walker(
     )['fields'];
     walker_kwargs: dict[str, any] = {};
     if isinstance(body_data, dict) {
+        body_data = fields_from_request_keys(
+            server.introspector.route_spec(walker_name)?.params or {}, body_data
+        );
         for (field_name, value) in body_data.items() {
             if field_name in fields and field_name != '_jac_spawn_node' {
                 walker_kwargs[field_name] = value;
