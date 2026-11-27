@@ -2453,7 +2453,7 @@ walker NaIRGenPass(CompilerPass) {
         mapping: ir.Value,
         params: list[NativeCtorParam],
         values: dict[int, ir.Value],
-        given: set[int],
+        explicit: set[int],
         mask: ir.Value,
         bound: str
     ) -> (ir.Value | None);

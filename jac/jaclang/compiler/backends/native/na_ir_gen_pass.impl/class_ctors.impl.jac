@@ -327,13 +327,12 @@ impl NaIRGenPass._codegen_class_value_call(
     }
     cls = self._coerce_type(cls, i8p);
     values: dict[int, ir.Value] = {};
-    given = {
+    explicit = {
         i
         for (i, _) in bound_args
         if i >= 0
     };
-    mask = 0;
-    mask_value: ir.Value = ir.Constant(i64, 0);
+    mask_value: ir.Value = ir.Constant(i64, sum(1 << i for i in explicit));
     mapping: (ir.Value | None) = None;
     for (index, expr) in bound_args {
         value = self._codegen_expr(expr);
@@ -343,7 +342,7 @@ impl NaIRGenPass._codegen_class_value_call(
         if index < 0 {
             mapping = value;
             spread_mask = self._bind_class_ctor_spread(
-                nd, mapping, params, values, given, mask_value, bound
+                nd, mapping, params, values, explicit, mask_value, bound
             );
             if spread_mask is None {
                 return None;
@@ -352,16 +351,8 @@ impl NaIRGenPass._codegen_class_value_call(
             continue;
         }
         values[index] = self._coerce_type(value, params[index].type);
-        mask |= 1 << index;
     }
     owned = list(values.values());
-    if mapping is None {
-        mask_value = ir.Constant(i64, mask);
-    } else {
-        mask_value = self.builder.or_(
-            mask_value, ir.Constant(i64, mask), name="kwargs.mask"
-        );
-    }
     ctor_entry = self.builder.call(
         self._emit_class_ctor_lookup_fn(),
         [
@@ -418,7 +409,7 @@ impl NaIRGenPass._bind_class_ctor_spread(
     mapping: ir.Value,
     params: list[NativeCtorParam],
     values: dict[int, ir.Value],
-    given: set[int],
+    explicit: set[int],
     mask: ir.Value,
     bound: str
 ) -> (ir.Value | None) {
@@ -443,7 +434,7 @@ impl NaIRGenPass._bind_class_ctor_spread(
             p.type,
             i,
             self._default_arg_fallback(p.type),
-            "kw" if i in given else None,
+            "kw" if i in explicit else None,
             None
         );
         rec["dup_msg"] = f"{self._arch_display(bound)}() {rec['dup_msg']}";
