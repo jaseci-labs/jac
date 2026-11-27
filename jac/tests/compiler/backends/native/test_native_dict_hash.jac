@@ -137,4 +137,6 @@ test "an any-keyed dict hashes and compares keys by value across kinds" {
     assert mixed_count() == 511111 , mixed_count();
     built_count = get_func(eng, "built_count", ctypes.c_int64);
     assert built_count() == 3222 , built_count();
+    computed_count = get_func(eng, "computed_count", ctypes.c_int64);
+    assert computed_count() == 171 , computed_count();
 }

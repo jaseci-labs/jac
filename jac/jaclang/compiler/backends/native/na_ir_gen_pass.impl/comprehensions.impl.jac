@@ -375,12 +375,16 @@ impl NaIRGenPass._emit_compr_element(compr: NativeComprehension) -> None {
                 if isinstance(_boxed_key.type, ir.PointerType)
                     and self._is_owned(_boxed_key) {
                     self._emit_rc_release_simple(_boxed_key, op="dcompr_key", loc="");
+                } elif _boxed_key.type == self?.jacval_type {
+                    self._release_owned_args([_boxed_key], op="dcompr_key");
                 }
                 if isinstance(_boxed_val_compr.type, ir.PointerType)
                     and self._is_owned(_boxed_val_compr) {
                     self._emit_rc_release_simple(
                         _boxed_val_compr, op="dcompr_val", loc=""
                     );
+                } elif _boxed_val_compr.type == self?.jacval_type {
+                    self._release_owned_args([_boxed_val_compr], op="dcompr_val");
                 }
             }
         }

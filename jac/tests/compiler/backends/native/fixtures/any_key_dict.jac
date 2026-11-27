@@ -34,3 +34,18 @@ def built_count -> int {
     }
     return len(seen) * 1000 + zeros[0] * 100 + owned["ab!"] * 10 + len(owned);
 }
+
+
+def make_key(n: int) -> any {
+    return f"k{n}";
+}
+
+
+def computed_count -> int {
+    total = 0;
+    for _ in range(3) {
+        d = {make_key(n): n for n in range(50)};
+        total += len(d) + d["k7"];
+    }
+    return total;
+}
