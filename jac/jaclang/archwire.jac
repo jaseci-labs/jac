@@ -14034,7 +14034,6 @@ graph import scale {
         | deploy.autoscale.keda_autoscaler
         | deploy.target.deployment_target
         | deploy.target.factory
-        | deploy.target.kubernetes.cluster_provider
         | deploy.target.kubernetes.ingress
         | deploy.target.kubernetes.kubernetes_target
         | deploy.target.kubernetes.monitoring
