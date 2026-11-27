@@ -6,12 +6,14 @@ and native lowering bound every use of the missing global to nothing: the
 `TypeDefinition("select.poll", "", poll_methods, ...)` glob initializer got a
 literal NULL, and the interpreter crashed at load.
 
-Native lowering now refuses the binding itself: a name the bound Jac
-module's symbol table does not hold is `E1145`, naming the module and the
-name, and the build stops. The checker keeps `W1101`, a warning, because its
-lazy resolution can miss a name that exists (an import cycle still under
-analysis, a sibling module shadowing a standard-library one); the native
-check reads the bound module's complete symbol table and does not.
+Native lowering refuses the binding itself: a name the bound Jac module's
+symbol table does not hold is `E1145`, naming the module and the name, and the
+build stops. The checker reports the same `E1145` once the source is a parsed
+`.jac` module whose names are closed (no module `__getattr__`, no `include` or
+`*` import, no `globals()`/`vars()`/`exec()` call, no platform variant, not part
+of the toolchain) and the import has to bind (not typed, comptime, or caught as
+`ImportError`), since the Python runtime then fails the import at load. A
+Python source, an open namespace, or a guarded import keeps `W1101` (#10740).
 """
 
 import subprocess;
@@ -23,12 +25,10 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob FIXTURES: Path = Path(__file__).resolve().parent / "fixtures";
 
-"""The diagnostic codes a check-only compile of `fixture` reports."""
-def check_codes(fixture: str) -> list[str] {
+"""The diagnostic codes a check-only compile of `path` reports."""
+def check_codes(path: Path) -> list[str] {
     prog = JacProgram();
-    prog.compile(
-        file_path=str(FIXTURES / fixture), options=CompileOptions(no_cgen=True)
-    );
+    prog.compile(file_path=str(path), options=CompileOptions(no_cgen=True));
     codes: list[str] = [];
     for alert in list(prog.errors_had) + list(prog.warnings_had) {
         if alert.code is not None {
@@ -38,10 +38,97 @@ def check_codes(fixture: str) -> list[str] {
     return codes;
 }
 
-test "the checker reports a missing imported name as a warning" {
-    codes = check_codes("missing_import_main.jac");
-    assert "W1101" in codes , codes;
-    assert "E1145" not in codes , codes;
+test "the checker makes a name a Jac module does not define E1145 and keeps W1101 where it cannot be sure" {
+    lib = "def present_fn(x: int) -> int {\n    return x + 1;\n}\n";
+    guarded = "def load {\n    try {\n        import from lib { missing_fn }\n    } except EXC { }\n}\n";
+    cases = [
+        ("package __init__.jac", "E1145", {"lib/__init__.jac": lib}),
+        ("python module", "W1101", {"lib.py": "globals()['missing_fn'] = 1\n"}),
+        (
+            "module __getattr__",
+            "W1101",
+            {"lib.jac": "def __getattr__(name: str) -> int {\n    return 42;\n}\n"}
+        ),
+        ("include", "W1101", {"base.jac": lib, "lib.jac": "include base;\n"}),
+        (
+            "import cycle",
+            "E1145",
+            {
+                "lib.jac": "import from main { main_fn, missing_fn }\n" + lib,
+                "main.jac": "import from lib { present_fn }\n\ndef main_fn -> int {\n    return 1;\n}\n"
+            }
+        ),
+        (
+            "native-intercepted name",
+            "W1101",
+            {"random.jac": lib, "main.jac": "import from random { randint }\n"}
+        ),
+        (
+            "platform variant",
+            "W1101",
+            {"lib.jac": lib, "lib.linux.jac": lib, "lib.darwin.jac": lib}
+        ),
+        (
+            "globals() write",
+            "W1101",
+            {"lib.jac": "with entry {\n    globals()['missing_fn'] = 1;\n}\n"}
+        ),
+        (
+            "try/except ImportError",
+            "W1101",
+            {"lib.jac": lib, "main.jac": guarded.replace("EXC", "ImportError")}
+        ),
+        (
+            "try/except ModuleNotFoundError",
+            "E1145",
+            {"lib.jac": lib, "main.jac": guarded.replace("EXC", "ModuleNotFoundError")}
+        ),
+        (
+            "import type",
+            "W1101",
+            {"lib.jac": lib, "main.jac": "import type from lib { MissingType }\n"}
+        ),
+        (
+            "comptime import",
+            "W1101",
+            {"lib.jac": lib, "main.jac": "comptime import from lib { missing_fn }\n"}
+        ),
+
+    ];
+    failures: list[str] = [];
+    with tempfile.TemporaryDirectory() as tmp {
+        checks = [("absolute module", "E1145", FIXTURES / "missing_import_main.jac")];
+        for (idx, (label, expected, files)) in enumerate(cases) {
+            base = Path(tmp) / str(idx);
+            for (rel, text) in (
+                {
+                    "jac.toml": "[project]\nname = \"missingname\"\n",
+                    "main.jac": "import from lib { missing_fn }\n"
+                }
+                | files
+            ).items() {
+                (base / rel).parent.mkdir(parents=True, exist_ok=True);
+                (base / rel).write_text(text);
+            }
+            checks.append((label, expected, base / "main.jac"));
+        }
+        for (run, rows) in [("cold", checks), ("warm", checks[:2])] {
+            for (label, expected, path) in rows {
+                codes = check_codes(path);
+                if [
+                    c
+                    for c in codes
+                    if c in ("E1145", "W1101")
+                ]
+                    != [expected] {
+                    failures.append(
+                        f"{label} ({run}): expected {expected}, got {codes}"
+                    );
+                }
+            }
+        }
+    }
+    assert not failures , failures;
 }
 
 test "a native build importing a missing name fails with the name and module" {

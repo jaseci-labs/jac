@@ -2108,16 +2108,8 @@ impl NaIRGenPass._check_native_import_names(
             or name == "*"
             or src is None
             or not path.endswith(".jac")
-            or stdlib_intercepted(mod_name, name) {
-            continue;
-        }
-        if any(
-            _imp.is_absorb
-                or any(
-                    isinstance(_i, uni.ModuleItem) and _i.name.value == "*"
-                    for _i in (_imp.items or [])
-                ) for _imp in src.get_all_sub_nodes(uni.Import)
-        ) {
+            or stdlib_intercepted(mod_name, name)
+            or module_absorbs_names(src) {
             continue;
         }
         if lookup_symtab(src, name, None) is None {

@@ -25,6 +25,7 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
         is_dir = from_path.is_dir() or (from_path.stem == "__init__");
         if is_dir {
             mod_dir = from_path.parent if not from_path.is_dir() else from_path;
+            searched_init: (Module | None) = None;
             for ext in (".jac", ".py", ".pyi", ".js", ".ts", ".jsx", ".tsx") {
                 candidate_paths = [
                     mod_dir / f"{item_name}{ext}",
@@ -108,6 +109,7 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
                                 node_, star_symbol
                             );
                         }
+                        searched_init = mod;
                         continue;
                     }
                     mod_type = ModuleType(
@@ -138,7 +140,7 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
                     E1134, binding, module=f"{from_mod_name}{sep}{item_name}"
                 );
             } else {
-                self.emit_diag(W1101, binding, name=item_name, module=from_mod_name);
+                self._report_missing_import_name(node_, searched_init);
             }
             return binding.type;
         } else {
@@ -208,7 +210,7 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
                 }
             }
             binding.type = UnknownType(is_diagnosed=True);
-            self.emit_diag(W1101, binding, name=item_name, module=from_mod_name);
+            self._report_missing_import_name(node_, from_mod_type.symbol_table);
             return binding.type;
         }
     }
@@ -665,10 +667,48 @@ impl TypeEvaluator._relative_import_must_resolve(node_: ModulePath) -> bool {
         return False;
     }
     imp = node_.find_parent_of_type(Import);
-    if imp is None or imp.is_typed or imp.is_comptime {
-        return False;
+    return imp is not None and self._import_must_bind(imp);
+}
+
+impl TypeEvaluator._import_must_bind(imp: Import, name_missing: bool = False) -> bool {
+    return not (
+        imp.is_typed
+        or imp.is_comptime
+        or self._import_error_is_handled(imp, name_missing)
+    );
+}
+
+impl TypeEvaluator._report_missing_import_name(
+    item: ModuleItem, source: (UniScopeNode | None)
+) -> None {
+    imp = item.parent_of_type(Import);
+    binding = item.binding_name;
+    assert binding is not None and imp.from_loc is not None;
+    if isinstance(source, Module)
+        and source.stub_only
+        and source.loc.mod_path.endswith(".jac") {
+        source = self._import_module_from_path(source.loc.mod_path, need_tree=True);
     }
-    return not self._import_error_is_handled(imp);
+    certain = isinstance(source, Module)
+        and not (source.stub_only or source.parse_failed)
+        and source.loc.mod_path.endswith(".jac")
+        and native_variant_of(source.loc.mod_path) == source.loc.mod_path
+        and not is_toolchain_unit(source.loc.mod_path)
+        and not stdlib_intercepted(imp.from_loc.dot_path_str, item.name.value)
+        and source.lookup("__getattr__", deep=False) is None
+        and not module_absorbs_names(source)
+        and not any(
+            isinstance(call.target, Name)
+                and call.target.value in ("globals", "vars", "exec")
+            for call in source.get_all_sub_nodes(FuncCall)
+        )
+        and self._import_must_bind(imp, name_missing=True);
+    self.emit_diag(
+        E1145 if certain else W1101,
+        binding,
+        name=item.name.value,
+        module=imp.from_loc.dot_path_str
+    );
 }
 
 
@@ -739,8 +779,11 @@ impl TypeEvaluator._declared_missing_dependency(node_: ModulePath) -> (str | Non
     return None;
 }
 
-impl TypeEvaluator._import_error_is_handled(imp: Import) -> bool {
-    caught = {'ImportError', 'ModuleNotFoundError', 'Exception', 'BaseException'};
+impl TypeEvaluator._import_error_is_handled(
+    imp: Import, name_missing: bool = False
+) -> bool {
+    caught = {'ImportError', 'ModuleNotFoundError', 'Exception', 'BaseException'}
+        - ({'ModuleNotFoundError'} if name_missing else set());
     prev: UniNode = imp;
     cur: (UniNode | None) = imp.parent;
     while cur is not None {

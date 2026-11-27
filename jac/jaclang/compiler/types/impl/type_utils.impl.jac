@@ -205,6 +205,19 @@ impl lookup_symtab(
     return symbol;
 }
 
+impl module_absorbs_names(mod: Module) -> bool {
+    for imp in mod.get_all_sub_nodes(Import) {
+        if imp.is_absorb
+            or any(
+                isinstance(item, ModuleItem) and item.name.value == "*"
+                for item in (imp.items or [])
+            ) {
+            return True;
+        }
+    }
+    return False;
+}
+
 impl types_equivalent(a: TypeBase, b: TypeBase, depth: int = 0) -> bool {
     if a is b {
         return True;
