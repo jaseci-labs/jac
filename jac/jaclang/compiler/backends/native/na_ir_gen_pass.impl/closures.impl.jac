@@ -126,6 +126,103 @@ impl NaIRGenPass._static_fn_closure(closure_name: str, fn: ir.Function) -> ir.Va
     );
 }
 
+impl NaIRGenPass._adapt_closure(
+    val: ir.Value, src_name: str, dst_name: str
+) -> ir.Value {
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    i8p = ir.IntType(8).as_pointer();
+    (src_st, src_fnty) = self.closure_sig_registry[src_name];
+    (dst_st, dst_fnty) = self.closure_sig_registry[dst_name];
+    src_args = list(src_fnty.args)[:-1];
+    dst_args = list(dst_fnty.args)[:-1];
+    if len(src_args) != len(dst_args) {
+        self.emit(
+            E5092,
+            kind="Callable value",
+            name=f"function of {len(src_args)} arguments as a Callable of {len(
+                dst_args
+            )}",
+            help_text="A function stored in a `Callable` is called with the arguments the `Callable` declares, and a bare `Callable` declares none. Give the `Callable` the function's parameter list, for example `Callable[[int], int]`."
+        );
+        return ir.Constant(dst_st.as_pointer(), None);
+    }
+    key = f"__jac_adapt.{src_name}.{dst_name}";
+    adapter: (ir.Function | None) = self.closure_thunks.get(key);
+    if adapter is None {
+        adapter = ir.Function(self.llvm_module, dst_fnty, name=key);
+        adapter.linkage = "private";
+        saved_builder = self._builder;
+        self._builder = ir.IRBuilder(adapter.append_basic_block("entry"));
+        inner = self.builder.bitcast(
+            adapter.args[-1], src_st.as_pointer(), name="adapt.src"
+        );
+        fn_i64 = self.builder.load(
+            self.builder.gep(inner, [ir.Constant(i32, 0), ir.Constant(i32, 0)]),
+            name="adapt.fn.i64"
+        );
+        env = self.builder.load(
+            self.builder.gep(inner, [ir.Constant(i32, 0), ir.Constant(i32, 1)]),
+            name="adapt.env"
+        );
+        given = list(adapter.args)[:-1];
+        call_args = [
+            self._coerce_type(arg, src_args[i]) for (i, arg) in enumerate(given)
+        ];
+        temps = [
+            conv
+            for (conv, arg) in zip(call_args, given)
+            if conv is not arg
+        ];
+        call_args.append(env);
+        fn_ptr = self.builder.inttoptr(fn_i64, src_fnty.as_pointer(), name="adapt.fn");
+        ret_ty = dst_fnty.return_type;
+        res: (ir.Value | None) = None;
+        if isinstance(src_fnty.return_type, ir.VoidType) {
+            self.builder.call(fn_ptr, call_args);
+        } else {
+            res = self._mark_reference_owned(
+                self.builder.call(fn_ptr, call_args, name="adapt.call")
+            );
+        }
+        self._release_owned_args(temps, op="adapt_arg");
+        if isinstance(ret_ty, ir.VoidType) {
+            if res is not None {
+                self._release_owned_args([res], op="adapt_result");
+            }
+            self.builder.ret_void();
+        } elif res is None {
+            none_val: ir.Value = ir.Constant(ret_ty, None);
+            if self.jacval_type is not None and ret_ty == self.jacval_type {
+                none_val = self.builder.insert_value(
+                    none_val, ir.Constant(ir.IntType(8), 8), 0, name="adapt.none"
+                );
+            }
+            self.builder.ret(none_val);
+        } else {
+            self.builder.ret(self._coerce_type(res, ret_ty));
+        }
+        self._builder = saved_builder;
+        self.closure_thunks[key] = adapter;
+    }
+    if self.rc_alloc_fn is None {
+        self._emit_rc_helpers();
+    }
+    clos = self._alloc_iter_struct(dst_name);
+    self.builder.store(
+        self.builder.ptrtoint(adapter, i64, name="adapt.fn.i64"),
+        self.builder.gep(clos, [ir.Constant(i32, 0), ir.Constant(i32, 0)])
+    );
+    if not self._is_owned(val) {
+        self._emit_take_ref(val, op="adapt_closure");
+    }
+    self.builder.store(
+        self.builder.bitcast(val, i8p, name="adapt.env"),
+        self.builder.gep(clos, [ir.Constant(i32, 0), ir.Constant(i32, 1)])
+    );
+    return self._mark_owned(clos);
+}
+
 impl NaIRGenPass._fn_identity_struct -> str {
     name = "JacFnIdentity";
     if name not in self.struct_types {
@@ -524,7 +621,13 @@ impl NaIRGenPass._codegen_closure_call(
     coerced: list[ir.Value] = [];
     for (i, a) in enumerate(raw_args) {
         if i < len(declared) {
-            coerced.append(self._coerce_type(a, declared[i]));
+            conv = self._coerce_type(a, declared[i]);
+            coerced.append(conv);
+            if conv is not a
+                and self._is_owned(conv)
+                and self._closure_struct_of(conv.type) is not None {
+                raw_args[i] = conv;
+            }
         } else {
             coerced.append(a);
         }

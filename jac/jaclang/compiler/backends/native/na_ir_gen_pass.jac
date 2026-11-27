@@ -1114,6 +1114,7 @@ walker NaIRGenPass(CompilerPass) {
 
     def _closure_struct_of(val_type: ir.Type) -> (str | None);
     def _static_fn_closure(closure_name: str, fn: ir.Function) -> ir.Value;
+    def _adapt_closure(val: ir.Value, src_name: str, dst_name: str) -> ir.Value;
     def _fn_identity_struct -> str;
     def _fn_identity_slot(fn: ir.Function) -> (str | None);
     def _fn_value_env(fn: ir.Function) -> (ir.Value | None);
