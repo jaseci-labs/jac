@@ -54,6 +54,27 @@ def level1(n: int) -> int {
     return level2(n) + len(zs) + total;
 }
 
+obj Badge {
+    has label: str,
+        size: int = 1;
+}
+
+def badge_opts(n: int, key: str) -> dict[str, int] {
+    return {"size": n, key: n};
+}
+
+def spread_fails(kind: type[Badge]) -> int {
+    caught = 0;
+    for n in range(20) {
+        try {
+            kind(label=f"b{n}", **badge_opts(n, "bogus" if n % 2 else "label"));
+        } except TypeError {
+            caught += 1;
+        }
+    }
+    return caught;
+}
+
 def run -> int {
     caught = 0;
     for i in range(300) {
@@ -72,6 +93,7 @@ def run -> int {
 
 with entry {
     print(run());
+    print(spread_fails(Badge));
     __rc_collect_cycles();
     __rc_debug_enable();
 }

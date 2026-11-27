@@ -369,7 +369,7 @@ impl NaIRGenPass._codegen_class_value_call(
         f"class is not constructible with the {self._arch_display(
             bound
         )} constructor arguments",
-        release_on_error=owned
+        release_on_error=owned + ([mapping] if mapping is not None else [])
     );
     fnty = self._class_ctor_fn_type(params);
     call_args: list[ir.Value] = [mask_value];
@@ -435,7 +435,13 @@ impl NaIRGenPass._bind_class_ctor_spread(
         rec["dup_msg"] = f"{self._arch_display(bound)}() {rec['dup_msg']}";
         records.append((i, rec));
     }
-    matched = self._bind_kw_spread(mapping, helpers, [r for (_, r) in records], "");
+    matched = self._bind_kw_spread(
+        mapping,
+        helpers,
+        [r for (_, r) in records],
+        "",
+        release_on_error=list(values.values()) + [mapping]
+    );
     for (i, rec) in records {
         if rec["alloca"] is None {
             continue;
@@ -463,7 +469,8 @@ impl NaIRGenPass._bind_class_ctor_spread(
             name="kwargs.extra"
         ),
         "TypeError",
-        f"{self._arch_display(bound)}() got an unexpected keyword argument"
+        f"{self._arch_display(bound)}() got an unexpected keyword argument",
+        release_on_error=list(values.values()) + [mapping]
     );
     return mask;
 }
