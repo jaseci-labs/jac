@@ -629,12 +629,24 @@ impl NaIRGenPass._codegen_closure_call(
     while len(coerced) < len(declared) {
         coerced.append(self._default_arg_fallback(declared[len(coerced)]));
     }
+
+    to_release: list[ir.Value] = [];
+    for (i, a) in enumerate(raw_args) {
+        conv = coerced[i];
+        if conv is not a
+            and self._is_owned(conv)
+            and self._closure_struct_of(conv.type) is not None {
+            to_release.append(conv);
+        } elif isinstance(a.type, ir.PointerType) and self._is_owned(a) {
+            to_release.append(a);
+        }
+    }
     if none_guard is not None {
         self._emit_runtime_raise(
             none_guard,
             "TypeError",
             "'NoneType' object is not callable",
-            release_on_error=raw_args
+            release_on_error=to_release
         );
     }
     fn_slot = self.builder.gep(
@@ -652,10 +664,8 @@ impl NaIRGenPass._codegen_closure_call(
     } else {
         result = self.builder.call(fn_ptr, coerced + [env], name="ccall");
     }
-    for a in raw_args {
-        if isinstance(a.type, ir.PointerType) and self._is_owned(a) {
-            self._emit_rc_release_simple(a, op="ccall_arg", loc="");
-        }
+    for a in to_release {
+        self._emit_rc_release_simple(a, op="ccall_arg", loc="");
     }
     if held is not None {
         self._release_loop_coll_slot(held, op="ccall_target");

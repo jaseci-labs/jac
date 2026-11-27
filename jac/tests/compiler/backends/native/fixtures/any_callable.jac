@@ -64,6 +64,11 @@ def call_with(f: Callable[[Callable[[], int]], int]) -> int {
     return f(seven);
 }
 
+def via_value(k: int) {
+    r: Callable[[Callable[[], any]], any] = apply;
+    print(r(seven), r(lambda -> int { return k; }));
+}
+
 def run -> int {
     total = 0;
     for i in range(50) {
@@ -84,6 +89,7 @@ with entry {
         call_erased(noop) is None,
         call_with(apply)
     );
+    via_value(3);
     __rc_collect_cycles();
     __rc_debug_enable();
 }

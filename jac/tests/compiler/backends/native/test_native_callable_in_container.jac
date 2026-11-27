@@ -114,7 +114,7 @@ test "callable-in-any: a class or instance raises TypeError, a boxed function ke
     native_build(str(FIXTURES / "any_callable.jac"), out_bin, extra=["--debug"]);
     out = native_run(out_bin);
     err = "TypeError: only a function stored in `any` can be called natively through a Callable\n";
-    assert out.startswith(err * 2 + "1275\nTrue False False\n8 7 5 True 7\n") , out[:400];
+    assert out.startswith(err * 2 + "1275\nTrue False False\n8 7 5 True 7\n7 3\n") , out[:400];
     assert "RC LIVE OBJECTS at exit" in out , out[-400:];
     assert "<- LEAK" not in out , out[-1500:];
 }
