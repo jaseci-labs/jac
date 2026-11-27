@@ -569,6 +569,15 @@ impl EsastGenPass.exit_binary_expr with uni.BinaryExpr exit {
         );
         return;
     }
+    if op_name == Tok.STAR_MUL
+        and self._expr_type_name(here.left) in ("int", "bool")
+        and self._expr_type_name(here.right) in ("str", "bytes", "list", "tuple") {
+        repeated = self._try_primitive_op(here.right, "op_mul", right, left, here);
+        if repeated is not None {
+            here.gen.es_ast = repeated;
+            return;
+        }
+    }
 
     here.gen.es_ast = self._lower_binop(op_name, here, here.left, left, right, here);
 }

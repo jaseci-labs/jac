@@ -1996,19 +1996,19 @@ impl ESBuiltinEmitter.emit_ord(
 impl ESBuiltinEmitter.emit_hex(
     self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
-    return "'0x' + (" + args[0] + ").toString(16)";
+    return _rt("builtin", "radix", [args[0], "16", "'0x'"]);
 }
 
 impl ESBuiltinEmitter.emit_oct(
     self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
-    return "'0o' + (" + args[0] + ").toString(8)";
+    return _rt("builtin", "radix", [args[0], "8", "'0o'"]);
 }
 
 impl ESBuiltinEmitter.emit_bin(
     self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
-    return "'0b' + (" + args[0] + ").toString(2)";
+    return _rt("builtin", "radix", [args[0], "2", "'0b'"]);
 }
 
 impl ESBuiltinEmitter.emit_pow(
