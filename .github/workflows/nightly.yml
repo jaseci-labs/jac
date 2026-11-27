@@ -149,12 +149,12 @@ jobs:
         # Single node labelled ingress-ready + host 80/443 mapped so
         # ingress-nginx's kind provider can bind them.
         run: |
-          curl -fsSL -o ./kind https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64
-          curl -fsSL -o ./kind.sha256 https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64.sha256sum
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o ./kind https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o ./kind.sha256 https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64.sha256sum
           echo "$(cut -d' ' -f1 ./kind.sha256)  ./kind" | sha256sum -c -
           chmod +x ./kind && sudo mv ./kind /usr/local/bin/kind
-          curl -fsSL -o kubectl https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl
-          curl -fsSL -o kubectl.sha256 https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl.sha256
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o kubectl https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o kubectl.sha256 https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl.sha256
           echo "$(cat kubectl.sha256)  kubectl" | sha256sum -c -
           sudo install kubectl /usr/local/bin/kubectl
           cat > /tmp/kind.yaml <<'EOF'

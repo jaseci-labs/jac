@@ -1,0 +1,1 @@
+- **Fix: a failed `**` unpacking into a class value frees its arguments**: in native code, when `kind(label=name, **options)` with `kind: type[Badge]` raised `TypeError` for a bad key, the dictionary and the other arguments were never freed. They are now freed before the error is raised.

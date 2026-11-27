@@ -321,15 +321,15 @@ impl KubernetesTarget.deploy(app_config: AppConfig) -> DeploymentResult {
     }
 
     try {
-        storage_refusal = self._monitoring_storage_refusal(
+        settings_refusal = self._monitoring_settings_refusal(
             app_name, check_cluster=not self.dry_run
         );
     } except Exception as e {
-        storage_refusal = f"monitoring storage check failed: {e}";
+        settings_refusal = f"monitoring settings check failed: {e}";
     }
-    if storage_refusal {
-        self._emit("observability", "error", storage_refusal);
-        return DeploymentResult(success=False, message=storage_refusal);
+    if settings_refusal {
+        self._emit("observability", "error", settings_refusal);
+        return DeploymentResult(success=False, message=settings_refusal);
     }
 
     self._emit("config", "start", "Checking the config the pods load");
@@ -2415,16 +2415,19 @@ impl KubernetesTarget._destroy_named_component(
     }
 }
 
-impl KubernetesTarget._monitoring_storage_refusal(
+impl KubernetesTarget._monitoring_settings_refusal(
     app_name: str, check_cluster: bool = True
 ) -> str {
-    if not self.k8s_config.monitoring_storage_enabled
-        or not self._observability_requested() {
+    if not self._observability_requested() {
         return "";
     }
     obs_config = self._build_observability_config();
     deployer = MonitoringDeployer(obs_config, self.logger);
-    problems: list[str] = deployer._storage_problems();
+    problems: list[str] = deployer._request_problems();
+    if not obs_config.monitoring_storage_enabled {
+        return "; ".join(problems);
+    }
+    problems += deployer._storage_problems();
     if check_cluster {
         problem: str = deployer._cluster_storage_problem(
             app_name, obs_config.namespace, client.CoreV1Api(), client.StorageV1Api()

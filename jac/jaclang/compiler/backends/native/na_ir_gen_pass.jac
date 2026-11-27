@@ -976,7 +976,8 @@ walker NaIRGenPass(CompilerPass) {
         spread: ir.Value,
         helpers: dict[str, any],
         bind_records: list[dict[str, any]],
-        loc: str
+        loc: str,
+        release_on_error: list[ir.Value] = []
     ) -> ir.Value;
 
     def _kw_spread_value_fits(value_type: ir.Type, slot_type: ir.Type) -> bool;

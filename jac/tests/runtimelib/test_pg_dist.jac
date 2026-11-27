@@ -176,6 +176,35 @@ test "the platform slug and server name cover Windows" {
 }
 
 
+test "a channel read retries a network failure, then gives up with the last error" {
+    import from unittest.mock { MagicMock }
+    import from jaclang.data.pg_dist { _read_url }
+    response = MagicMock();
+    response.__enter__.return_value.read.return_value = b"<version>19.1.0</version>";
+    with patch(
+        "jaclang.data.pg_dist.urllib.request.urlopen",
+        side_effect=[OSError("reset"), response]
+    ) as urlopen, patch("jaclang.data.pg_dist.time.sleep") as sleep {
+        assert _read_url("https://repo.test/meta") == "<version>19.1.0</version>";
+        assert urlopen.call_count == 2;
+        assert [c.args for c in sleep.call_args_list] == [(1, )];
+    }
+    errors = [OSError("one"), OSError("two"), OSError("three")];
+    with patch(
+        "jaclang.data.pg_dist.urllib.request.urlopen", side_effect=errors
+    ) as urlopen, patch("jaclang.data.pg_dist.time.sleep") as sleep {
+        try {
+            _read_url("https://repo.test/meta");
+            assert False , "three failures must raise";
+        } except OSError as e {
+            assert str(e) == "three" , str(e);
+        }
+        assert urlopen.call_count == 3;
+        assert [c.args for c in sleep.call_args_list] == [(1, ), (2, )];
+    }
+}
+
+
 test "the postgres artifact claims exactly the platforms it supports" {
     import sys;
     import from jaclang.data.pg_dist { PostgresArtifact }

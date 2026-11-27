@@ -130,6 +130,12 @@ glob _LOADER_DERIVED: set[str] = {
          "loki_storage",
          "tempo_storage",
          "loki_retention",
+         "prometheus_cpu_request",
+         "prometheus_memory_request",
+         "loki_cpu_request",
+         "loki_memory_request",
+         "tempo_cpu_request",
+         "tempo_memory_request",
          "service_dependencies"
      },
      _DERIVED_DEFAULT: set[str] = {"app_name"};

@@ -146,12 +146,25 @@ impl _system(major: int) -> (str | None) {
     return best;
 }
 
-impl _published(slug: str) -> list[str] {
-    url = f"{ZONKY_BASE}{slug}/maven-metadata.xml";
-    try {
-        with urllib.request.urlopen(url, timeout=30) as response {
-            body = response.read().decode('utf-8', errors='replace');
+impl _read_url(url: str) -> str {
+    for attempt in range(3) {
+        try {
+            with urllib.request.urlopen(url, timeout=30) as response {
+                return response.read().decode('utf-8', errors='replace');
+            }
+        } except OSError {
+            if attempt == 2 {
+                raise;
+            }
+            time.sleep(2 ** attempt);
         }
+    }
+    raise OSError(f"could not read {url}");
+}
+
+impl _published(slug: str) -> list[str] {
+    try {
+        body = _read_url(f"{ZONKY_BASE}{slug}/maven-metadata.xml");
     } except OSError as e {
         logger.debug(f"zonky metadata fetch failed: {e}");
         return [];
@@ -164,9 +177,7 @@ impl _published(slug: str) -> list[str] {
 impl _unpack(slug: str, version: str, dist_dir: str) {
     name = f"embedded-postgres-binaries-{slug}";
     jar_url = f"{ZONKY_BASE}{slug}/{version}/{name}-{version}.jar";
-    with urllib.request.urlopen(jar_url + '.sha1', timeout=30) as response {
-        want_sha = response.read().decode().strip().split()[0];
-    }
+    want_sha = _read_url(jar_url + '.sha1').strip().split()[0];
     jar_path = fetch(Download("postgres", version, slug, jar_url, want_sha, "sha1"));
     with zipfile.ZipFile(jar_path) as jar {
         payloads = [
