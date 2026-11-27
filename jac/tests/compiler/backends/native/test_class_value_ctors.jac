@@ -35,7 +35,7 @@ glob FIXTURES = os.path.join(
          "10 25 -1",
          "4 2",
          "9 1 4",
-         "13 13 ['spread', 'y']"
+         "[13, 12] ['swap', 'spread', 'y']"
      ];
 
 def output_lines(text: str) -> list[str] {

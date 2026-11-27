@@ -120,27 +120,17 @@ def total_area(kinds: list[type[Shape]], size: int) -> int {
 glob calls: list[str] = [],
      shift_opts: dict[str, int] = {"x": 3};
 
-def spread_x -> dict[str, int] {
-    calls.append("spread");
-    return {"x": 3};
-}
-
-def given_y -> int {
-    calls.append("y");
-    return 2;
-}
-
-def swap_opts -> int {
+def track(tag: str) -> int {
+    calls.append(tag);
     shift_opts = {"x": 50};
     return 2;
 }
 
-def shift_in_order(kind: type[Shifted]) -> int {
-    return kind(**spread_x(), y=given_y()).x;
-}
-
-def shift_swapped(kind: type[Shifted]) -> int {
-    return kind(**shift_opts, y=swap_opts()).x;
+def shifts(kind: type[Shifted]) -> list[int] {
+    return [
+        kind(**shift_opts, y=track("swap")).x,
+        kind(**{"x": track("spread")}, y=track("y")).x
+    ];
 }
 
 def pick(big: bool) -> type[Shape] {
@@ -178,5 +168,5 @@ with entry {
     );
     print(make_link(Heavy, 4).weight, make_link(Link, 2).weight);
     print(make_tile(Wall).cost, make_tile(Tile).cost, pick(True)(size=2).area());
-    print(shift_in_order(Shifted), shift_swapped(Shifted), calls);
+    print(shifts(Shifted), calls);
 }
