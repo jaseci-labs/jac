@@ -181,4 +181,10 @@ with entry {
     print(make_link(Heavy, 4).weight, make_link(Link, 2).weight);
     print(make_tile(Wall).cost, make_tile(Tile).cost, pick(True)(size=2).area());
     print(shifts(Shifted), late_fails(Shifted), calls);
+    print(
+        Square(**{"size": 4}).area(),
+        Shifted(**{"x": 1}).y,
+        Shifted(**{"x": track("direct")}, y=track("late")).x,
+        calls[-2:]
+    );
 }
