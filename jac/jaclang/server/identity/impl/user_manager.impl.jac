@@ -10,8 +10,6 @@ impl UserManager.postinit -> None {
     }
     self._identity_storage = PgIdentityStorage(store=store);
     if not self.issuer {
-        # `iss` names the identity store that holds the account: an app's own
-        # store, or the fleet's (the gateway's), which every other process uses.
         name = os.environ.get('JAC_SV_NAME', '').strip();
         own_store = os.environ.get('JAC_SV_OWN_STORE') == '1';
         self.issuer = name if name and own_store else GATEWAY_ISSUER;

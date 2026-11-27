@@ -8,7 +8,6 @@ def _install_ws_catchall(gw: MicroserviceGateway);
 def _session_refused(gw: MicroserviceGateway, token: str) -> bool;
 
 
-"""An unknown subject on a token of this process's identity store: the account is gone."""
 def _minted_here_for_unknown(manager: any, detail: dict[str, any]) -> bool;
 
 
@@ -1352,7 +1351,7 @@ impl _session_refused(gw: MicroserviceGateway, token: str) -> bool {
 impl _minted_here_for_unknown(manager: any, detail: dict[str, any]) -> bool {
     return detail['status'] == 'unknown_user'
         and bool(detail.get('iss'))
-        and detail.get('iss') == getattr(manager, 'issuer', None);
+        and detail.get('iss') == manager?.issuer;
 }
 
 impl _without_refused_credentials(
