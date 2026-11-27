@@ -78,9 +78,19 @@ jobs:
           OPTIONAL: ${{ matrix.optional || false }}
         run: |
           set -euo pipefail
-          if gh release view --repo "$GITHUB_REPOSITORY" \
-               --json assets --jq '.assets[].name' 2>/dev/null \
-               | grep -q "jac-.*-${{ matrix.platform }}$"; then
+          assets=""
+          for attempt in 1 2 3 4 5; do
+            if assets="$(gh release view --repo "$GITHUB_REPOSITORY" \
+                 --json assets --jq '.assets[].name')"; then
+              break
+            fi
+            if [ "$attempt" = 5 ]; then
+              echo "::error::Could not read the latest GitHub Release after 5 tries."
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
+          if grep -q "jac-.*-${{ matrix.platform }}$" <<<"$assets"; then
             echo "present=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
