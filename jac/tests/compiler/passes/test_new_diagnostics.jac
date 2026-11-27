@@ -107,30 +107,69 @@ def count_diagnostic_code(
     return count;
 }
 
-test "W0100: invalid escape sequence warns" {
-    prog = JacProgram();
-    prog.compile(use_str='with entry { x = "press \\q now"; }', file_path="test.jac");
-    assert has_diagnostic_code(prog, "W0100", in_warnings=True);
+"""How many times `code` fired in `prog`; W codes are warnings, the rest errors."""
+def fired(prog: JacProgram, code: str) -> int {
+    return count_diagnostic_code(prog, code, in_warnings=code.startswith("W"));
 }
 
-test "W0100: valid escapes do not warn" {
+"""The code a fixture is named for: parser_E0065_duplicate_kwarg.jac -> E0065."""
+def code_of(fixture: str) -> str {
+    return fixture.split("_")[1];
+}
+
+"""Compile a source string as test.jac."""
+def compile_str(source: str) -> JacProgram {
     prog = JacProgram();
-    prog.compile(
-        use_str='with entry { x = "tab\\there\\nline\\x41"; }', file_path="test.jac"
+    prog.compile(use_str=source, file_path="test.jac");
+    return prog;
+}
+
+"""The sources that do not parse cleanly: a parse error or any diagnostic."""
+def unclean(sources: list[str]) -> list[str] {
+    bad: list[str] = [];
+    for src in sources {
+        (prog, had_error) = parse_with_prog(src);
+        if had_error or prog.errors_had {
+            bad.append(src);
+        }
+    }
+    return bad;
+}
+
+"""The entries of `want` whose count came out different, as
+{key: (got, expected)}. `count` computes the count for a key."""
+def wrong_counts(
+    count: Callable[[str], int], want: dict[str, int]
+) -> dict[str, tuple[int, int]] {
+    got = {key: count(key) for key in want};
+    return {
+        key: (got[key], want[key])
+        for key in want
+        if got[key] != want[key]
+    };
+}
+
+"""The error codes ASTValidationPass reports for `source`, or None when it
+does not parse."""
+def validation_errors(source: str) -> (list[str] | None) {
+    (_, prog) = parse_and_validate(source);
+    if prog is None {
+        return None;
+    }
+    return [a.code.code if a.code is not None else a.msg for a in prog.errors_had];
+}
+
+test "W0100: an invalid escape warns once each; valid escapes and raw strings do not" {
+    wrong = wrong_counts(
+        lambda (src: str) { fired(compile_str(src), "W0100"); },
+        {
+            'with entry { x = "press \\q now"; }': 1,
+            'with entry { x = "\\q then \\e"; }': 2,
+            'with entry { x = "tab\\there\\nline\\x41"; }': 0,
+            'with entry { x = r"press \\q"; }': 0
+        }
     );
-    assert not has_diagnostic_code(prog, "W0100", in_warnings=True);
-}
-
-test "W0100: raw string keeps backslashes and is exempt" {
-    prog = JacProgram();
-    prog.compile(use_str='with entry { x = r"press \\q"; }', file_path="test.jac");
-    assert not has_diagnostic_code(prog, "W0100", in_warnings=True);
-}
-
-test "W0100: each invalid escape warns once" {
-    prog = JacProgram();
-    prog.compile(use_str='with entry { x = "\\q then \\e"; }', file_path="test.jac");
-    assert count_diagnostic_code(prog, "W0100", in_warnings=True) == 2;
+    assert not wrong , wrong;
 }
 
 # ══════════════════════════════════════════════════════════════════
@@ -139,7 +178,6 @@ test "W0100: each invalid escape warns once" {
 #  Milestone: 1 (Context Validity) + 4 (Parser/Lexer Hardening)
 # ══════════════════════════════════════════════════════════════════
 
-# ── E0025: JS arrow function syntax (=>) ───────────────────────────
 test "E0013: keyword as a field name carries prefix help" {
     (prog, _) = parse_with_prog("obj X { has match: int = 1; }");
     assert has_diagnostic_code(prog, "E0013");
@@ -174,7 +212,6 @@ test "kwesc: the prefix form parses clean" {
     assert len(prog.errors_had) == 0;
 }
 
-
 test "E0013: a keyword after a dot is an attribute, no escape needed" {
     # #8982 item 9: `sys.exit(0)` is the idiom every CLI ends with.
     for src in [
@@ -200,125 +237,90 @@ test "E0013: a keyword still cannot bind a name, and names the escape" {
     }
 }
 
-test "E0025: js arrow in jsx attribute slot" {
-    src = 'cl { def:pub Foo() -> JsxElement {'
-        + ' return <button onClick={e => doThing(e)}>Click</button>; } }';
-    (prog, _) = parse_with_prog(src);
-    assert has_diagnostic_code(prog, "E0025");
-    assert count_diagnostic_code(prog, "E0025") == 1;
-}
-
-test "E0025: js arrow in jsx child slot" {
-    src = 'cl { def:pub Foo() -> JsxElement {' + ' return <div>{e => fn(e)}</div>; } }';
-    (prog, _) = parse_with_prog(src);
-    assert has_diagnostic_code(prog, "E0025");
-    assert count_diagnostic_code(prog, "E0025") == 1;
-}
-
-test "E0025: js arrow at module level glob" {
-    (prog, _) = parse_with_prog('glob f = x => x + 1;');
-    assert has_diagnostic_code(prog, "E0025");
-    assert count_diagnostic_code(prog, "E0025") == 1;
-}
-
-test "E0025: js arrow with block body" {
-    (prog, _) = parse_with_prog('with entry { f = x => { print(x); }; }');
-    assert has_diagnostic_code(prog, "E0025");
-    assert count_diagnostic_code(prog, "E0025") == 1;
-}
-
-test "E0025: chained arrows emit one diagnostic per arrow" {
-    (prog, _) = parse_with_prog('with entry { f = a => b => c; }');
-    assert count_diagnostic_code(prog, "E0025") == 2;
-}
-
-test "E0025: gte (>=) does not fire" {
-    (prog, had_err) = parse_with_prog('with entry { x = (a >= b); }');
-    assert not had_err;
-    assert not has_diagnostic_code(prog, "E0025");
-}
-
-test "E0025: lambda syntax unaffected" {
-    (prog, had_err) = parse_with_prog('with entry { f = lambda (x: int) { x + 1; }; }');
-    assert not had_err;
-    assert not has_diagnostic_code(prog, "E0025");
-}
-
-test "E0025: spaced '= >' is not an arrow" {
-    # '=' and '>' separated by whitespace should never match the arrow shape;
-    # the source is invalid for other reasons, but E0025 must not fire.
-    (prog, _) = parse_with_prog('with entry { x = a = > b; }');
-    assert not has_diagnostic_code(prog, "E0025");
-}
-
-test "E0025: arrow in fstring slot" {
-    (prog, _) = parse_with_prog('with entry { s = f"{x => y}"; }');
-    assert has_diagnostic_code(prog, "E0025");
-}
-
-test "E0025: empty body recovers without crash" {
-    (prog, _) = parse_with_prog('with entry { f = x =>; }');
-    assert has_diagnostic_code(prog, "E0025");
-}
-
-# ── E0027: forward typed connection missing :+> ──────────────────────
-test "E0027: +>: EdgeType without :+> closer emits E0027" {
-    (prog, _) = compile_only("parser_E0027_forward_missing_close.jac");
-    assert has_diagnostic_code(prog, "E0027");
-}
-
-test "E0027: complete +>: EdgeType :+> does not fire" {
-    (prog, had_err) = parse_with_prog(
-        'node N {} edge F {} with entry { n1=N(); n2=N(); n1 +>: F :+> n2; }'
+# ── E0025: JS arrow function syntax (=>) ───────────────────────────
+test "E0025: each js-style arrow is one error; >= and lambda are not arrows" {
+    wrong = wrong_counts(
+        lambda (src: str) { fired(parse_with_prog(src)[0], "E0025"); },
+        {
+            # jsx attribute and child slots
+            'cl { def:pub Foo() -> JsxElement { return <button onClick={e => doThing(e)}>Click</button>; } }': 1,
+            'cl { def:pub Foo() -> JsxElement { return <div>{e => fn(e)}</div>; } }': 1,
+            'glob f = x => x + 1;': 1,
+            'with entry { f = x => { print(x); }; }': 1,
+            'with entry { f = a => b => c; }': 2,
+            'with entry { s = f"{x => y}"; }': 1,
+            # an empty body recovers without a crash
+            'with entry { f = x =>; }': 1,
+            # '=' and '>' apart are not an arrow; the source is invalid for other reasons
+            'with entry { x = a = > b; }': 0
+        }
     );
-    assert not had_err;
-    assert not has_diagnostic_code(prog, "E0027");
-}
-
-# ── E0028: backward typed connection missing :<+ ─────────────────────
-test "E0028: <+: EdgeType without :<+ closer emits E0028" {
-    (prog, _) = compile_only("parser_E0028_backward_missing_close.jac");
-    assert has_diagnostic_code(prog, "E0028");
-}
-
-test "E0028: complete <+: EdgeType :<+ does not fire" {
-    (prog, had_err) = parse_with_prog(
-        'node N {} edge F {} with entry { n1=N(); n2=N(); n1 <+: F :<+ n2; }'
+    assert not wrong , wrong;
+    bad = unclean(
+        [
+            'with entry { x = (a >= b); }',
+            'with entry { f = lambda (x: int) { x + 1; }; }'
+        ]
     );
-    assert not had_err;
-    assert not has_diagnostic_code(prog, "E0028");
+    assert not bad , bad;
 }
 
-test "E0052: missing type annotation on parameter" {
-    (has_err, prog) = parse_and_validate('def foo(x) { }');
-    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0052"));
-}
-
-test "E0052: missing type annotation on multiple params" {
-    (has_err, prog) = parse_and_validate('def foo(x, y) { }');
-    assert has_err or (prog is not None and count_diagnostic_code(prog, "E0052") == 2);
-}
-
-test "E0052: typed parameter is valid" {
-    (has_err, _) = parse_and_validate('def foo(x: int) -> int { return x; }');
-    assert not has_err;
-}
-
-test "E0052: lambda params do not require annotations" {
-    (has_err, _) = parse_and_validate('with entry { f = lambda (x) { x + 1; }; }');
-    assert not has_err;
-}
-
-test "E0052: method self param requires annotation" {
-    (has_err, _) = parse_and_validate(
-        'obj Foo { def bar(self: Foo, x: int) -> int { return x; } }'
+# ── E0027/E0028: typed connection missing its closer ─────────────────
+test "E0027/E0028: an edge connect missing its closer errors; the full form parses clean" {
+    wrong = wrong_counts(
+        lambda (fx: str) { fired(compile_only(fx)[0], code_of(fx)); },
+        {
+            "parser_E0027_forward_missing_close.jac": 1,
+            "parser_E0028_backward_missing_close.jac": 1
+        }
     );
-    assert not has_err;
+    assert not wrong , wrong;
+    bad = unclean(
+        [
+            'node N {} edge F {} with entry { n1=N(); n2=N(); n1 +>: F :+> n2; }',
+            'node N {} edge F {} with entry { n1=N(); n2=N(); n1 <+: F :<+ n2; }'
+        ]
+    );
+    assert not bad , bad;
 }
 
-test "E0055: yield outside function" {
-    (has_err, prog) = parse_and_validate('with entry { yield 5; }');
-    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0055"));
+test "ASTValidationPass: each source gets exactly these errors" {
+    # None: the source does not parse. The yield/break/continue-outside-a-loop,
+    # bare-except and duplicate-base cases are rows of the "new reject" and
+    # "new validate reject" suites below.
+    want = {
+        # E0052: parameters need a type; lambda params do not
+        'def foo(x) { }': ["E0052"],
+        'def foo(x, y) { }': ["E0052", "E0052"],
+        'def foo(x: int) -> int { return x; }': [],
+        'with entry { f = lambda (x) { x + 1; }; }': [],
+        'obj Foo { def bar(self: Foo, x: int) -> int { return x; } }': [],
+        # E0058: a loop's else belongs to the enclosing loop
+        'with entry { for i in [1,2] { } else { continue; } }': ["E0058"],
+        'with entry { for i in [1,2] { } else { break; } }': ["E0058"],
+        'with entry { for r in [1] { for i in [1,2] { } else { continue; } } }': [],
+        'with entry { while True { for i in [1,2] { } else { break; } } }': [],
+        'with entry { for i in [1,2] { break; } }': [],
+        'with entry { for i in [1,2,3] { if i == 2 { break; } } }': [],
+        'with entry { for i in [1,2,3] { if i == 2 { continue; } } }': [],
+        'with entry { for i in [1,2] { if i == 1 { } else { continue; } } }': [],
+        # the removed nonlocal directive
+        'with entry { nonlocal x; }': None,
+        # valid code is not flagged
+        'glob x: int = 5;': [],
+        'def foo() -> int { return 42; }': [],
+        'def foo(x: int) -> int { if x > 0 { return x; } else { return -x; } }': [],
+        'def foo(a: int, b: int) -> int { return a + b; }\nwith entry { foo(a=1, b=2); }': [],
+        'obj Base { }\nobj Child(Base) { }': [],
+        'with entry { try { x = 1; } except ValueError as e { print(e); } }': [],
+        'with entry { name = "world"; x = f"hello {name}"; }': []
+    };
+    got = {src: validation_errors(src) for src in want};
+    assert got == want , {
+        src: (got[src], want[src])
+        for src in want
+        if got[src] != want[src]
+    };
 }
 
 test "E0057: return inside any function body is valid" {
@@ -336,81 +338,32 @@ test "E0057: return inside any function body is valid" {
     }
 }
 
-test "E0058: break outside loop" {
-    (has_err, prog) = parse_and_validate('with entry { break; }');
-    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0058"));
-}
-
-test "E0058: continue outside loop" {
-    (has_err, prog) = parse_and_validate('with entry { continue; }');
-    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0058"));
-}
-
-test "E0058: break inside loop is valid" {
-    (has_err, _) = parse_and_validate('with entry { for i in [1,2] { break; } }');
-    assert not has_err;
-}
-
-test "E0058: continue in a loop's else with no outer loop" {
-    (has_err, prog) = parse_and_validate(
-        'with entry { for i in [1,2] { } else { continue; } }'
+test "checker fixtures fire their code the expected number of times" {
+    wrong = wrong_counts(
+        lambda (fx: str) { fired(compile_and_check(fx)[0], code_of(fx)); },
+        {
+            "parser_E0065_duplicate_kwarg.jac": 2,
+            # foo(a=1, 2, 3) has two positionals after the keyword
+            "parser_E0066_pos_after_kw.jac": 3,
+            "parser_E0076_duplicate_method.jac": 1,
+            # the method 'grow', the ability 'rise' and the impl-block 'grow'
+            "parser_E0078_field_method_clash.jac": 3,
+            # property accessors and init/postinit beside same-named fields
+            "parser_E0078_distinct_members.jac": 0,
+            "context_E2055_return_in_finally.jac": 1,
+            "context_E2083_disengage_outside_walker.jac": 1,
+            # one per decorator; the @property in the Python-compat class is exempt
+            "semantic_W2029_property_decorators.jac": 4,
+            "semantic_W2058_none_eq.jac": 2,
+            "semantic_W2063_self_assignment.jac": 1,
+            "semantic_W2070_div_by_zero.jac": 3,
+            "semantic_W2074_fstring_no_expr.jac": 1,
+            "semantic_W2075_redundant_bool.jac": 2,
+            # identity/equality against True over any-typed operands discriminates
+            "semantic_W2075_any_identity_ok.jac": 0
+        }
     );
-    assert has_err and prog is not None and has_diagnostic_code(prog, "E0058");
-}
-
-test "E0058: break in a loop's else with no outer loop" {
-    (has_err, prog) = parse_and_validate(
-        'with entry { for i in [1,2] { } else { break; } }'
-    );
-    assert has_err and prog is not None and has_diagnostic_code(prog, "E0058");
-}
-
-test "E0058: continue in an inner loop's else continues the outer loop" {
-    (has_err, _) = parse_and_validate(
-        'with entry { for r in [1] { for i in [1,2] { } else { continue; } } }'
-    );
-    assert not has_err;
-}
-
-test "E0058: break in an inner loop's else breaks the outer loop" {
-    (has_err, _) = parse_and_validate(
-        'with entry { while True { for i in [1,2] { } else { break; } } }'
-    );
-    assert not has_err;
-}
-
-test "E0058: continue inside if-else inside loop is valid" {
-    (has_err, _) = parse_and_validate(
-        'with entry { for i in [1,2] { if i == 1 { } else { continue; } } }'
-    );
-    assert not has_err;
-}
-
-test "E0065: duplicate keyword argument" {
-    (prog, _) = compile_and_check("parser_E0065_duplicate_kwarg.jac");
-    assert has_diagnostic_code(prog, "E0065");
-}
-
-test "E0066: positional after keyword argument" {
-    (prog, _) = compile_and_check("parser_E0066_pos_after_kw.jac");
-    assert has_diagnostic_code(prog, "E0066");
-}
-
-test "E0071: bare except not last" {
-    (has_err, prog) = parse_and_validate(
-        'with entry { try { x=1; } except { y=2; } except ValueError as e { z=3; } }'
-    );
-    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0071"));
-}
-
-test "E0075: duplicate base class" {
-    (has_err, prog) = parse_and_validate('obj Base { }\nobj Bad(Base, Base) { }');
-    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0075"));
-}
-
-test "E0076: duplicate method definition" {
-    (prog, _) = compile_and_check("parser_E0076_duplicate_method.jac");
-    assert has_diagnostic_code(prog, "E0076");
+    assert not wrong , wrong;
 }
 
 test "E0076: Python __init__ and init are distinct methods" {
@@ -419,18 +372,6 @@ test "E0076: Python __init__ and init are distinct methods" {
     # `__init__` to Jac's `init` constructor must not collide with it.
     (prog, _) = compile_only("parser_E0076_py_init_distinct.py");
     assert not has_diagnostic_code(prog, "E0076");
-}
-
-test "E0078: a method or ability with a field's name is rejected" {
-    # The later class attribute replaced the field, so `self.rise` read the
-    # ability's function and `jac check` passed it silently.
-    (prog, _) = compile_and_check("parser_E0078_field_method_clash.jac");
-    assert count_diagnostic_code(prog, "E0078") == 3 , "the method 'grow', the ability 'rise' and the impl-block 'grow'";
-}
-
-test "E0078: distinct names, property accessors and init/postinit beside same-named fields are not clashes" {
-    (prog, _) = compile_and_check("parser_E0078_distinct_members.jac");
-    assert not has_diagnostic_code(prog, "E0078");
 }
 
 test "E0078: a Python class is not checked" {
@@ -549,16 +490,6 @@ test "E2036: an include does not collide with a local definition" {
     assert not has_diagnostic_code(prog, "E2036");
 }
 
-test "removed nonlocal directive is a parse error" {
-    (has_err, prog) = parse_and_validate('with entry { nonlocal x; }');
-    assert has_err;
-}
-
-test "E0063: glob at module level is valid" {
-    (has_err, _) = parse_and_validate('glob x: int = 5;');
-    assert not has_err;
-}
-
 test "E0063: glob in statement position is always rejected" {
     sources = [
         "with entry { glob a = 90; }",
@@ -652,54 +583,9 @@ test "E1042: a same-app server->server call is synchronous, not a coroutine" {
 #  Milestones: 1, 5, 9, 10
 # ══════════════════════════════════════════════════════════════════
 
-test "E2055: return in finally block" {
-    (prog, _) = compile_and_check("context_E2055_return_in_finally.jac");
-    assert has_diagnostic_code(prog, "E2055");
-}
-
-test "W2058: None comparison with ==" {
-    (prog, _) = compile_and_check("semantic_W2058_none_eq.jac");
-    assert has_diagnostic_code(prog, "W2058", in_warnings=True);
-}
-
-test "W2029: python-style property decorators in an obj" {
-    (prog, _) = compile_and_check("semantic_W2029_property_decorators.jac");
-    # One per decorator: '@property', '@val.getter', '@val.setter', '@val.deleter'.
-    # The '@property' inside the Python-compat 'class' is exempt, like W2006/W2007.
-    assert count_diagnostic_code(prog, "W2029", in_warnings=True) == 4;
-}
-
-test "W2063: self-assignment" {
-    (prog, _) = compile_and_check("semantic_W2063_self_assignment.jac");
-    assert has_diagnostic_code(prog, "W2063", in_warnings=True);
-}
-
 # --- Data Flow / Values ---
-test "W2070: division by zero" {
-    (prog, _) = compile_and_check("semantic_W2070_div_by_zero.jac");
-    assert has_diagnostic_code(prog, "W2070", in_warnings=True);
-}
-
-test "W2074: f-string with no expressions" {
-    (prog, _) = compile_and_check("semantic_W2074_fstring_no_expr.jac");
-    assert has_diagnostic_code(prog, "W2074", in_warnings=True);
-}
-
-test "W2075: redundant boolean comparison" {
-    (prog, _) = compile_and_check("semantic_W2075_redundant_bool.jac");
-    assert has_diagnostic_code(prog, "W2075", in_warnings=True);
-}
-
-test "W2075 silent for boolean-literal tests over non-bool operands" {
-    (prog, _) = compile_and_check("semantic_W2075_any_identity_ok.jac");
-    assert not has_diagnostic_code(prog, "W2075", in_warnings=True) , "identity/equality against True over any-typed operands is a discriminator, not redundancy";
-}
 
 # --- Context Validity (INFRA-8) ---
-test "E2083: disengage outside walker" {
-    (prog, _) = compile_and_check("context_E2083_disengage_outside_walker.jac");
-    assert has_diagnostic_code(prog, "E2083");
-}
 
 test "E2085: await outside async function or ability (issue #8998)" {
     # jac check must catch what only jac run's bytecode compile caught before:
@@ -717,131 +603,57 @@ test "E2085: await outside async function or ability (issue #8998)" {
 #  Infrastructure: None required (pure AST patterns)
 #  Milestone: 3 (Lint Pass Extensions)
 # ══════════════════════════════════════════════════════════════════
-test "W3020: unnecessary pass in non-empty body" {
-    path = os.path.join(NEW_DIAG_FIXTURES, "lint_W3020_unnecessary_pass.jac");
-    prog = JacProgram.jac_file_formatter(path, auto_lint=True);
-    assert has_diagnostic_code(prog, "W3020", in_warnings=True);
-}
-
-test "W3021: unnecessary else after return" {
-    path = os.path.join(NEW_DIAG_FIXTURES, "lint_W3021_unnecessary_else.jac");
-    prog = JacProgram.jac_file_formatter(path, auto_lint=True);
-    assert has_diagnostic_code(prog, "W3021", in_warnings=True);
-}
-
-test "W3022: nested if can be elif" {
-    path = os.path.join(NEW_DIAG_FIXTURES, "lint_W3022_nested_if_to_elif.jac");
-    prog = JacProgram.jac_file_formatter(path, auto_lint=True);
-    assert has_diagnostic_code(prog, "W3022", in_warnings=True);
-}
-
-test "W3023: return True/False simplification" {
-    path = os.path.join(NEW_DIAG_FIXTURES, "lint_W3023_return_bool.jac");
-    prog = JacProgram.jac_file_formatter(path, auto_lint=True);
-    assert has_diagnostic_code(prog, "W3023", in_warnings=True);
-}
-
-test "W3024: repeated condition in if/elif" {
-    path = os.path.join(NEW_DIAG_FIXTURES, "lint_W3024_repeated_condition.jac");
-    prog = JacProgram.jac_file_formatter(path, auto_lint=True);
-    assert has_diagnostic_code(prog, "W3024", in_warnings=True);
-}
-
-test "W3025: identical if/else branches" {
-    path = os.path.join(NEW_DIAG_FIXTURES, "lint_W3025_identical_branches.jac");
-    prog = JacProgram.jac_file_formatter(path, auto_lint=True);
-    assert has_diagnostic_code(prog, "W3025", in_warnings=True);
-}
-
-test "W3025: no false positive on subscript targets and call kwargs" {
-    path = os.path.join(
-        NEW_DIAG_FIXTURES, "lint_W3025_identical_branches_false_positive.jac"
+test "lint fixtures fire their code the expected number of times" {
+    wrong = wrong_counts(
+        lambda (fx: str) { fired(
+            JacProgram.jac_file_formatter(
+                os.path.join(NEW_DIAG_FIXTURES, fx), auto_lint=True
+            ),
+            code_of(fx)
+        ); },
+        {
+            "lint_W3020_unnecessary_pass.jac": 1,
+            "lint_W3021_unnecessary_else.jac": 1,
+            "lint_W3022_nested_if_to_elif.jac": 1,
+            "lint_W3023_return_bool.jac": 1,
+            "lint_W3024_repeated_condition.jac": 1,
+            "lint_W3025_identical_branches.jac": 1,
+            # 3 if/else pairs: 2 differ, 1 truly matches with a subscript target
+            "lint_W3025_identical_branches_false_positive.jac": 1,
+            "lint_W3030_too_many_params.jac": 1,
+            "lint_W3035_is_with_literal.jac": 1,
+            "lint_W3036_mutable_default.jac": 2,
+            "lint_W3040_filter_tautology.jac": 1
+        }
     );
-    prog = JacProgram.jac_file_formatter(path, auto_lint=True);
-    # Fixture has 3 if/else pairs: 2 differ (must not warn) + 1 truly matches
-    # with a subscript target (must warn). Expect exactly 1 W3025.
-    assert count_diagnostic_code(prog, "W3025", in_warnings=True) == 1;
-}
-
-test "W3030: too many parameters" {
-    path = os.path.join(NEW_DIAG_FIXTURES, "lint_W3030_too_many_params.jac");
-    prog = JacProgram.jac_file_formatter(path, auto_lint=True);
-    assert has_diagnostic_code(prog, "W3030", in_warnings=True);
-}
-
-test "W3035: is with literal" {
-    path = os.path.join(NEW_DIAG_FIXTURES, "lint_W3035_is_with_literal.jac");
-    prog = JacProgram.jac_file_formatter(path, auto_lint=True);
-    assert has_diagnostic_code(prog, "W3035", in_warnings=True);
-}
-
-test "W3036: mutable default argument" {
-    path = os.path.join(NEW_DIAG_FIXTURES, "lint_W3036_mutable_default.jac");
-    prog = JacProgram.jac_file_formatter(path, auto_lint=True);
-    assert has_diagnostic_code(prog, "W3036", in_warnings=True);
-}
-
-test "W3040: filter comparison tautology on shadowed name" {
-    path = os.path.join(NEW_DIAG_FIXTURES, "lint_W3040_filter_tautology.jac");
-    prog = JacProgram.jac_file_formatter(path, auto_lint=True);
-    assert has_diagnostic_code(prog, "W3040", in_warnings=True);
+    assert not wrong , wrong;
 }
 
 # ══════════════════════════════════════════════════════════════════
 #  REMOVED PAREN FILTER SYNTAX (E0048)
 # ══════════════════════════════════════════════════════════════════
-test "E0048: removed paren filter syntax errors" {
-    (prog, _) = compile_only("parser_E0048_removed_paren_filter.jac");
-    assert has_diagnostic_code(prog, "E0048") , "Removed (?:...) filter syntax should emit E0048 error";
-}
-
-test "E0048: bracket filter no error" {
-    (prog, _) = compile_only("parser_E0048_bracket_filter_ok.jac");
-    assert not has_diagnostic_code(prog, "E0048") , "Bracket filter syntax [?:...] should not emit E0048";
-}
-
-test "E0048: multiple removed filters emit multiple errors" {
-    prog = JacProgram();
-    prog.compile(
-        use_str='with entry { x = [1,2](?a<1); y = [3,4](?a>2); }', file_path="test.jac"
+test "E0048: each removed (?:...) filter errors; the [?:...] form does not" {
+    wrong = wrong_counts(
+        lambda (fx: str) { fired(compile_only(fx)[0], code_of(fx)); },
+        {
+            "parser_E0048_removed_paren_filter.jac": 1,
+            "parser_E0048_bracket_filter_ok.jac": 0
+        }
     );
-    assert count_diagnostic_code(prog, "E0048") == 2 , "Each removed filter occurrence should emit its own E0048";
-}
-
-test "E0048: edge ref with removed filter" {
-    prog = JacProgram();
-    prog.compile(
-        use_str='walker W { can go with entry { visit [-->](?:Foo); } }',
-        file_path="test.jac"
+    wrong.update(
+        wrong_counts(
+            lambda (src: str) { fired(compile_str(src), "E0048"); },
+            {
+                'with entry { x = [1,2](?a<1); y = [3,4](?a>2); }': 2,
+                # after an edge ref, and inside an edge chain
+                'walker W { can go with entry { visit [-->](?:Foo); } }': 1,
+                'walker W { can go with entry { visit [-->][?:Foo]; } }': 0,
+                'walker W { can go with entry { visit [-->(?:Foo)]; } }': 1,
+                'walker W { can go with entry { visit [-->[?:Foo]]; } }': 0
+            }
+        )
     );
-    assert has_diagnostic_code(prog, "E0048") , "Removed filter inside edge ref should emit E0048";
-}
-
-test "E0048: edge ref with bracket filter no error" {
-    prog = JacProgram();
-    prog.compile(
-        use_str='walker W { can go with entry { visit [-->][?:Foo]; } }',
-        file_path="test.jac"
-    );
-    assert not has_diagnostic_code(prog, "E0048") , "Bracket filter after edge ref should not emit E0048";
-}
-
-test "E0048: filter inside edge chain errors" {
-    prog = JacProgram();
-    prog.compile(
-        use_str='walker W { can go with entry { visit [-->(?:Foo)]; } }',
-        file_path="test.jac"
-    );
-    assert has_diagnostic_code(prog, "E0048") , "(?:...) inside edge chain should also emit E0048";
-}
-
-test "E0048: bracket filter inside edge chain no error" {
-    prog = JacProgram();
-    prog.compile(
-        use_str='walker W { can go with entry { visit [-->[?:Foo]]; } }',
-        file_path="test.jac"
-    );
-    assert not has_diagnostic_code(prog, "E0048") , "Bracket filter [?:...] inside edge chain should not emit E0048";
+    assert not wrong , wrong;
 }
 
 # ══════════════════════════════════════════════════════════════════
@@ -911,57 +723,6 @@ def validate_reject_test(name_snippet: tuple[any, ...]) {
 #  These should pass even before implementation, confirming no
 #  false positives on valid patterns.
 # ══════════════════════════════════════════════════════════════════
-test "valid: break inside loop" {
-    (has_err, _) = parse_and_validate(
-        'with entry { for i in [1,2,3] { if i == 2 { break; } } }'
-    );
-    assert not has_err;
-}
-
-test "valid: continue inside loop" {
-    (has_err, _) = parse_and_validate(
-        'with entry { for i in [1,2,3] { if i == 2 { continue; } } }'
-    );
-    assert not has_err;
-}
-
-test "valid: return inside function" {
-    (has_err, _) = parse_and_validate('def foo() -> int { return 42; }');
-    assert not has_err;
-}
-
-test "valid: distinct keyword args" {
-    (has_err, _) = parse_and_validate(
-        'def foo(a: int, b: int) -> int { return a + b; }\nwith entry { foo(a=1, b=2); }'
-    );
-    assert not has_err;
-}
-
-test "valid: single base class" {
-    (has_err, _) = parse_and_validate('obj Base { }\nobj Child(Base) { }');
-    assert not has_err;
-}
-
-test "valid: except with specific type" {
-    (has_err, _) = parse_and_validate(
-        'with entry { try { x = 1; } except ValueError as e { print(e); } }'
-    );
-    assert not has_err;
-}
-
-test "valid: non-empty f-string" {
-    (has_err, _) = parse_and_validate(
-        'with entry { name = "world"; x = f"hello {name}"; }'
-    );
-    assert not has_err;
-}
-
-test "valid: function with return on all paths" {
-    (has_err, _) = parse_and_validate(
-        'def foo(x: int) -> int { if x > 0 { return x; } else { return -x; } }'
-    );
-    assert not has_err;
-}
 
 # ══════════════════════════════════════════════════════════════════
 #  view_body_check — `view` declarator body rules (ViewLowerPass)
@@ -1108,7 +869,6 @@ with entry {
     );
 }
 
-
 test "E2085 permits async client functions and implicit async client tests" {
     prog = JacProgram();
     prog.compile(
@@ -1120,7 +880,6 @@ test "E2085 permits async client functions and implicit async client tests" {
     );
     assert not prog.errors_had , str(prog.errors_had);
 }
-
 
 test "E2085 rejects plain client functions and lambdas inside async tests" {
     prog = JacProgram();
