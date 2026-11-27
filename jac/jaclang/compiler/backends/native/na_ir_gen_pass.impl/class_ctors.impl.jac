@@ -435,12 +435,9 @@ impl NaIRGenPass._bind_class_ctor_spread(
         rec["dup_msg"] = f"{self._arch_display(bound)}() {rec['dup_msg']}";
         records.append((i, rec));
     }
+    release = list(values.values()) + [mapping];
     matched = self._bind_kw_spread(
-        mapping,
-        helpers,
-        [r for (_, r) in records],
-        "",
-        release_on_error=list(values.values()) + [mapping]
+        mapping, helpers, [r for (_, r) in records], "", release_on_error=release
     );
     for (i, rec) in records {
         if rec["alloca"] is None {
@@ -470,7 +467,7 @@ impl NaIRGenPass._bind_class_ctor_spread(
         ),
         "TypeError",
         f"{self._arch_display(bound)}() got an unexpected keyword argument",
-        release_on_error=list(values.values()) + [mapping]
+        release_on_error=release
     );
     return mask;
 }
