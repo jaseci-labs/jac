@@ -1,4 +1,7 @@
 impl NaIRGenPass._hash_key_spec(key_type: ir.Type) -> tuple[str, int] {
+    if self?.jacval_type is not None and key_type == self.jacval_type {
+        return ("jacval", 0);
+    }
     if isinstance(key_type, ir.DoubleType) {
         return ("f64", 0);
     }
@@ -78,6 +81,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
         self._emit_rc_helpers();
     }
     _hl = self._nogc_headerless();
+    _jv_key = self?.jacval_type is not None and key_type == self.jacval_type;
     _free_hl = self._heap_extern("free") if _hl else None;
 
     hash_fnty = ir.FunctionType(i64, [key_type]);
@@ -90,7 +94,9 @@ impl NaIRGenPass._emit_hash_core_helpers(
     _tkf = self._tuple_key_fields(key_type)
         if (_key_sz > 0 and not is_bytes_key and not is_str_key)
         else None;
-    if _tkf is not None {
+    if self?.jacval_type is not None and key_type == self.jacval_type {
+        bhe.ret(bhe.call(self._jacval_hash_fn(), [hash_fn.args[0]], name="h"));
+    } elif _tkf is not None {
         _tkh = self._emit_tuple_key_hash(bhe, hash_fn.args[0]);
         bhe.ret(
             bhe.xor(_tkh, bhe.lshr(_tkh, ir.Constant(i64, 32), name="h.hi"), name="h")
@@ -594,6 +600,8 @@ impl NaIRGenPass._emit_hash_core_helpers(
     } else {
         if isinstance(key_type, ir.PointerType) {
             bi.call(self.rc_retain_fn, [bi.bitcast(k_s, i8p, name="kc")]);
+        } elif _jv_key {
+            self._emit_elem_retain(bi, key_type, k_s);
         }
         if has_vals {
             self._emit_elem_retain(bi, _vt, v_s);
@@ -698,6 +706,10 @@ impl NaIRGenPass._emit_hash_core_helpers(
         bdel.store(
             ir.Constant(key_type, None), bdel.gep(ka_rm, [res_rm], name="kclear")
         );
+    } elif _jv_key and not _hl {
+        self._emit_elem_release(
+            bdel, key_type, bdel.load(bdel.gep(ka_rm, [res_rm], name="kvp"), name="kv")
+        );
     }
     if has_vals and self._elem_kind(_vt) != "raw" {
         va_rm = bdel.load(
@@ -771,6 +783,10 @@ impl NaIRGenPass._emit_hash_core_helpers(
             }
             bdp.store(
                 ir.Constant(key_type, None), bdp.gep(ka_p, [res_p], name="kclear")
+            );
+        } elif _jv_key and not _hl {
+            self._emit_elem_release(
+                bdp, key_type, bdp.load(bdp.gep(ka_p, [res_p], name="kvp"), name="kv")
             );
         }
         bdp.store(
@@ -859,6 +875,12 @@ impl NaIRGenPass._emit_hash_core_helpers(
         blv_cl.store(
             ir.Constant(key_type, None), blv_cl.gep(ka_cl, [si_v_cl], name="kclear")
         );
+    } elif _jv_key and not _hl {
+        self._emit_elem_release(
+            blv_cl,
+            key_type,
+            blv_cl.load(blv_cl.gep(ka_cl, [si_v_cl], name="kvp"), name="kv")
+        );
     }
     if has_vals and self._elem_kind(_vt) != "raw" {
         vv_cl: any = blv_cl.load(blv_cl.gep(va_cl, [si_v_cl], name="vvp"), name="vv");
@@ -945,6 +967,12 @@ impl NaIRGenPass._emit_hash_core_helpers(
     boob = ir.IRBuilder(gk_oob_bb);
     if isinstance(key_type, ir.PointerType) {
         boob.ret(ir.Constant(key_type, None));
+    } elif _ir_member_types(key_type) {
+        boob.ret(
+            ir.Constant(
+                key_type, [self._zero_const(e) for e in _ir_member_types(key_type)]
+            )
+        );
     } else {
         boob.ret(ir.Constant(key_type, 0));
     }
@@ -1142,6 +1170,82 @@ impl NaIRGenPass._emit_cstr_hash_fn -> ir.Function {
     idx.add_incoming(nxt, body);
     ir.IRBuilder(done).ret(h);
     self._cstr_hash_fn = fn;
+    return fn;
+}
+
+impl NaIRGenPass._jacval_hash_fn -> ir.Function {
+    name = "__jac_jacval_hash";
+    try {
+        found = self.llvm_module.get_global(name);
+        if isinstance(found, ir.Function) {
+            return found;
+        }
+    } except KeyError {}
+    i8 = ir.IntType(8);
+    i64 = ir.IntType(64);
+    dbl = ir.DoubleType();
+    fn = ir.Function(
+        self.llvm_module, ir.FunctionType(i64, [self.jacval_type]), name=name
+    );
+    fn.linkage = "private";
+    entry_bb = fn.append_basic_block("entry");
+    str_bb = fn.append_basic_block("str");
+    flt_bb = fn.append_basic_block("flt");
+    flt_whole_bb = fn.append_basic_block("flt.whole");
+    flt_int_bb = fn.append_basic_block("flt.int");
+    bool_bb = fn.append_basic_block("bool");
+    num_bb = fn.append_basic_block("num");
+    other_bb = fn.append_basic_block("other");
+    mix_bb = fn.append_basic_block("mix");
+    b = ir.IRBuilder(entry_bb);
+    tag = b.extract_value(fn.args[0], 0, name="tag");
+    pay = b.extract_value(fn.args[0], 1, name="pay");
+    sw = b.switch(tag, other_bb);
+    sw.add_case(ir.Constant(i8, 2), str_bb);
+    sw.add_case(ir.Constant(i8, 1), flt_bb);
+    sw.add_case(ir.Constant(i8, 0), num_bb);
+    sw.add_case(ir.Constant(i8, 7), bool_bb);
+    bs = ir.IRBuilder(str_bb);
+    sh = bs.call(
+        self._emit_cstr_hash_fn(),
+        [bs.inttoptr(pay, i8.as_pointer(), name="s")],
+        name="sh"
+    );
+    bs.ret(sh);
+    bf = ir.IRBuilder(flt_bb);
+    d = bf.bitcast(pay, dbl, name="d");
+    in_range = bf.and_(
+        bf.fcmp_ordered(">=", d, ir.Constant(dbl, -9.2233720368547758e18), name="ge"),
+        bf.fcmp_ordered("<", d, ir.Constant(dbl, 9.2233720368547758e18), name="lt"),
+        name="inrange"
+    );
+    bf.cbranch(in_range, flt_whole_bb, mix_bb);
+    bw = ir.IRBuilder(flt_whole_bb);
+    as_int = bw.fptosi(d, i64, name="di");
+    whole = bw.fcmp_ordered("==", bw.sitofp(as_int, dbl, name="back"), d, name="whole");
+    bw.cbranch(whole, flt_int_bb, mix_bb);
+    bi = ir.IRBuilder(flt_int_bb);
+    bi.branch(num_bb);
+    ir.IRBuilder(bool_bb).branch(num_bb);
+    bn = ir.IRBuilder(num_bb);
+    num = bn.phi(i64, name="num.v");
+    num.add_incoming(pay, entry_bb);
+    num.add_incoming(pay, bool_bb);
+    num.add_incoming(as_int, flt_int_bb);
+    nh = bn.mul(num, ir.Constant(i64, HASH_MUL_K), name="nh");
+    bn.ret(bn.xor(nh, bn.lshr(nh, ir.Constant(i64, 32), name="nh.hi"), name="nhv"));
+    bo = ir.IRBuilder(other_bb);
+    tagged = bo.xor(
+        pay, bo.shl(bo.zext(tag, i64), ir.Constant(i64, 56)), name="tagged"
+    );
+    bo.branch(mix_bb);
+    bm = ir.IRBuilder(mix_bb);
+    mv = bm.phi(i64, name="mix.v");
+    mv.add_incoming(pay, flt_bb);
+    mv.add_incoming(pay, flt_whole_bb);
+    mv.add_incoming(tagged, other_bb);
+    mh = bm.mul(mv, ir.Constant(i64, HASH_MUL_K), name="mh");
+    bm.ret(bm.xor(mh, bm.lshr(mh, ir.Constant(i64, 32), name="mh.hi"), name="mhv"));
     return fn;
 }
 

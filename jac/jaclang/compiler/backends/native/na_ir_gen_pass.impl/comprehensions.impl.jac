@@ -216,27 +216,6 @@ impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
         val_type_name = self._dict_val_spec(val_type);
     }
 
-    if self?.jacval_type and key_type == self.jacval_type {
-        self.emit(
-            E5092,
-            node_override=nd,
-            kind="expression",
-            name="dict with mixed key types",
-            help_text="Native dicts hash a single concrete key type; a dict whose keys mix representations has no native storage. Use one key type (for example str) and keep the mixing on the value side."
-        );
-        return None;
-    }
-    if isinstance(val_type, ir.VoidType) {
-        self.emit(
-            E5092,
-            node_override=nd,
-            kind="expression",
-            name="dict whose values are always None",
-            help_text="A native dict stores one concrete value type, and a value that is always None has none. Give the values a type that can hold None (for example dict[str, int | None])."
-        );
-        return None;
-    }
-
     self._emit_dict_helpers(key_type_name, val_type_name, key_type, val_type, key_size);
     dict_key = f"{key_type_name}:{val_type_name}";
     helpers = self.dict_helpers.get(dict_key);
@@ -381,6 +360,9 @@ impl NaIRGenPass._emit_compr_element(compr: NativeComprehension) -> None {
             if helpers is not None {
                 expected_key_type = helpers["key_type"];
                 expected_val_type = helpers["val_type"];
+                if self._reject_any_key(key_expr, key_val, expected_key_type) {
+                    return;
+                }
                 key_val = self._box_value_tuple(key_val);
                 _boxed_key = key_val;
                 key_val = self._coerce_type(key_val, expected_key_type);
@@ -393,12 +375,16 @@ impl NaIRGenPass._emit_compr_element(compr: NativeComprehension) -> None {
                 if isinstance(_boxed_key.type, ir.PointerType)
                     and self._is_owned(_boxed_key) {
                     self._emit_rc_release_simple(_boxed_key, op="dcompr_key", loc="");
+                } elif _boxed_key.type == self?.jacval_type {
+                    self._release_owned_args([_boxed_key], op="dcompr_key");
                 }
                 if isinstance(_boxed_val_compr.type, ir.PointerType)
                     and self._is_owned(_boxed_val_compr) {
                     self._emit_rc_release_simple(
                         _boxed_val_compr, op="dcompr_val", loc=""
                     );
+                } elif _boxed_val_compr.type == self?.jacval_type {
+                    self._release_owned_args([_boxed_val_compr], op="dcompr_val");
                 }
             }
         }

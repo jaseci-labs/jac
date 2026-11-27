@@ -1543,6 +1543,7 @@ walker NaIRGenPass(CompilerPass) {
     def _box_to_jacval(value: ir.Value) -> ir.Value;
     def _ellipsis_jacval -> (ir.Value | None);
     def _jacval_pointer_tag(pointer_type: ir.Type) -> int;
+    def _reject_any_key(nd: uni.UniNode, key: ir.Value, key_type: ir.Type) -> bool;
     def _unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Value;
     def _any_view_target(target_type: ir.Type) -> (tuple[str, str] | None);
     def _typed_container_target(target_type: ir.Type) -> (tuple[str, str, str] | None);
@@ -3800,6 +3801,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> None;
 
     def _emit_cstr_hash_fn -> ir.Function;
+    def _jacval_hash_fn -> ir.Function;
     def _is_runtime_class_tuple(t: any) -> bool;
     def _runtime_class_value(expr: (uni.UniNode | None)) -> (ir.Value | None);
     def _runtime_class_arms(
