@@ -121,12 +121,62 @@ test "kind service -> serve headless" {
     assert "port" not in p.flags;
 }
 
-test "serve plan forwards a custom [serve] port from jac.toml" {
-    p = _plan(
-        "kind = \"service\"\nentry-point = \"api\"\n\n[serve]\nport = 3000\n", "api.jac"
-    );
-    assert p.flags.get("port") == 3000;
-    assert "--port 3000" in p.command_line();
+test "a served file binds --port, then JAC_SERVE_PORT, then [serve] port, then 8000" {
+    import from unittest.mock { patch }
+    import from jaclang.server.settings { ServeConfigError, ServeSettings }
+    cli = "kind = \"cli\"\nentry-point = \"main\"\n";
+    service = "kind = \"service\"\nentry-point = \"main\"\n";
+    pinned = "\n[serve]\nport = 18002\n";
+    app_overlay = "\n[apps.api]\nkind = \"service\"\nentry-point = \"main\"\n\n[apps.api.serve]\nport = 8100\n\n[serve]\nport = 8090\n";
+    fleet = "\n[apps.api]\nkind = \"service\"\nentry-point = \"main\"\n\n[apps.orders]\nkind = \"service\"\nentry-point = \"orders\"\n\n[scale.gateway]\ncolocate = false\n";
+    rows = [
+        ("file", cli, None, None, None, 8000, False),
+        ("file", cli + pinned, None, None, None, 18002, True),
+        ("file", cli + pinned, "18003", None, None, 18003, True),
+        ("file", cli + pinned, "18003", 18004, None, 18004, True),
+        ("file", cli + pinned, "18003", 18002, None, 18002, True),
+        ("file", service + pinned, "18003", None, None, 18003, True),
+        ("file", cli + pinned, None, None, True, 18003, False),
+        ("file", app_overlay, None, None, None, 8100, True),
+        ("fleet", fleet + pinned, None, None, None, 18002, True),
+        ("bundle", service + pinned, "18003", None, None, 18003, True)
+    ];
+    seen: list[dict[str, any]] = [];
+    def stop_at_settings(base: any, overrides: any = None, config: any = None) -> any {
+        seen.append(dict(overrides or {}));
+        raise ServeConfigError("stopped before binding");
+    }
+    def stop_at_fleet(*args: any, port: int = 0, **kwargs: any) -> int {
+        seen.append({"port": port, "strict_port": bool(port)});
+        return 0;
+    }
+    def sealed_service(image: any) -> dict[str, any] {
+        return {"kind": "service", "entry": {"path": "main.jac"}};
+    }
+    for row in rows {
+        (via, toml, env_port, typed, dev, want_port, want_strict) = row;
+        d = _mk_project(toml, "main.jac");
+        if via == "fleet" {
+            Path(d, "orders.jac").write_text("with entry { print(\"ok\"); }");
+        }
+        seen.clear();
+        with patch.dict(os.environ, {"JAC_SERVE_PORT": env_port or ""}), patch.object(
+            ServeSettings, "load", stop_at_settings
+        ), patch("jaclang.scale.plugin.scale_local_serve", stop_at_fleet), patch(
+            "jaclang.dist.jab.jab_app_meta", sealed_service
+        ) {
+            if via == "bundle" {
+                execution.run_jab_image(Path(d), typed, [], True, "p.jab");
+            } else {
+                execution.run(
+                    target=f"{d}/main.jac", serve_mode=True, port=typed, dev=dev
+                );
+            }
+        }
+        got = [(s.get("port"), s.get("strict_port")) for s in seen];
+        assert got == [(want_port, want_strict)] , f"{row}: bound {got}";
+    }
+    _cleanup();
 }
 
 test "kind service-mesh -> serve consumer" {
@@ -347,12 +397,10 @@ test "a plan carries the spec it was planned from" {
 }
 
 test "planning never mutates the shared spec's flags" {
-    p = _plan(
-        "kind = \"service\"\nentry-point = \"api\"\n\n[serve]\nport = 3000\n", "api.jac"
-    );
-    assert p.flags.get("port") == 3000;
-    # The port landed on the plan, not on the table entry every project shares.
-    assert "port" not in KIND_SPECS["service"].flags;
+    p = _plan("kind = \"native-binary\"\nentry-point = \"main\"\n", "main.jac");
+    assert "output" in p.flags;
+    # The output landed on the plan, not on the table entry every project shares.
+    assert "output" not in KIND_SPECS["native-binary"].flags;
 }
 
 # ---------------------------------------------------------------------------
@@ -547,7 +595,7 @@ test "entry_override keeps a named file for kinds that plan without one" {
 }
 
 test "serve flags are recognised only when they were actually typed" {
-    # (port, dev, api_port, no_client, faux, host, platform, fleet, cfg): the
+    # (port, dev, api_port, no_client, faux, host, platform, fleet, workers): the
     # old `client` slot is gone with the --client flag.
     over = execution._serve_overrides(
         None, None, None, None, None, None, None, False, None
@@ -574,7 +622,7 @@ test "serve flags are recognised only when they were actually typed" {
     assert over == {"fleet": True};
     # --tunnel is a plain switch too.
     over = execution._serve_overrides(
-        None, None, None, None, None, None, None, False, None, None, True
+        None, None, None, None, None, None, None, False, None, True
     );
     assert over == {"tunnel": True};
 }
@@ -610,21 +658,6 @@ test "--tunnel serves only a mobile app bound for a device" {
     assert not execution._serves_mobile_device(cfg, cfg.app("site"), "");
     assert not execution._serves_mobile_device(cfg, None, "");
     _cleanup();
-}
-
-test "a [serve] port from jac.toml is not mistaken for a typed --port" {
-    d = _mk_project(
-        "kind = \"cli\"\nentry-point = \"main\"\n\n[serve]\nport = 3000\n", "main.jac"
-    );
-    cfg = JacConfig.discover(start_path=Path(d));
-    assert cfg is not None;
-    # Bridged from config: not an override, so it must not force the serve path
-    # (and must not trip the "serve flag on a non-serving kind" error).
-    assert not execution._port_is_explicit(3000, cfg);
-    assert execution._port_is_explicit(9999, cfg);
-    # With no config at all, any port is the user's own.
-    assert execution._port_is_explicit(3000, None);
-    assert not execution._port_is_explicit(None, None);
 }
 
 test "entry-only flags are reported by their CLI spelling" {

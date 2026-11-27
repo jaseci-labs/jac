@@ -142,10 +142,6 @@ impl plan_app_run(
         flags["platform"] = app.platform;
     }
 
-    if spec.action == "serve" and eff.serve.port != 8000 {
-        flags["port"] = eff.serve.port;
-    }
-
     return RunPlan(
         spec=spec,
         entry_path=entry_path,

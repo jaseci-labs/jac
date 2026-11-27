@@ -1963,7 +1963,6 @@ graph import {
             find_project_root
         },
         cli.commands.analysis._format_single_file_worker
-            | cli.commands.execution.run_jab_image
             | dist.precompile_bytecode.precompile_context
             | scale.tests.microservices.test_app_precompile { get_config_for_path },
         cli.commands.project._resolve_template
@@ -3435,6 +3434,7 @@ graph import {
         scale.tests.server.test_sso_grants { AuthSettings, PasswordSettings },
     ]
     server.settings --> [
+        cli.commands.execution.serve { requested_port },
         runtime.source_app.main
             | scale.tests.microservices.test_drain
             | scale.tests.server.test_serve { ServeSettings },

@@ -501,25 +501,20 @@ test "plan_workspace produces one plan per app" {
         assert web.kind == "web-app";
         assert web.action == "serve";
         assert web.entry_path == str(root_path / "web" / "main.jac");
-        assert web.flags["port"] == 8100 , "the app's serve overlay feeds the plan";
-        assert web.flags["dev"] is True;
+        assert web.flags == {"dev": True} , "a plan carries kind properties, not the port";
         assert web.command_line().startswith("jac run web");
         mobile = by_app["mobile"];
         assert mobile.action == "serve" , "jac run serves a mobile app to Expo Go";
         assert mobile.spec.ui == "mobui";
         assert "client" not in mobile.flags , "plans carry no client flag";
-        assert mobile.flags == {"dev": True, "platform": "ios", "port": 8090} , (
-            "a served mobile app takes the base [serve] port for its API"
-        );
-        assert mobile.command_line()
-            == "jac run mobile --dev --platform ios --port 8090";
+        assert mobile.flags == {"dev": True, "platform": "ios"};
+        assert mobile.command_line() == "jac run mobile --dev --platform ios";
         assert mobile.build_line() == "jac build mobile --platform ios";
         assert mobile.entry_path == str(root_path / "mobile" / "main.jac");
         sg = by_app["social_graph"];
         assert sg.kind == "service";
         assert sg.entry_path == str(root_path / "core" / "social_graph.jac");
-        assert sg.flags["port"] == 8090 , "no overlay: the base [serve] port applies";
-        assert sg.flags["no_client"] is True;
+        assert sg.flags == {"no_client": True};
         assert sg.command_line().startswith("jac run social_graph");
     }
 }

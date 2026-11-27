@@ -46,8 +46,6 @@ def _serve_flag_spelling -> dict[str, str];
 
 def _flag_list(names: list[str]) -> str;
 
-def _port_is_explicit(port: (int | None), cfg: any) -> bool;
-
 def _serve_overrides(
     port: (int | None),
     dev: (bool | None),
@@ -57,7 +55,6 @@ def _serve_overrides(
     host: (str | None),
     platform: (str | None),
     fleet: bool,
-    cfg: any,
     workers: (str | None) = None,
     tunnel: bool = False
 ) -> dict[str, any];
@@ -117,17 +114,9 @@ impl run_jab_image(
             return 1;
         }
         serve_port = arg_port if arg_port is not None else port;
-        if serve_port is None {
-            import from jaclang.project.config { get_config_for_path }
-            img_cfg = get_config_for_path(img_root);
-
-            serve_port = (
-                img_cfg.serve.port if img_cfg and img_cfg.serve.port != 8000 else 0
-            );
-        }
         return serve(
             filename=entry_abs,
-            port=serve_port,
+            port=serve_port or 0,
             no_client=(kind == "service"),
             dev=False
         );
@@ -248,20 +237,9 @@ impl run(
     if rc {
         return rc;
     }
-    eff = _effective_config(cfg, app);
 
     over = _serve_overrides(
-        port,
-        dev,
-        api_port,
-        no_client,
-        faux,
-        host,
-        platform,
-        fleet,
-        eff,
-        workers,
-        tunnel
+        port, dev, api_port, no_client, faux, host, platform, fleet, workers, tunnel
     );
     entry_flags = _entry_flags_used(entry_name, nd, root_id, debug_mode);
     kind_serves = plan is not None and plan.action == "serve";
@@ -421,10 +399,20 @@ impl serve(
         );
         return 1;
     }
+    import from jaclang.server.settings { requested_port }
+    served_cfg = _effective_config(cfg, served);
+    try {
+        (bind_port, port_pinned) = requested_port(
+            port or None, served_cfg.serve if served_cfg is not None else None
+        );
+    } except ServeConfigError as e {
+        console.error(f"cannot start the server:\n{e}");
+        return 1;
+    }
     if served is not None {
         import from jaclang.client.cli { run_client_start }
         client_rc = run_client_start(
-            served, host, platform, port, api_port, dev, no_client, tunnel
+            served, host, platform, bind_port, api_port, dev, no_client, tunnel
         );
         if client_rc is not None {
             return client_rc;
@@ -432,7 +420,9 @@ impl serve(
     }
 
     mark_scale_runtime();
-    fleet_rc = _serve_fleet(cfg, served, filename, port, fleet, dev, no_client);
+    fleet_rc = _serve_fleet(
+        cfg, served, filename, bind_port if port_pinned else 0, fleet, dev, no_client
+    );
     if fleet_rc is not None {
         return fleet_rc;
     }
@@ -451,14 +441,12 @@ impl serve(
     }
     (base, mod, mach) = _proc_file(filename);
 
-    port_pinned = port > 0;
-    port = port if port_pinned else 8000;
     if dev and not no_client {
-        vite_port = port;
-        actual_api_port = api_port if api_port > 0 else port + 1;
+        vite_port = bind_port;
+        actual_api_port = api_port if api_port > 0 else bind_port + 1;
         api_port_pinned = api_port > 0;
     } else {
-        actual_api_port = port;
+        actual_api_port = bind_port;
         vite_port = 0;
         api_port_pinned = port_pinned;
     }
@@ -1119,17 +1107,6 @@ impl _flag_list(names: list[str]) -> str {
     return ", ".join(sorted(names));
 }
 
-impl _port_is_explicit(port: (int | None), cfg: any) -> bool {
-    if port is None {
-        return False;
-    }
-    if cfg is None {
-        return True;
-    }
-    raw = getattr(cfg, "_raw_data", {}).get("serve", {});
-    return not (isinstance(raw, dict) and raw.get("port") == port);
-}
-
 impl _serve_overrides(
     port: (int | None),
     dev: (bool | None),
@@ -1139,12 +1116,11 @@ impl _serve_overrides(
     host: (str | None),
     platform: (str | None),
     fleet: bool,
-    cfg: any,
     workers: (str | None) = None,
     tunnel: bool = False
 ) -> dict[str, any] {
     over: dict[str, any] = {};
-    if _port_is_explicit(port, cfg) {
+    if port is not None {
         over["port"] = port;
     }
     if dev is not None {

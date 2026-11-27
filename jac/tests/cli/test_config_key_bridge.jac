@@ -3,14 +3,17 @@
 Each CLI flag that falls back to jac.toml when left at its argparse default
 must declare ``config_key="section.key"`` on its ``Arg.create`` call. Dispatch
 reads those keys at runtime instead of a hand-maintained bridge table.
+
+A ``None`` row pins a flag that must stay unbridged: a bridged ``run --port``
+would look typed and beat ``JAC_SERVE_PORT``.
 """
 
 import from jaclang.cli.manifest { get_command_meta }
 
-glob _EXPECTED_CONFIG_KEYS: list[tuple[str, str, str]] = [
+glob _EXPECTED_CONFIG_KEYS: list[tuple[str, str, (str | None)]] = [
          ("run", "cache", "run.cache"),
          ("run", "main", "run.main"),
-         ("run", "port", "serve.port"),
+         ("run", "port", None),
          ("test", "verbose", "test.verbose"),
 
      ];
