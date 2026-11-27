@@ -515,11 +515,12 @@ test "gateway websocket refresh cannot switch to another account" {
 
 
 test "the gateway leaves a service's own accounts to the service" {
-    manager = _manager();
+    gw = MicroserviceGateway(registry=ServiceRegistry());
+    manager = gw.identity();
+    assert manager.issuer == "__gateway__";
     # Signed like a real token, for an account only a service holds.
     token = _signed({"sub": uuid.uuid4().hex});
     assert _status(manager, token) == "unknown_user";
-    gw = MicroserviceGateway(registry=ServiceRegistry(), user_manager=manager);
     request = Request();
     request.headers.set("Authorization", f"Bearer {token}");
     request.headers.set("Cookie", f"jac_session={token}; theme=dark");
@@ -536,10 +537,11 @@ test "the gateway leaves a service's own accounts to the service" {
 
 
 test "the gateway stops its own session for a deleted account, and forwards an app's" {
-    manager = _manager();
+    gw = MicroserviceGateway(registry=ServiceRegistry());
+    manager = gw.identity();
+    assert manager.issuer == "__gateway__";
     (user_id, password) = _account(manager);
     token = _sign_in(manager, user_id, password);
-    gw = MicroserviceGateway(registry=ServiceRegistry(), user_manager=manager);
     def forwarded(bearer: str) -> dict[str, str] {
         request = Request();
         request.headers.set("Authorization", f"Bearer {bearer}");

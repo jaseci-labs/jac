@@ -12,7 +12,9 @@ impl UserManager.postinit -> None {
     if not self.issuer {
         name = os.environ.get('JAC_SV_NAME', '').strip();
         own_store = os.environ.get('JAC_SV_OWN_STORE') == '1';
-        self.issuer = name if name and own_store else GATEWAY_ISSUER;
+        if name {
+            self.issuer = name if own_store else GATEWAY_ISSUER;
+        }
     }
 }
 
@@ -359,9 +361,11 @@ impl UserManager.create_jwt_token(
         'user_id': user_id,
         'exp': (now + timedelta(days=token_ttl_days())),
         'iat': now.timestamp(),
-        SESSION_EPOCH_CLAIM: epoch,
-        ISSUER_CLAIM: self.issuer
+        SESSION_EPOCH_CLAIM: epoch
     };
+    if self.issuer {
+        payload[ISSUER_CLAIM] = self.issuer;
+    }
     username = self.get_username(user_id);
     if username {
         payload['preferred_username'] = username;

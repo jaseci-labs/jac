@@ -1218,7 +1218,7 @@ impl MicroserviceGateway.add_endpoint(ep: JEndPoint) -> None {
 
 impl MicroserviceGateway.identity -> UserManager {
     if self.user_manager is None {
-        self.user_manager = UserManager(base_path=self.base_path);
+        self.user_manager = UserManager(base_path=self.base_path, issuer="__gateway__");
     }
     return self.user_manager;
 }

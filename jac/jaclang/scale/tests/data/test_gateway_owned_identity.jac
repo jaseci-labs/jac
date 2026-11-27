@@ -113,14 +113,14 @@ def _token_from(issuer: str, user_id: str) -> str {
 
 
 test "a session token names the identity store that holds the account" {
-    gateway = _manager("");
+    unnamed = _manager("");
     orders = _manager("orders_app");
     payments = _manager("payments_app", own_store=True);
-    if gateway is None or orders is None or payments is None {
+    if unnamed is None or orders is None or payments is None {
         return;
     }
     for (manager, expected) in [
-        (gateway, "__gateway__"),
+        (unnamed, None),
         (orders, "__gateway__"),
         (payments, "payments_app")
     ] {
