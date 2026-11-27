@@ -327,7 +327,13 @@ impl NaIRGenPass._codegen_class_value_call(
     }
     cls = self._coerce_type(cls, i8p);
     values: dict[int, ir.Value] = {};
+    given = {
+        i
+        for (i, _) in bound_args
+        if i >= 0
+    };
     mask = 0;
+    mask_value: ir.Value = ir.Constant(i64, 0);
     mapping: (ir.Value | None) = None;
     for (index, expr) in bound_args {
         value = self._codegen_expr(expr);
@@ -335,27 +341,26 @@ impl NaIRGenPass._codegen_class_value_call(
             return None;
         }
         if index < 0 {
-            if not self._is_owned(value) and not self._nogc_headerless() {
-                self._emit_take_ref(value, op="class_ctor_kwargs");
-                self._mark_owned(value);
-            }
             mapping = value;
+            spread_mask = self._bind_class_ctor_spread(
+                nd, mapping, params, values, given, mask_value, bound
+            );
+            if spread_mask is None {
+                return None;
+            }
+            mask_value = spread_mask;
             continue;
         }
         values[index] = self._coerce_type(value, params[index].type);
         mask |= 1 << index;
     }
     owned = list(values.values());
-    mask_value: ir.Value = ir.Constant(i64, mask);
-    if mapping is not None {
-        spread_mask = self._bind_class_ctor_spread(
-            nd, mapping, params, values, mask_value, bound
+    if mapping is None {
+        mask_value = ir.Constant(i64, mask);
+    } else {
+        mask_value = self.builder.or_(
+            mask_value, ir.Constant(i64, mask), name="kwargs.mask"
         );
-        if spread_mask is None {
-            return None;
-        }
-        mask_value = spread_mask;
-        owned = list(values.values());
     }
     ctor_entry = self.builder.call(
         self._emit_class_ctor_lookup_fn(),
@@ -374,7 +379,7 @@ impl NaIRGenPass._codegen_class_value_call(
         f"class is not constructible with the {self._arch_display(
             bound
         )} constructor arguments",
-        release_on_error=owned + ([mapping] if mapping is not None else [])
+        release_on_error=owned
     );
     fnty = self._class_ctor_fn_type(params);
     call_args: list[ir.Value] = [mask_value];
@@ -413,6 +418,7 @@ impl NaIRGenPass._bind_class_ctor_spread(
     mapping: ir.Value,
     params: list[NativeCtorParam],
     values: dict[int, ir.Value],
+    given: set[int],
     mask: ir.Value,
     bound: str
 ) -> (ir.Value | None) {
@@ -436,8 +442,8 @@ impl NaIRGenPass._bind_class_ctor_spread(
             p.name,
             p.type,
             i,
-            values[i] if i in values else self._default_arg_fallback(p.type),
-            "kw" if i in values else None,
+            self._default_arg_fallback(p.type),
+            "kw" if i in given else None,
             None
         );
         rec["dup_msg"] = f"{self._arch_display(bound)}() {rec['dup_msg']}";

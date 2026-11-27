@@ -122,7 +122,7 @@ glob calls: list[str] = [],
 
 def track(tag: str) -> int {
     calls.append(tag);
-    shift_opts = {"x": 50};
+    shift_opts["x"] = 50;
     return 2;
 }
 
