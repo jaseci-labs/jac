@@ -4,13 +4,10 @@ Tests that the Jac formatter produces correct output: fixture comparisons,
 AST preservation, micro suite round-trip, and regression tests.
 """
 
-import ast as ast3;
 import os;
 import from difflib { unified_diff }
 import from tests.support { JAC_ROOT }
 import jaclang;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.project.source { add_line_numbers }
 import from jaclang.compiler.driver.program { JacProgram }
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "tools", "fixtures");
 
@@ -50,112 +47,390 @@ def compare_files(
     }
 }
 
-def micro_suite_test(filename: str, auto_lint: bool = False) {
-    code_gen_pure = JacProgram().compile(filename);
-    format_prog = JacProgram.jac_file_formatter(filename, auto_lint=auto_lint);
-    code_gen_format = format_prog.mod.main.gen.jac;
-    code_gen_jac = JacProgram().compile(use_str=code_gen_format, file_path=filename);
-    if "circle_clean_tests.jac" in filename {
-        tokens = code_gen_format.split();
-        num_test = 0;
-        for i in range(len(tokens)) {
-            if tokens[i] == "test" {
-                num_test += 1;
-                assert tokens[i + 1] == "{";
-            }
+# Format `source`, require no errors, and require a second format to change nothing.
+def fmt_checked(source: str) -> str {
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac or "";
+    again = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert not again.errors_had , f"formatter errors on re-format: {again.errors_had}";
+    assert formatted == again.mod.main.gen.jac , f"formatting is not idempotent:\n{formatted}";
+    return formatted;
+}
+
+# Fixtures the formatter must leave byte-for-byte unchanged. connect_op_fmt.jac
+# keeps typed connect operators compact, like the traversal edge ops.
+glob SELF_FORMATTING_FIXTURES: list[str] = [
+         "simple_walk_fmt.jac",
+         "tagbreak.jac",
+         "connect_op_fmt.jac",
+         "has_frmt.jac",
+         "import_fmt.jac",
+         "archetype_frmt.jac",
+         "lambda_whitespace_fmt.jac",
+         "implicit_return_fmt.jac",
+         "forever_fmt.jac",
+         "awaiting_fmt.jac",
+         "awaiting_jsx_fmt.jac"
+     ];
+
+test "each formatter fixture formats to itself" {
+    changed: list[str] = [];
+    for name in SELF_FORMATTING_FIXTURES {
+        try {
+            compare_files(os.path.join(FIXTURES, name));
+        } except AssertionError {
+            changed.append(name);
         }
-        assert num_test == 3;
-        return;
     }
-    before = "";
-    after = "";
-    try {
-        before = ast3.dump(code_gen_pure.gen.py_ast[0], indent=2);
-        after = ast3.dump(code_gen_jac.gen.py_ast[0], indent=2);
-        assert isinstance(code_gen_pure, uni.Module)
-            and isinstance(code_gen_jac, uni.Module) , "Parsed objects are not modules.";
-        diff = "\n".join(unified_diff(before.splitlines(), after.splitlines()));
-        assert not diff , "AST structures differ after formatting.";
-    } except Exception as e {
-        print(f"Error in {filename}: {e}");
-        print(add_line_numbers(code_gen_pure.source.code));
-        print("\n+++++++++++++++++++++++++++++++++++++++\n");
-        print(add_line_numbers(code_gen_format));
-        print("\n+++++++++++++++++++++++++++++++++++++++\n");
-        if before and after {
-            print("\n".join(unified_diff(before.splitlines(), after.splitlines())));
+    assert not changed , f"fixtures changed by formatting: {changed}";
+}
+
+# (case, source, text the output must contain, text it must not contain)
+glob SOURCE_CASES: list[tuple[str, str, list[str], list[str]]] = [
+         (
+             "visit insertion position compact fmt",
+             "walker Walk { can step with Root entry { "
+             "visit : 0 : [-->]; visit : -1 : [-->] else { disengage; } "
+             "visit : 1 + 2 : [-->]; visit [-->]; } }",
+             [
+                 "visit:0: [-->];",
+                 "visit:-1: [-->] else {",
+                 "visit:1 + 2: [-->];",
+                 "visit [-->];"
+             ],
+             []
+         ),
+         (
+             "graph filter membership keeps keyword spacing",
+             'node Item { has name: str; }\n\nwith entry {\n'
+             'items = [root-->[?:Item, name in ("a", "b")]];\n}\n',
+             ["name in "],
+             []
+         ),
+         (
+             "empty blocks format without inner space",
+             'obj Empty {}\n\nobj HasM {\n    def m;\n}\n\nimpl HasM.m {}\n\n'
+             'walker W {\n    can go with Root entry {}\n}\n\ndef multi {}\n\n'
+             'def branches(x: int) {\n    if x > 0 {} else {}\n    while False {}\n'
+             '    for i in range(1) {}\n    try {} except Exception {} finally {}\n}\n\n'
+             'test {}\n\nwith entry {}\n',
+             [
+                 "obj Empty {}",
+                 "impl HasM.m {}",
+                 "can go with Root entry {}",
+                 "def multi {}",
+                 "if x > 0 {} else {}",
+                 "while False {}",
+                 "for i in range(1) {}",
+                 "try {} except Exception {} finally {}",
+                 "test {}",
+                 "with entry {}"
+             ],
+             ["{ }"]
+         ),
+         # Inline-only JSX children and a lambda's single-statement `if` stay flat.
+         (
+             "jsx and lambda inline compact forms stay flat",
+             'def:pub app -> JsxElement {\n    has text: str = "";\n\n'
+             '    async def add {\n        text = "";\n    }\n\n    return\n'
+             '        <div>\n            <input\n                value={text}\n'
+             '                onKeyPress={lambda (e: KeyboardEvent) { if e.key == "Enter" { add(); }}}\n'
+             '                placeholder="Add a todo..."\n            />\n'
+             '            <button onClick={add}>Add</button>\n'
+             '            <p>hello ({text})</p>\n        </div>;\n}\n',
+             [
+                 "<button onClick={add}>Add</button>",
+                 "<p>hello ({text})</p>",
+                 'lambda (e: KeyboardEvent) { if e.key == "Enter" { add(); }}'
+             ],
+             []
+         ),
+         # Statement-form `{...}` slots keep their syntax; the view lowering never leaks.
+         (
+             "JSX slot statement bodies round-trip through the formatter",
+             'def:pub Greeting(name: str) -> JsxElement {\n    return <div>\n'
+             '        {if name == "" {\n            <p>anon</p>\n        } else {\n'
+             '            <h1>Hello, {name}</h1>\n        }}\n    </div>;\n}\n',
+             ["{if name", "} else {"],
+             ["__jac_view_kids"]
+         ),
+         (
+             "dynamic JSX tags round-trip through the formatter",
+             'def:pub Box(as_: str, children: any = None) -> JsxElement {\n'
+             '    return <@as_ class="box">{children}</@as_>;\n}\n\n'
+             'def:pub Icon(glyph: type) -> JsxElement {\n'
+             '    return <@{glyph} class="icon"/>;\n}\n',
+             ["<@as_", "</@as_>", "<@{glyph}"],
+             []
+         ),
+         # A JSX `return` that fits the print width stays on the `return` line.
+         (
+             "return jsx stays on one line when it fits",
+             'def:pub AlertDialog(props: any) -> JsxElement {\n    return\n'
+             '        <AlertDialogPrimitive.Root data-slot="alert-dialog" {**props}/>;\n}\n\n'
+             'def:pub Greeting -> JsxElement {\n    return\n        <p>Hello</p>;\n}\n',
+             [
+                 'return <AlertDialogPrimitive.Root data-slot="alert-dialog" {**props}/>;',
+                 "return <p>Hello</p>;"
+             ],
+             []
+         ),
+         # `by <name>()` and `by <name>(kwargs)` survive the format pass.
+         (
+             "genai ability empty parens preserves by and parens",
+             "def get_emoji(input: str) -> str by llm();\n",
+             ["by llm()"],
+             []
+         ),
+         (
+             "genai ability with kwargs preserves by and arguments",
+             "def get_emoji(input: str) -> str by llm(temperature=0.7, incl_info={\"examples\": emoji_examples});\n",
+             ["by llm(", "temperature=0.7", "incl_info="],
+             []
+         ),
+         # Set literals and assign comprehensions space after commas like lists do.
+         (
+             "set literal spaces after commas like other collections",
+             "glob a = {1,2,3};\n",
+             ["{1, 2, 3}"],
+             []
+         ),
+         (
+             "assign comprehension spaces after commas like filter comprehension",
+             "with entry { x = (a)(=foo=1,bar=2); }\n",
+             ["=foo=1, bar=2"],
+             []
+         ),
+         # Enum bases space like type annotations and base-class lists.
+         (
+             "enum base type colon and parens space correctly",
+             'enum Category: int { WORK, PERSONAL }\nenum Color(Mixin, Enum) { RED, GREEN }\n',
+             ["enum Category: int", "enum Color(Mixin, Enum)"],
+             ["Category : int"]
+         ),
+         (
+             "short binary chains stay flat",
+             'with entry {\n    x = 1 + 2 + 3;\n    y = x < 10;\n}\n',
+             ["x = 1 + 2 + 3;", "y = x < 10;"],
+             []
+         )
+     ];
+
+test "each source case formats to its expected text, idempotently" {
+    failed: list[str] = [];
+    for (label, source, present, absent) in SOURCE_CASES {
+        try {
+            formatted = fmt_checked(source);
+            missing = [
+                s
+                for s in present
+                if s not in formatted
+            ];
+            leaked = [
+                s
+                for s in absent
+                if s in formatted
+            ];
+            assert not missing and not leaked , (
+                f"missing {missing}, unexpected {leaked}:\n{formatted}"
+            );
+        } except AssertionError as err {
+            failed.append(f"{label}: {err}");
         }
-        raise e;
     }
+    assert not failed , "\n".join(failed);
 }
 
-test "simple walk fmt" {
-    compare_files(os.path.join(FIXTURES, "simple_walk_fmt.jac"));
+# An inline comment after a call argument must not swallow the next argument.
+test "inline comment in func call args" {
+    formatted = fmt_checked(
+        'def foo -> None {\n    x = bar(\n        a[:-4],  # trim suffix\n'
+        '        baz(y)\n    );\n}\n'
+    );
+    lines = formatted.splitlines();
+    comment_line = next(
+        (
+            ln
+            for ln in lines
+            if "# trim suffix" in ln
+        ),
+        None
+    );
+    assert comment_line is not None , "Inline comment was lost";
+    assert "baz" not in comment_line , f"Next argument merged into comment line: {comment_line!r}";
+    assert any("baz(y)" in ln for ln in lines) , f"Second argument 'baz(y)' was lost:\n{formatted}";
 }
 
-test "visit insertion position compact fmt" {
-    source = "walker Walk { can step with Root entry { "
-        + "visit : 0 : [-->]; visit : -1 : [-->] else { disengage; } "
-        + "visit : 1 + 2 : [-->]; visit [-->]; } }";
-    formatted = JacProgram.jac_str_formatter(
-        source_str=source, file_path="<test>.jac"
-    ).mod.main.gen.jac;
-    assert "visit:0: [-->];" in formatted;
-    assert "visit:-1: [-->] else {" in formatted;
-    assert "visit:1 + 2: [-->];" in formatted;
-    assert "visit [-->];" in formatted;
-    assert JacProgram.jac_str_formatter(
-        source_str=formatted, file_path="<test>.jac"
-    ).mod.main.gen.jac
-        == formatted;
+# A JSX `return` that does not fit drops the element onto its own line.
+test "return jsx breaks when it does not fit" {
+    formatted = fmt_checked(
+        'def:pub Big(props: any) -> JsxElement {\n'
+        '    return <AlertDialogPrimitive.Overlay {**props} '
+        'data-slot="alert-dialog-overlay" '
+        'className={cn("a-very-long-class-name-string-that-blows-past-print-width", '
+        'props["className"])}/>;\n}\n\n'
+        'def:pub Tree -> JsxElement {\n'
+        '    return <div><span>a</span><span>b</span></div>;\n}\n'
+    );
+    assert not any(
+        ln.strip().startswith("return <") for ln in formatted.splitlines()
+    ) , (f"overflowing JSX return must break onto its own line:\n{formatted}");
+    assert "<span>a</span>" in formatted and "<span>b</span>" in formatted , formatted;
 }
 
-test "tagbreak" {
-    compare_files(os.path.join(FIXTURES, "tagbreak.jac"));
+# Only a lambda's single-statement, no-else `if` may stay flat; other `if`s break.
+test "if statement outside lambda still breaks" {
+    formatted = fmt_checked(
+        'def foo -> None {\n    if a { b(); }\n    if c {\n        d();\n        e();\n    }\n'
+        '    f = lambda (e: int) { if e > 0 { x = 1; y = 2; } };\n'
+        '    g = lambda (e: int) { if e > 0 { x = 1; } else { x = 2; } };\n}\n'
+    );
+    assert formatted , "formatter produced empty output";
+    if_a = next(
+        (
+            ln
+            for ln in formatted.splitlines()
+            if ln.strip().startswith("if a {")
+        ),
+        None
+    );
+    assert if_a is not None , f"top-level `if a` not found:\n{formatted}";
+    assert "b();" not in if_a , f"top-level `if a {{ b(); }}` should have broken:\n{formatted}";
+    assert "lambda (e: int) { if e > 0 { x = 1; y = 2; }" not in formatted , formatted;
+    assert "lambda (e: int) { if e > 0 { x = 1; } else { x = 2; } }"
+        not in formatted , formatted;
 }
 
-test "graph filter membership keeps keyword spacing" {
-    source = 'node Item { has name: str; }\n\nwith entry {\n'
-        + 'items = [root-->[?:Item, name in ("a", "b")]];\n}\n';
-    formatted = JacProgram.jac_str_formatter(
-        source_str=source, file_path="<test>.jac"
-    ).mod.main.gen.jac;
-    assert "name in " in formatted , formatted;
-    second = JacProgram.jac_str_formatter(
-        source_str=formatted, file_path="<test>.jac"
-    ).mod.main.gen.jac;
-    assert second == formatted , repr(formatted) + "\n" + repr(second);
+# A JSX element decides flat or broken separately for its opening tag and its children.
+test "jsx attributes and children group independently" {
+    formatted = fmt_checked(
+        'def app -> JsxElement {\n    return\n        <div>\n'
+        '            <h2 style={{color: "#dc2626"}}>Short</h2>\n'
+        '            <p style={{color: "#374151", marginBottom: "16px"}}>An unexpected error occurred.</p>\n'
+        '            <div\n                class="tweet-header"\n'
+        '                style={{"fontWeight": "bold", "marginBottom": "8px"}}\n'
+        '            >@{tweet.username}</div>\n        </div>;\n}\n'
+    );
+    lines = formatted.splitlines();
+    # A: fits whole. B: the opening tag fits, the children break. C: the tag breaks too.
+    assert '<h2 style={{color: "#dc2626"}}>Short</h2>' in formatted , formatted;
+    p_open = '<p style={{color: "#374151", marginBottom: "16px"}}>';
+    assert p_open in formatted
+        and "An unexpected error occurred." in formatted , formatted;
+    assert not any(p_open in ln and "An unexpected" in ln for ln in lines) , formatted;
+    assert not any(
+        ln.rstrip().endswith(">@{tweet.username}</div>") for ln in lines
+    ) , formatted;
+    assert "@{tweet.username}" in formatted , formatted;
 }
 
-test "connect op compact fmt" {
-    # Typed connect operators (`+>:E:+>`, `<+:E:<+`, `+>:E:w=5:+>`) format
-    # compactly, matching the traversal edge-op (`->:E:->`) and disconnect
-    # (`del ->:E:->`) forms; no spaces are inserted around the inner colons.
-    compare_files(os.path.join(FIXTURES, "connect_op_fmt.jac"));
+# `by <name>;` keeps both the `by` and the closing semicolon.
+test "genai ability bare name preserves by and semicolon" {
+    formatted = fmt_checked("def classify(s: str) -> str by llm;\n");
+    assert "by llm;" in formatted and formatted.rstrip().endswith(";") , repr(
+        formatted
+    );
 }
 
-test "has fmt" {
-    compare_files(os.path.join(FIXTURES, "has_frmt.jac"));
+# A set literal wider than the print width breaks one element per line.
+test "long set literal wraps one element per line like a list" {
+    formatted = fmt_checked(
+        'glob a = {"alpha","bravo","charlie","delta","echo","foxtrot",'
+        '"golf","hotel","india","juliet","kilo","lima"};\n'
+    );
+    lines = formatted.splitlines();
+    assert len(lines) > 3 , f"long set literal must break across lines:\n{formatted}";
+    assert not any('"alpha"' in ln and '"bravo"' in ln for ln in lines) , formatted;
 }
 
-test "import fmt" {
-    compare_files(os.path.join(FIXTURES, "import_fmt.jac"));
+# Spaces between JSX text and inline elements are significant: short mixed JSX
+# stays flat, and long mixed JSX keeps them as `{" "}` markers when it breaks.
+test "jsx significant whitespace around inline elements is preserved" {
+    short_fmt = fmt_checked(
+        'def:pub hud -> JsxElement {\n'
+        '    return <div id="hud">score <b>0</b> · <b>0</b> fps</div>;\n}\n'
+    );
+    assert '<div id="hud">score <b>0</b> · <b>0</b> fps</div>' in short_fmt , short_fmt;
+    long_fmt = fmt_checked(
+        'def:pub hint -> JsxElement {\n'
+        '    return <div id="hint">Click the canvas to capture the mouse · '
+        '<b>WASD</b> move and mouse aim · <b>Space</b> fire · <b>Tab</b> release the '
+        'cursor</div>;\n}\n'
+    );
+    assert "\n" in long_fmt.split("return")[1].split(";")[0] , long_fmt;
+    assert '{" "}' in long_fmt , long_fmt;
+    assert "move ·" in long_fmt
+        or 'move ·{" "}' in long_fmt
+        or "move\n" not in long_fmt , long_fmt;
 }
 
-test "archetype" {
-    compare_files(os.path.join(FIXTURES, "archetype_frmt.jac"));
+# Binary, compare and match-or chains break one operand per line, operator first.
+test "long plus chain breaks one operand per line" {
+    formatted = fmt_checked(
+        'def cat(tail: str) -> str {\n    return (\n'
+        '        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"\n'
+        '        + "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"\n'
+        '        + "cccccccccccccccccccccccccccccccccccccccccccc"\n'
+        '        + tail\n    );\n}\n'
+    );
+    lines = formatted.splitlines();
+    assert all(len(ln) <= 88 for ln in lines) , formatted;
+    assert not any('"aaaa' in ln and '"bbbb' in ln for ln in lines) , formatted;
+    assert any(ln.lstrip().startswith('+ "bbbb') for ln in lines) , formatted;
+    # The parens own the indent, so operands stay at 8 spaces.
+    assert any(ln.startswith('        + "bbbb') for ln in lines) , formatted;
 }
 
-test "lambda whitespace fmt" {
-    compare_files(os.path.join(FIXTURES, "lambda_whitespace_fmt.jac"));
+test "bare chain continuation indents one level" {
+    formatted = fmt_checked(
+        'with entry {\n    out = "start";\n'
+        '    out += "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"\n'
+        '    + "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"\n'
+        '    + "cccccccccccccccccccccccccccccccccccc";\n}\n'
+    );
+    lines = formatted.splitlines();
+    assert any(ln.startswith('        + "bbbb') for ln in lines) , formatted;
+    assert not any(ln.startswith('+ "bbbb') for ln in lines) , formatted;
 }
 
-test "implicit return fmt" {
-    compare_files(os.path.join(FIXTURES, "implicit_return_fmt.jac"));
+test "mixed precedence chain keeps tighter subexpression intact" {
+    formatted = fmt_checked(
+        'def mix(aaaaaaaaaaaaaaaaaaaaaaaaaaaa: int, bbbbbbbbbbbbbbbbbbbb: int,'
+        ' cccccccccccccccccccc: int, dddddddddddddddddddd: int) -> int {\n'
+        '    return (\n        aaaaaaaaaaaaaaaaaaaaaaaaaaaa\n'
+        '        + bbbbbbbbbbbbbbbbbbbb * cccccccccccccccccccc\n'
+        '        + dddddddddddddddddddd\n    );\n}\n'
+    );
+    lines = formatted.splitlines();
+    assert all(len(ln) <= 88 for ln in lines) , formatted;
+    assert any(
+        "bbbbbbbbbbbbbbbbbbbb * cccccccccccccccccccc" in ln for ln in lines
+    ) , formatted;
 }
 
-test "forever fmt" {
-    compare_files(os.path.join(FIXTURES, "forever_fmt.jac"));
+test "long comparison chain breaks one operand per line" {
+    formatted = fmt_checked(
+        'def cmp(aaaaaaaaaaaaaaa: int, bbbbbbbbbbbbbbb: int,'
+        ' ccccccccccccccc: int, ddddddddddddddd: int) -> bool {\n'
+        '    return (\n        aaaaaaaaaaaaaaa < bbbbbbbbbbbbbbb < ccccccccccccccc'
+        ' < ddddddddddddddd < aaaaaaaaaaaaaaa\n    );\n}\n'
+    );
+    lines = formatted.splitlines();
+    assert all(len(ln) <= 88 for ln in lines) , formatted;
+    assert any(ln.lstrip().startswith("< ") for ln in lines) , formatted;
+}
+
+test "long match-or pattern breaks one alternative per line" {
+    formatted = fmt_checked(
+        'def pick(x: str) -> str {\n    match x {\n'
+        '        case "aaaaaaaaaaaaaaaaaaaaaaaa" | "bbbbbbbbbbbbbbbbbbbbbbbb"'
+        ' | "cccccccccccccccccccccccc" | "dddddddddddddddddddddddd":\n'
+        '            return "hit";\n        case _:\n            return "miss";\n    }\n}\n'
+    );
+    lines = formatted.splitlines();
+    assert all(len(ln) <= 88 for ln in lines) , formatted;
+    assert not any('"aaaa' in ln and '"bbbb' in ln for ln in lines) , formatted;
 }
 
 test "forever keyword preserved not rewritten" {
@@ -164,14 +439,6 @@ test "forever keyword preserved not rewritten" {
     formatted = prog.mod.main.gen.jac;
     assert "forever {" in formatted;
     assert "while" not in formatted;
-}
-
-test "awaiting fmt" {
-    compare_files(os.path.join(FIXTURES, "awaiting_fmt.jac"));
-}
-
-test "awaiting jsx fmt" {
-    compare_files(os.path.join(FIXTURES, "awaiting_jsx_fmt.jac"));
 }
 
 test "fstring comment not injected" {
@@ -366,590 +633,6 @@ test "comment placement idempotent on comment-dense blocks" {
     );
 }
 
-"""Regression: inline comment after a func-call argument swallowed the next
-argument because the soft line break after the comma collapsed to a space."""
-test "inline comment in func call args" {
-    source = (
-        'def foo -> None {\n'
-        '    x = bar(\n'
-        '        a[:-4],  # trim suffix\n'
-        '        baz(y)\n'
-        '    );\n'
-        '}\n'
-    );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    formatted = prog.mod.main.gen.jac;
-    lines = formatted.splitlines();
-
-    # The inline comment must NOT swallow the next argument
-    comment_line = next(
-        (
-            ln
-            for ln in lines
-            if "# trim suffix" in ln
-        ),
-        None
-    );
-    assert comment_line is not None , "Inline comment was lost";
-    assert "baz" not in comment_line , (
-        "Next argument merged into comment line: " + repr(comment_line)
-    );
-
-    # baz(y) must appear on its own line
-    baz_line = next(
-        (
-            ln
-            for ln in lines
-            if "baz(y)" in ln
-        ),
-        None
-    );
-    assert baz_line is not None , ("Second argument 'baz(y)' was lost:\n" + formatted);
-
-    # Idempotency
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , "Formatting is not idempotent";
-}
-
-test "empty blocks format without inner space" {
-    source = (
-        'obj Empty {}\n'
-        '\n'
-        'obj HasM {\n'
-        '    def m;\n'
-        '}\n'
-        '\n'
-        'impl HasM.m {}\n'
-        '\n'
-        'walker W {\n'
-        '    can go with Root entry {}\n'
-        '}\n'
-        '\n'
-        'def multi {}\n'
-        '\n'
-        'def branches(x: int) {\n'
-        '    if x > 0 {} else {}\n'
-        '    while False {}\n'
-        '    for i in range(1) {}\n'
-        '    try {} except Exception {} finally {}\n'
-        '}\n'
-        '\n'
-        'test {}\n'
-        '\n'
-        'with entry {}\n'
-    );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    formatted = prog.mod.main.gen.jac;
-
-    assert "obj Empty {}" in formatted;
-    assert "impl HasM.m {}" in formatted;
-    assert "can go with Root entry {}" in formatted;
-    assert "def multi {}" in formatted;
-    assert "if x > 0 {} else {}" in formatted;
-    assert "while False {}" in formatted;
-    assert "for i in range(1) {}" in formatted;
-    assert "try {} except Exception {} finally {}" in formatted;
-    assert "test {}" in formatted;
-    assert "with entry {}" in formatted;
-    assert "{ }" not in formatted;
-
-    # Idempotency
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , "Formatting is not idempotent";
-}
-
-"""Regression: JSX elements with only inline children (text/expression) and
-lambda bodies with a single-statement `if` should stay flat when they fit
-within the print width. Previously, both paths used `hard_line()` in their
-DocIR generation which forced a break unconditionally, producing jarring
-vertical expansion on compact JSX like `<button>Add</button>` and on
-event-handler lambdas like `lambda e: T { if cond { stmt; } }`."""
-test "jsx and lambda inline compact forms stay flat" {
-    source = (
-        'def:pub app -> JsxElement {\n'
-        '    has text: str = "";\n'
-        '\n'
-        '    async def add {\n'
-        '        text = "";\n'
-        '    }\n'
-        '\n'
-        '    return\n'
-        '        <div>\n'
-        '            <input\n'
-        '                value={text}\n'
-        '                onKeyPress={lambda (e: KeyboardEvent) { if e.key == "Enter" { add(); }}}\n'
-        '                placeholder="Add a todo..."\n'
-        '            />\n'
-        '            <button onClick={add}>Add</button>\n'
-        '            <p>hello ({text})</p>\n'
-        '        </div>;\n'
-        '}\n'
-    );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
-
-    # JSX elements whose only children are text / expressions must stay on
-    # one line when they fit. These exact single-line forms must survive.
-    button_form = "<button onClick={add}>Add</button>";
-    assert button_form in formatted , (
-        "inline <button>Add</button> was split across lines:\n" + str(formatted)
-    );
-    p_form = "<p>hello ({text})</p>";
-    assert p_form in formatted , (
-        "inline <p>hello ({text})</p> was split across lines:\n" + str(formatted)
-    );
-
-    # A single-statement `if` inside a lambda body must stay flat.
-    lambda_form = 'lambda (e: KeyboardEvent) { if e.key == "Enter" { add(); }}';
-    assert lambda_form in formatted , (
-        "lambda-nested `if { stmt; }` was expanded to multiple lines:\n"
-        + str(formatted)
-    );
-
-    # Idempotency: formatting the formatted output must be a no-op.
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert not prog2.errors_had;
-    assert formatted == prog2.mod.main.gen.jac , (
-        "JSX/lambda inline formatting is not idempotent"
-    );
-}
-
-test "JSX slot statement bodies round-trip through the formatter" {
-    # `{...}` slots with statement-form bodies (control flow yielding JSX,
-    # `return` guards) get lowered by ViewLowerPass into an accumulator
-    # IIFE; the formatter pipeline doesn't run that pass, so it must see
-    # and preserve the original slot syntax verbatim.
-    source = (
-        'def:pub Greeting(name: str) -> JsxElement {\n'
-        '    return <div>\n'
-        '        {if name == "" {\n'
-        '            <p>anon</p>\n'
-        '        } else {\n'
-        '            <h1>Hello, {name}</h1>\n'
-        '        }}\n'
-        '    </div>;\n'
-        '}\n'
-    );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac or "";
-
-    # The slot keyword `if` must survive verbatim -- never expanded into
-    # a comprehension or ternary.
-    assert "{if name" in formatted , (
-        "the statement-form `if` slot must survive formatting:\n" + str(formatted)
-    );
-    assert "} else {" in formatted , (
-        "the `else` branch must survive formatting:\n" + str(formatted)
-    );
-    # The lowering must never leak into formatted source.
-    assert "__jac_view_kids" not in formatted , (
-        "formatter must not expose the lowering accumulator:\n" + str(formatted)
-    );
-
-    # Idempotency: formatting the formatted output must be a no-op.
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert not prog2.errors_had;
-    assert formatted == prog2.mod.main.gen.jac , ("slot formatting is not idempotent");
-}
-
-test "dynamic JSX tags round-trip through the formatter" {
-    # `<@expr ...>` syntax must survive formatting verbatim — the `@`-led
-    # dynamic-tag form is parsed into the JSX kid list and the structural
-    # formatter must emit it back in the same shape.
-    source = (
-        'def:pub Box(as_: str, children: any = None) -> JsxElement {\n'
-        '    return <@as_ class="box">{children}</@as_>;\n'
-        '}\n'
-        '\n'
-        'def:pub Icon(glyph: type) -> JsxElement {\n'
-        '    return <@{glyph} class="icon"/>;\n'
-        '}\n'
-    );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac or "";
-
-    assert "<@as_" in formatted , (
-        "identifier-form dynamic open tag must survive formatting:\n" + str(formatted)
-    );
-    assert "</@as_>" in formatted , (
-        "identifier-form dynamic close tag must survive formatting:\n" + str(formatted)
-    );
-    assert "<@{glyph}" in formatted , (
-        "brace-wrapped dynamic tag must survive formatting:\n" + str(formatted)
-    );
-
-    # Idempotency: formatting the formatted output must be a no-op.
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert not prog2.errors_had;
-    assert formatted == prog2.mod.main.gen.jac , (
-        "dynamic-tag formatting is not idempotent"
-    );
-}
-
-"""Regression: a `return` whose expression is a JSX element keeps the
-element on the same line as `return` when the whole statement fits the
-print width, and only drops it onto its own indented line when it doesn't.
-Previously the JSX-return path used `hard_line()` unconditionally, forcing
-even tiny elements like `<p>Hello</p>` onto a second line."""
-test "return jsx stays on one line when it fits" {
-    source = (
-        'def:pub AlertDialog(props: any) -> JsxElement {\n'
-        '    return\n'
-        '        <AlertDialogPrimitive.Root data-slot="alert-dialog" {**props}/>;\n'
-        '}\n'
-        '\n'
-        'def:pub Greeting -> JsxElement {\n'
-        '    return\n'
-        '        <p>Hello</p>;\n'
-        '}\n'
-    );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac or "";
-
-    # A self-closing element that fits must collapse onto the `return` line.
-    self_closing = 'return <AlertDialogPrimitive.Root data-slot="alert-dialog" {**props}/>;';
-    assert self_closing in formatted , (
-        "self-closing JSX return was not collapsed onto the `return` line:\n"
-        + str(formatted)
-    );
-    # A small element with inline children must collapse too.
-    assert "return <p>Hello</p>;" in formatted , (
-        "inline-child JSX return was not collapsed onto the `return` line:\n"
-        + str(formatted)
-    );
-
-    # Idempotency: formatting the formatted output must be a no-op.
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert not prog2.errors_had;
-    assert formatted == prog2.mod.main.gen.jac , (
-        "return-JSX one-line formatting is not idempotent"
-    );
-}
-
-"""Regression: a JSX `return` that does NOT fit the print width — either
-because its opening tag is too wide or because it has element children that
-carry hard lines — must still drop the element onto its own indented line
-below `return`."""
-test "return jsx breaks when it does not fit" {
-    source = (
-        'def:pub Big(props: any) -> JsxElement {\n'
-        '    return <AlertDialogPrimitive.Overlay {**props} '
-        'data-slot="alert-dialog-overlay" '
-        'className={cn("a-very-long-class-name-string-that-blows-past-print-width", '
-        'props["className"])}/>;\n'
-        '}\n'
-        '\n'
-        'def:pub Tree -> JsxElement {\n'
-        '    return <div><span>a</span><span>b</span></div>;\n'
-        '}\n'
-    );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac or "";
-
-    # `return` must not carry the element when the statement overflows: every
-    # `return` line in a breaking case must end right after the keyword.
-    for ln in formatted.splitlines() {
-        if (ln.strip() == "return") {
-            continue;
-        }
-        assert not ln.strip().startswith("return <") , (
-            "overflowing JSX return must break onto its own line:\n" + str(formatted)
-        );
-    }
-    # Element children must still expand vertically.
-    assert "<span>a</span>" in formatted;
-    assert "<span>b</span>" in formatted;
-
-    # Idempotency: formatting the formatted output must be a no-op.
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert not prog2.errors_had;
-    assert formatted == prog2.mod.main.gen.jac , (
-        "return-JSX break formatting is not idempotent"
-    );
-}
-
-"""Regression: top-level and multi-statement `if` blocks must still break —
-the flat-capable rule is strictly scoped to single-statement, no-else `if`
-statements whose direct parent is a `LambdaExpr`. Anywhere else, the
-original hard-line layout must apply."""
-test "if statement outside lambda still breaks" {
-    source = (
-        'def foo -> None {\n'
-        '    if a { b(); }\n'
-        '    if c {\n'
-        '        d();\n'
-        '        e();\n'
-        '    }\n'
-        '    f = lambda (e: int) { if e > 0 { x = 1; y = 2; } };\n'
-        '    g = lambda (e: int) { if e > 0 { x = 1; } else { x = 2; } };\n'
-        '}\n'
-    );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted: str = prog.mod.main.gen.jac or "";
-    assert formatted , "formatter produced empty output";
-    lines = formatted.splitlines();
-
-    # Top-level `if a { b(); }` must break — the opening brace and `b();`
-    # must be on different lines.
-    if_a_idx: any = next(
-        (
-            i
-            for (i, ln) in enumerate(lines)
-            if ln.strip().startswith("if a {")
-        ),
-        None
-    );
-    assert if_a_idx is not None , f"top-level `if a` not found:\n{formatted}";
-    assert "b();" not in lines[if_a_idx] , (
-        f"top-level `if a {{ b(); }}` should have broken across lines:\n{formatted}"
-    );
-
-    # Multi-statement `if` inside lambda should NOT stay flat.
-    assert "lambda (e: int) { if e > 0 { x = 1; y = 2; }" not in formatted , (
-        f"multi-statement lambda `if` must fall back to hard-line layout:\n{formatted}"
-    );
-
-    # Lambda `if` with else should NOT stay flat.
-    assert ("lambda (e: int) { if e > 0 { x = 1; } else { x = 2; } }")
-        not in formatted , (
-        f"lambda `if`/`else` must fall back to hard-line layout:\n{formatted}"
-    );
-}
-
-"""Regression: JSX elements make two independent flat/break decisions —
-one for the opening tag (attributes) and one for the children. There are
-three buckets this test locks in:
-
-    bucket A (fully inline): total flat form fits in the print width,
-             so the whole element stays on one line.
-    bucket B (opening tag inline, children broken): total doesn't fit
-             but opening tag alone does, so the opening tag stays flat
-             while the children indent onto their own lines.
-    bucket C (fully broken): the opening tag itself doesn't fit, so
-             attributes break one-per-line, `break_contiguous` forces
-             the children to also break (no children inlined onto the
-             same line as the closing `>` of the opening tag)."""
-test "jsx attributes and children group independently" {
-    source = (
-        'def app -> JsxElement {\n'
-        '    return\n'
-        '        <div>\n'
-        '            <h2 style={{color: "#dc2626"}}>Short</h2>\n'
-        '            <p style={{color: "#374151", marginBottom: "16px"}}>An unexpected error occurred.</p>\n'
-        '            <div\n'
-        '                class="tweet-header"\n'
-        '                style={{"fontWeight": "bold", "marginBottom": "8px"}}\n'
-        '            >@{tweet.username}</div>\n'
-        '        </div>;\n'
-        '}\n'
-    );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
-
-    # Bucket A: short h2 fits flat in total.
-    bucket_a = '<h2 style={{color: "#dc2626"}}>Short</h2>';
-    assert bucket_a in formatted , (
-        "bucket A: short JSX element did not stay fully inline:\n" + str(formatted)
-    );
-
-    # Bucket B: opening tag of <p> fits inline even though total doesn't.
-    # The opening tag must be on one line; the child text must be on an
-    # indented line on its own; the closing tag on its own line.
-    bucket_b_open = '<p style={{color: "#374151", marginBottom: "16px"}}>';
-    assert bucket_b_open in formatted , (
-        "bucket B: <p> opening tag was broken even though it fits:\n" + str(formatted)
-    );
-    assert "An unexpected error occurred." in formatted;
-    # Child must NOT be glued to the opening `>` — confirm by checking the
-    # child text is not on the same line as `<p style=...>`.
-    for ln in formatted.splitlines() {
-        if bucket_b_open in ln {
-            assert "An unexpected" not in ln , (
-                "bucket B: children were inlined on the opening-tag line "
-                "instead of breaking:\n"
-                + str(formatted)
-            );
-        }
-    }
-
-    # Bucket C: the tweet-header <div> has two attributes that together
-    # push the opening tag past the print width, so attributes must break
-    # one-per-line. `break_contiguous=True` on the children group then
-    # forces the children onto their own indented line — the @{...} text
-    # must NOT be inlined on the same line as the closing `>` of the
-    # broken opening tag.
-    for ln in formatted.splitlines() {
-        # The closing `>` of the broken opening tag sits on its own line
-        # (just whitespace + `>`) after a multi-line attribute list.
-        if ln.strip() == ">" {
-            continue;
-        }
-        assert not (ln.rstrip().endswith(">@{tweet.username}</div>")) , (
-            "bucket C: children were inlined on the closing `>` of a "
-            "multi-line opening tag:\n"
-            + str(formatted)
-        );
-    }
-    # Positive assertion: bucket C children land on their own line.
-    assert "@{tweet.username}" in formatted;
-
-    # Idempotency: all three shapes must round-trip.
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert not prog2.errors_had;
-    assert formatted == prog2.mod.main.gen.jac , (
-        "JSX attribute/children grouping is not idempotent"
-    );
-}
-
-"""Regression: formatter must preserve `by <name>;` (bare genai ability
-without parentheses) — previously both `by` and `;` were stripped."""
-test "genai ability bare name preserves by and semicolon" {
-    source = "def classify(s: str) -> str by llm;\n";
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
-    assert "by" in formatted , (
-        f"`by` keyword was stripped from genai ability:\n{repr(formatted)}"
-    );
-    assert formatted.rstrip().endswith(";") , (
-        f"semicolon was stripped from genai ability:\n{repr(formatted)}"
-    );
-    assert "by llm;" in formatted , (
-        f"expected `by llm;` in formatted output, got:\n{repr(formatted)}"
-    );
-    # Idempotency
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , "genai bare-name formatting is not idempotent";
-}
-
-"""Regression: formatter must preserve `by <name>()` (genai ability with
-empty parentheses) — both `by` and `()` must survive the format pass."""
-test "genai ability empty parens preserves by and parens" {
-    source = "def get_emoji(input: str) -> str by llm();\n";
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
-    assert "by llm()" in formatted , (
-        f"expected `by llm()` in formatted output, got:\n{repr(formatted)}"
-    );
-    # Idempotency
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , "genai empty-parens formatting is not idempotent";
-}
-
-"""Regression: formatter must preserve `by <name>(kwargs)` (genai ability
-with keyword arguments) — the full argument list must survive the format pass."""
-test "genai ability with kwargs preserves by and arguments" {
-    source = "def get_emoji(input: str) -> str by llm(temperature=0.7, incl_info={\"examples\": emoji_examples});\n";
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
-    assert "by llm(" in formatted , (
-        f"expected `by llm(` in formatted output, got:\n{repr(formatted)}"
-    );
-    assert "temperature=0.7" in formatted , (
-        f"expected `temperature=0.7` in formatted output, got:\n{repr(formatted)}"
-    );
-    assert "incl_info=" in formatted , (
-        f"expected `incl_info=` in formatted output, got:\n{repr(formatted)}"
-    );
-    # Idempotency
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , "genai kwargs formatting is not idempotent";
-}
-
-"""Regression: set literals must space after commas like lists, tuples, and
-dicts. `exit_set_val` blindly concatenated its kids, so `{1,2,3}` round-tripped
-crammed while `[1,2,3]`/`(1,2,3)`/`{1: 2,3: 4}` all gained the comma space."""
-test "set literal spaces after commas like other collections" {
-    source = "glob a = {1,2,3};\n";
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
-    assert "{1, 2, 3}" in formatted , (
-        f"set literal must space after commas like lists/dicts, got:\n{repr(formatted)}"
-    );
-    # Idempotency
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , "set comma spacing is not idempotent";
-}
-
-"""Regression: a set literal wider than the print width must break one element
-per line, exactly like a list. `exit_set_val` had no broken layout at all, so
-long sets stayed on a single overlong line."""
-test "long set literal wraps one element per line like a list" {
-    source = (
-        'glob a = {"alpha","bravo","charlie","delta","echo","foxtrot",'
-        '"golf","hotel","india","juliet","kilo","lima"};\n'
-    );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
-    lines = formatted.splitlines();
-    assert len(lines) > 3 , (
-        f"long set literal must break across lines, got:\n{formatted}"
-    );
-    # No two elements may share a line once broken.
-    assert not any(('"alpha"' in ln) and ('"bravo"' in ln) for ln in lines) , (
-        f"broken set must place one element per line, got:\n{formatted}"
-    );
-    # Idempotency
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , "long set wrapping is not idempotent";
-}
-
-"""Regression: assign comprehensions must space after commas the same way
-filter comprehensions do. `exit_assign_compr` stripped every space, so
-`(=foo=1,bar=2)` round-tripped crammed while `(?foo>1,bar<2)` got the space."""
-test "assign comprehension spaces after commas like filter comprehension" {
-    source = "with entry { x = (a)(=foo=1,bar=2); }\n";
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
-    assert "=foo=1, bar=2" in formatted , (
-        f"assign comprehension must space after commas, got:\n{repr(formatted)}"
-    );
-    # Idempotency
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , "assign-compr spacing is not idempotent";
-}
-
-"""Regression: enum base-type declarations must space like type annotations
-and base-class lists. `exit_enum` sent the typed-base colon (`enum X: int`)
-and the base-class parens/commas (`enum X(A, B)`) through the generic kid
-branch, which appends a trailing space after every kid — yielding
-`enum X : int` and `enum X ( A , B )`."""
-test "enum base type colon and parens space correctly" {
-    source = (
-        'enum Category: int { WORK, PERSONAL }\n'
-        'enum Color(Mixin, Enum) { RED, GREEN }\n'
-    );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
-    # Typed-base colon: no space before, one space after.
-    assert "enum Category: int" in formatted , (
-        f"typed-base colon must format as `Category: int`, got:\n{repr(formatted)}"
-    );
-    assert "Category : int" not in formatted , (
-        f"typed-base colon must not have a space before `:`, got:\n{repr(formatted)}"
-    );
-    # Base-class list: no space inside parens, comma-separated like archetypes.
-    assert "enum Color(Mixin, Enum)" in formatted , (
-        f"base-class list must format as `Color(Mixin, Enum)`, got:\n{repr(formatted)}"
-    );
-    # Idempotency
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , "enum base-type spacing is not idempotent";
-}
-
 """Regression: jac_str_formatter must populate errors_had on syntax error
 so that the LSP returns the original source instead of an empty string."""
 test "syntax error preserves original source" {
@@ -966,265 +649,5 @@ test "syntax error preserves original source" {
     result = gen_output if not prog.errors_had else bad_source;
     assert result == bad_source , (
         "Formatter must return original source on syntax error, " f"got: {repr(result)}"
-    );
-}
-
-"""Regression: significant whitespace between JSX text and inline child
-elements must survive formatting. JSX collapses a newline adjacent to a
-tag to nothing, so when the formatter breaks mixed children (text next to
-elements) onto separate lines it must preserve a same-line space as a
-`{" "}` whitespace marker (Prettier's jsxWhitespace) -- and keep short
-mixed JSX flat. Previously the mixed-children path emitted `hard_line()`
-between every child and the printer rstripped the trailing space, so
-`score <b>0</b> fps` silently reformatted to render `score0fps`."""
-test "jsx significant whitespace around inline elements is preserved" {
-    # Short, space-separated mixed JSX (text interleaved with <b> elements)
-    # must stay flat -- the inline spaces are significant and must survive.
-    short_src = (
-        'def:pub hud -> JsxElement {\n'
-        '    return <div id="hud">score <b>0</b> · <b>0</b> fps</div>;\n'
-        '}\n'
-    );
-    prog = JacProgram.jac_str_formatter(source_str=short_src, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    short_fmt = prog.mod.main.gen.jac or "";
-    flat_form = '<div id="hud">score <b>0</b> · <b>0</b> fps</div>';
-    assert flat_form in short_fmt , (
-        "short space-separated mixed JSX must stay flat with spaces intact:\n"
-        + short_fmt
-    );
-    # Idempotency.
-    prog_i = JacProgram.jac_str_formatter(source_str=short_fmt, file_path="<test>.jac");
-    assert short_fmt == prog_i.mod.main.gen.jac , (
-        "short mixed-JSX formatting is not idempotent:\n" + short_fmt
-    );
-
-    # Long, space-separated mixed JSX must break, but the significant spaces
-    # at text<->element boundaries must be preserved as `{" "}` markers
-    # rather than dropped.
-    long_src = (
-        'def:pub hint -> JsxElement {\n'
-        '    return <div id="hint">Click the canvas to capture the mouse · '
-        '<b>WASD</b> move and mouse aim · <b>Space</b> fire · <b>Tab</b> release the '
-        'cursor</div>;\n'
-        '}\n'
-    );
-    prog2 = JacProgram.jac_str_formatter(source_str=long_src, file_path="<test>.jac");
-    assert not prog2.errors_had , f"formatter errors: {prog2.errors_had}";
-    long_fmt = prog2.mod.main.gen.jac or "";
-    # It must have broken across lines (too long to stay flat)...
-    assert "\n" in long_fmt.split("return")[1].split(";")[0] , (
-        "long mixed JSX was expected to break across lines:\n" + long_fmt
-    );
-    # ...and the significant spaces must be preserved as jsxWhitespace markers,
-    # never silently dropped at the line breaks.
-    assert '{" "}' in long_fmt , (
-        "significant whitespace at text<->element boundaries was dropped "
-        "instead of preserved as a `{\" \"}` marker:\n"
-        + long_fmt
-    );
-    # The buggy pattern: a word line immediately followed by an element line
-    # with no whitespace marker between them must NOT occur for these spaced
-    # boundaries. Specifically, no line may end with a bare word `move` and be
-    # followed directly by `<b>Space</b>` losing the space.
-    assert "move ·" in long_fmt
-        or 'move ·{" "}' in long_fmt
-        or "move\n" not in long_fmt , (
-        "space after 'move ·' before next element appears dropped:\n" + long_fmt
-    );
-    # Idempotency.
-    prog2_i = JacProgram.jac_str_formatter(source_str=long_fmt, file_path="<test>.jac");
-    assert long_fmt == prog2_i.mod.main.gen.jac , (
-        "long mixed-JSX formatting is not idempotent:\n" + long_fmt
-    );
-}
-
-"""Regression: BinaryExpr, CompareExpr, and MatchOr joined their operands
-with a plain non-breaking space (`_assign_space_group`), so the printer had
-no break opportunity and hand-wrapped chains collapsed onto one unbounded
-line (a 6-line string concat became a single 377-char line). Chains must
-break like bool chains already do: one operand per line, operator leading
-the continuation line."""
-test "long plus chain breaks one operand per line" {
-    source = (
-        'def cat(tail: str) -> str {\n'
-        '    return (\n'
-        '        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"\n'
-        '        + "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"\n'
-        '        + "cccccccccccccccccccccccccccccccccccccccccccc"\n'
-        '        + tail\n'
-        '    );\n'
-        '}\n'
-    );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
-    lines = formatted.splitlines();
-    long_lines = [
-        ln
-        for ln in lines
-        if len(ln) > 88
-    ];
-    assert not long_lines , (
-        f"plus chain must break within 88 cols, got:\n{formatted}"
-    );
-    # No two operands may share a line once broken.
-    assert not any(('"aaaa' in ln) and ('"bbbb' in ln) for ln in lines) , (
-        f"broken chain must place one operand per line, got:\n{formatted}"
-    );
-    # The operator leads each continuation line, matching bool-chain style.
-    assert any(ln.lstrip().startswith('+ "bbbb') for ln in lines) , (
-        f"continuation lines must lead with the operator, got:\n{formatted}"
-    );
-    # The parens own the indent here: operands stay at the paren-contents
-    # level (8 spaces), never doubled by the chain's own indent.
-    assert any(ln.startswith('        + "bbbb') for ln in lines) , (
-        f"paren-wrapped chain must not add extra indent, got:\n{formatted}"
-    );
-    # Idempotency.
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , (
-        f"plus-chain wrapping is not idempotent:\n{formatted}"
-    );
-}
-
-test "bare chain continuation indents one level" {
-    source = (
-        'with entry {\n'
-        '    out = "start";\n'
-        '    out += "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"\n'
-        '    + "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"\n'
-        '    + "cccccccccccccccccccccccccccccccccccc";\n'
-        '}\n'
-    );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
-    lines = formatted.splitlines();
-    # A chain that owns its line start hangs continuations one level in
-    # (statement indent 4 -> operands at 8); flush-left continuations would
-    # read as sibling statements.
-    assert any(ln.startswith('        + "bbbb') for ln in lines) , (
-        f"bare-chain continuation must indent one level, got:\n{formatted}"
-    );
-    assert not any(ln.startswith('+ "bbbb') for ln in lines) , (
-        f"bare-chain continuation must not sit flush left, got:\n{formatted}"
-    );
-    # Idempotency.
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , (
-        f"indented chain wrapping is not idempotent:\n{formatted}"
-    );
-}
-
-test "short binary chains stay flat" {
-    source = 'with entry {\n    x = 1 + 2 + 3;\n    y = x < 10;\n}\n';
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
-    assert "x = 1 + 2 + 3;" in formatted , (
-        f"short chain must stay on one line, got:\n{formatted}"
-    );
-    assert "y = x < 10;" in formatted , (
-        f"short compare must stay on one line, got:\n{formatted}"
-    );
-}
-
-test "mixed precedence chain keeps tighter subexpression intact" {
-    source = (
-        'def mix(aaaaaaaaaaaaaaaaaaaaaaaaaaaa: int, bbbbbbbbbbbbbbbbbbbb: int,'
-        ' cccccccccccccccccccc: int, dddddddddddddddddddd: int) -> int {\n'
-        '    return (\n'
-        '        aaaaaaaaaaaaaaaaaaaaaaaaaaaa\n'
-        '        + bbbbbbbbbbbbbbbbbbbb * cccccccccccccccccccc\n'
-        '        + dddddddddddddddddddd\n'
-        '    );\n'
-        '}\n'
-    );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
-    lines = formatted.splitlines();
-    long_lines = [
-        ln
-        for ln in lines
-        if len(ln) > 88
-    ];
-    assert not long_lines , (
-        f"mixed chain must break within 88 cols, got:\n{formatted}"
-    );
-    # The `*` subexpression binds tighter: it must stay together on its line,
-    # never hoisted to a break point as if it were a `+` peer.
-    assert any("bbbbbbbbbbbbbbbbbbbb * cccccccccccccccccccc" in ln for ln in lines) , (
-        f"tighter-binding subexpression must stay intact on one line, "
-        f"got:\n{formatted}"
-    );
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , (
-        f"mixed-chain wrapping is not idempotent:\n{formatted}"
-    );
-}
-
-test "long comparison chain breaks one operand per line" {
-    source = (
-        'def cmp(aaaaaaaaaaaaaaa: int, bbbbbbbbbbbbbbb: int,'
-        ' ccccccccccccccc: int, ddddddddddddddd: int) -> bool {\n'
-        '    return (\n'
-        '        aaaaaaaaaaaaaaa < bbbbbbbbbbbbbbb < ccccccccccccccc'
-        ' < ddddddddddddddd < aaaaaaaaaaaaaaa\n'
-        '    );\n'
-        '}\n'
-    );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
-    lines = formatted.splitlines();
-    long_lines = [
-        ln
-        for ln in lines
-        if len(ln) > 88
-    ];
-    assert not long_lines , (
-        f"comparison chain must break within 88 cols, got:\n{formatted}"
-    );
-    assert any(ln.lstrip().startswith("< ") for ln in lines) , (
-        f"continuation lines must lead with the operator, got:\n{formatted}"
-    );
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , (
-        f"comparison-chain wrapping is not idempotent:\n{formatted}"
-    );
-}
-
-test "long match-or pattern breaks one alternative per line" {
-    source = (
-        'def pick(x: str) -> str {\n'
-        '    match x {\n'
-        '        case "aaaaaaaaaaaaaaaaaaaaaaaa" | "bbbbbbbbbbbbbbbbbbbbbbbb"'
-        ' | "cccccccccccccccccccccccc" | "dddddddddddddddddddddddd":\n'
-        '            return "hit";\n'
-        '        case _:\n'
-        '            return "miss";\n'
-        '    }\n'
-        '}\n'
-    );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
-    lines = formatted.splitlines();
-    long_lines = [
-        ln
-        for ln in lines
-        if len(ln) > 88
-    ];
-    assert not long_lines , (
-        f"match-or pattern must break within 88 cols, got:\n{formatted}"
-    );
-    assert not any(('"aaaa' in ln) and ('"bbbb' in ln) for ln in lines) , (
-        f"broken match-or must place one alternative per line, got:\n{formatted}"
-    );
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , (
-        f"match-or wrapping is not idempotent:\n{formatted}"
     );
 }
