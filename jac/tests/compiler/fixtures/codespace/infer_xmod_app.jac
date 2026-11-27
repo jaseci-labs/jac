@@ -1,8 +1,8 @@
 """Markerless client module that plain-imports a pure markerless module.
 
-The accessless helpers and the obj must follow the client caller into the
-browser bundle (direct calls, `new`, ES import); the def:pub stays a server
-endpoint and bridges over RPC.
+The accessless helpers must follow the client caller into the browser
+bundle (direct calls, ES import); the def:pub stays a server endpoint and
+bridges over RPC.
 """
 import from infer_xmod_util { register, tag_count, server_ping, Badge }
 
@@ -11,5 +11,5 @@ def:pub app -> JsxElement {
     n = tag_count();
     msg = server_ping("x");
     badge = Badge(label="boot");
-    return <div>{n}{msg}{badge.text()}</div>;
+    return <div>{n}{msg}{badge.label}</div>;
 }

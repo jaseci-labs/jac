@@ -21,8 +21,4 @@ def:pub server_ping(payload: str) -> str {
 
 obj Badge {
     has label: str = "";
-
-    def text -> str {
-        return "#" + self.label;
-    }
 }
