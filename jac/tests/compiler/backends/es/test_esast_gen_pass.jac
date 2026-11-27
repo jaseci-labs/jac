@@ -208,17 +208,151 @@ test "advanced fixture contains async and spread nodes" {
     # when compiling Jac from within Jac context.
 }
 
-test "client fixture generates client bundle" {
-    client_fixture = "client_jsx.jac";
-    es_ast = compile_to_esast(fixture_path(client_fixture));
-    js_code = es_to_js(es_ast);
+# (case, input, text the output must contain, text it must not contain)
+glob JS_CASES: list[tuple[str, str, list[any], list[str]]] = [
+         (
+             "client fixture generates client bundle",
+             "client_jsx.jac",
+             [
+                 'let API_URL = "https://api.example.com";',
+                 "function component()",
+                 "__jacJsx"
+             ],
+             ["server_only"]
+         ),
+         (
+             "reactive state generates use state",
+             "reactive_state.jac",
+             [
+                 'import { useJacState } from "@jac/runtime"',
+                 "const __jacS_count = useJacState(0)",
+                 'const __jacS_name = useJacState("test")',
+                 "__jacS_count.set((__jacS_count.val + 1))",
+                 "__jacS_count.set(42)",
+                 "__jacS_name.set("
+             ],
+             []
+         ),
+         (
+             "reactive state in cl jac file",
+             "reactive_state.jac",
+             [
+                 'import { useJacState } from "@jac/runtime"',
+                 "const __jacS_count = useJacState(0)",
+                 'const __jacS_name = useJacState("test")',
+                 "__jacS_count.set((__jacS_count.val + 1))",
+                 "__jacS_count.set(42)",
+                 "__jacS_name.set("
+             ],
+             []
+         ),
+         (
+             "reactive state scoping across functions",
+             "reactive_state_scoping.jac",
+             ["const __jacS_cart = useJacState([])", "let cart = useCart()"],
+             ["__jacS_cart.set(useCart())"]
+         ),
+         (
+             "reactive writes transform inside nested and deferred closures",
+             "reactive_state_closures.jac",
+             [
+                 "__jacS_seen.set(true)",
+                 "setTimeout(",
+                 "__jacS_armed.set(true)",
+                 "__jacS_fired.set(true)"
+             ],
+             ["armed = true"]
+         ),
+         (
+             "varargs parameter lowers to JS rest parameter",
+             "vararg_params.jac",
+             ["function collect(...items)", "function mixed(first, ...rest)"],
+             []
+         ),
+         # SKIP:
+         (
+             "reactive effects async entry",
+             "reactive_effects.jac",
+             [
+                 'import { useEffect } from "@jac/runtime"',
+                 "useEffect(",
+                 "async () =>",
+                 "}, [])"
+             ],
+             []
+         ),
+         (
+             "reactive effects sync entry",
+             "reactive_effects_sync.jac",
+             ['import { useEffect } from "@jac/runtime"', "useEffect(", "}, [])"],
+             ["async () =>"]
+         ),
+         (
+             "reactive effects cleanup",
+             "reactive_effects_cleanup.jac",
+             [
+                 'import { useEffect } from "@jac/runtime"',
+                 "useEffect(",
+                 "return () =>",
+                 "}, [])"
+             ],
+             []
+         ),
+         (
+             "reactive effects with dependencies",
+             "reactive_effects_deps.jac",
+             [
+                 'import { useEffect } from "@jac/runtime"',
+                 "useEffect(",
+                 "[userId, __jacS_loading.val])"
+             ],
+             []
+         ),
+         (
+             "jsx comprehension basic",
+             "jsx_comprehension.jac",
+             [".map(", "item =>", "__jacJsx"],
+             []
+         ),
+         (
+             "jsx comprehension with filter",
+             "jsx_comprehension.jac",
+             [".filter(", ".filter(", ".map("],
+             []
+         ),
+         (
+             "jsx html entity decoding in text and attributes",
+             "jsx_entity_decode.jac",
+             ['"A & B"', "Before > After & More", "Decimal > and Hex > refs"],
+             ['"A &amp; B"', "&gt;", "&amp;", "&#62;", "&#x3e;"]
+         ),
+         (
+             "jsx block comment is a no-op child",
+             "jsx_block_comment.jac",
+             ["__jacJsx", "Hello", "Click"],
+             ["JSX_COMMENT_PROBE"]
+         )
+     ];
 
-    assert 'let API_URL = "https://api.example.com";' in js_code , (
-        "Client global should use let."
-    );
-    assert "function component()" in js_code;
-    assert "__jacJsx" in js_code;
-    assert "server_only" not in js_code;
+test "each js case emits the expected JavaScript" {
+    failed: list[str] = [];
+    for (label, arg, present, absent) in JS_CASES {
+        out = es_to_js(compile_to_esast(fixture_path(arg)));
+        missing = [
+            p
+            for p in present
+            if not (any(a in out for a in p) if isinstance(p, tuple) else p in out)
+        ];
+        leaked = [
+            a
+            for a in absent
+            if a in out
+        ];
+        if missing or leaked {
+            failed.append(f"{label}: missing {missing}, unexpected {leaked}");
+        }
+    }
+    assert not failed , "\n".join(failed);
 }
 
 # SKIP: es_node_to_dict isinstance checks fail when compiling Jac from
@@ -348,75 +482,6 @@ test "export semantics for pub declarations" {
     );
 }
 
-test "reactive state generates use state" {
-    es_ast = compile_to_esast(fixture_path("reactive_state.jac"));
-    js_code = es_to_js(es_ast);
-
-    # Check that the store hook is imported from @jac/runtime (auto-injected)
-    assert 'import { useJacState } from "@jac/runtime"' in js_code , (
-        "useJacState should be auto-imported from @jac/runtime"
-    );
-
-    # Check that has declarations generate store cells
-    # has count: int = 0; -> const __jacS_count = useJacState(0);
-    assert "const __jacS_count = useJacState(0)" in js_code , (
-        "has count should generate a store cell"
-    );
-    assert 'const __jacS_name = useJacState("test")' in js_code , (
-        "has name should generate a store cell"
-    );
-
-    # Check that assignments to reactive vars generate setter calls
-    # count = count + 1; -> __jacS_count.set(__jacS_count.val + 1);
-    assert "__jacS_count.set((__jacS_count.val + 1))" in js_code , (
-        "Assignment to reactive var should use setter"
-    );
-    assert "__jacS_count.set(42)" in js_code , "Direct assignment should use setter";
-    assert "__jacS_name.set(" in js_code , (
-        "Assignment to name should use its cell setter"
-    );
-}
-
-test "reactive state in cl jac file" {
-    es_ast = compile_to_esast(fixture_path("reactive_state.jac"));
-    js_code = es_to_js(es_ast);
-
-    # Check that the store hook is imported from @jac/runtime (auto-injected)
-    assert 'import { useJacState } from "@jac/runtime"' in js_code , (
-        "useJacState should be auto-imported from @jac/runtime in .jac files"
-    );
-
-    # Check that has declarations generate store cells
-    # has count: int = 0; -> const __jacS_count = useJacState(0);
-    assert "const __jacS_count = useJacState(0)" in js_code , (
-        "has count should generate a store cell in .jac files"
-    );
-    assert 'const __jacS_name = useJacState("test")' in js_code , (
-        "has name should generate a store cell in .jac files"
-    );
-
-    # Check that assignments to reactive vars generate cell setter calls
-    # count = count + 1; -> __jacS_count.set(__jacS_count.val + 1);
-    assert "__jacS_count.set((__jacS_count.val + 1))" in js_code , (
-        "Assignment to reactive var should use the cell setter in .jac files"
-    );
-    assert "__jacS_count.set(42)" in js_code , (
-        "Direct assignment should use the cell setter"
-    );
-    assert "__jacS_name.set(" in js_code , (
-        "Assignment to name should use its cell setter"
-    );
-}
-
-test "reactive state scoping across functions" {
-    es_ast = compile_to_esast(fixture_path("reactive_state_scoping.jac"));
-    js_code = es_to_js(es_ast);
-
-    assert "const __jacS_cart = useJacState([])" in js_code;
-    assert "__jacS_cart.set(useCart())" not in js_code;
-    assert "let cart = useCart()" in js_code;
-}
-
 test "react read seam lowers a reactive read to a store cell member" {
     # The client state contract: lower_state_read(name) -> `__jacS_<name>.val`
     # on hooks backends, a synchronous read of the latest written value.
@@ -521,199 +586,6 @@ test "view seam thunks only dynamic positions under a signals backend" {
     # Static string literal bypasses the seam entirely.
     assert '"type": "text"' in js_code , "static literal attribute untouched";
     assert "__view(\"text\")" not in js_code , "static literal must not thunk";
-}
-
-test "reactive writes transform inside nested and deferred closures" {
-    # Regression for #6459: a reactive `has` write must lower to its setter at
-    # any closure depth, not only in the direct handler scope.
-    es_ast = compile_to_esast(fixture_path("reactive_state_closures.jac"));
-    js_code = es_to_js(es_ast);
-
-    # Direct handler scope.
-    assert "__jacS_seen.set(true)" in js_code , (
-        "direct handler write should use the cell setter"
-    );
-    # Inside a setTimeout(...) callback (deferred closure). If the write had not
-    # transformed it would emit `armed = true` and `setArmed` would be absent.
-    assert "setTimeout(" in js_code , "deferred fixture should emit setTimeout";
-    assert "__jacS_armed.set(true)" in js_code , (
-        "write inside setTimeout closure should use the cell setter"
-    );
-    # Inside an immediately-invoked nested lambda.
-    assert "__jacS_fired.set(true)" in js_code , (
-        "write inside nested closure should use the cell setter"
-    );
-    # The raw reactive assignment form must never leak through.
-    assert "armed = true" not in js_code , "deferred write must not stay a bare assignment";
-}
-
-test "varargs parameter lowers to JS rest parameter" {
-    # Regression: `*args` was dropped from the emitted signature, leaving the
-    # body referencing an undefined name (broke the shadcn `cn(*inputs)` helper).
-    es_ast = compile_to_esast(fixture_path("vararg_params.jac"));
-    js_code = es_to_js(es_ast);
-
-    assert "function collect(...items)" in js_code , (
-        "vararg-only function should emit a rest parameter"
-    );
-    assert "function mixed(first, ...rest)" in js_code , (
-        "regular param followed by vararg should emit `first, ...rest`"
-    );
-}
-
-# SKIP: Jac-in-Jac compilation produces different import output (e.g.
-# `import "lodash"` instead of `import { debounce } from "lodash"`).
-# test "equivalent context patterns" { ... }
-test "reactive effects async entry" {
-    es_ast = compile_to_esast(fixture_path("reactive_effects.jac"));
-    js_code = es_to_js(es_ast);
-
-    # Check that useEffect is imported from @jac/runtime (auto-injected)
-    assert 'import { useEffect } from "@jac/runtime"' in js_code , (
-        "useEffect should be auto-imported from @jac/runtime"
-    );
-
-    # Check that useEffect is called with arrow function
-    assert "useEffect(" in js_code , "useEffect should be called";
-
-    # Check that async entry generates IIFE wrapper: (async () => { ... })()
-    assert "async () =>" in js_code , "Async entry should generate async arrow function";
-
-    # Check empty dependency array for mount-only effect
-    assert "}, [])" in js_code , "Mount effect should have empty dependency array";
-}
-
-test "reactive effects sync entry" {
-    es_ast = compile_to_esast(fixture_path("reactive_effects_sync.jac"));
-    js_code = es_to_js(es_ast);
-
-    # Check that useEffect is imported from @jac/runtime (auto-injected)
-    assert 'import { useEffect } from "@jac/runtime"' in js_code , (
-        "useEffect should be auto-imported from @jac/runtime"
-    );
-
-    # Check that useEffect is called
-    assert "useEffect(" in js_code , "useEffect should be called";
-
-    # Check that sync entry does NOT wrap in async IIFE
-    assert "async () =>" not in js_code , (
-        "Sync entry should NOT generate async arrow function"
-    );
-
-    # Check empty dependency array for mount-only effect
-    assert "}, [])" in js_code , "Mount effect should have empty dependency array";
-}
-
-test "reactive effects cleanup" {
-    es_ast = compile_to_esast(fixture_path("reactive_effects_cleanup.jac"));
-    js_code = es_to_js(es_ast);
-
-    # Check that useEffect is imported from @jac/runtime (auto-injected)
-    assert 'import { useEffect } from "@jac/runtime"' in js_code , (
-        "useEffect should be auto-imported from @jac/runtime"
-    );
-
-    # Check that useEffect is called with cleanup return
-    assert "useEffect(" in js_code , "useEffect should be called";
-    assert "return () =>" in js_code , "Exit effect should return cleanup function";
-
-    # Check empty dependency array
-    assert "}, [])" in js_code , "Cleanup effect should have empty dependency array";
-}
-
-test "reactive effects with dependencies" {
-    es_ast = compile_to_esast(fixture_path("reactive_effects_deps.jac"));
-    js_code = es_to_js(es_ast);
-
-    # Check that useEffect is imported from @jac/runtime (auto-injected)
-    assert 'import { useEffect } from "@jac/runtime"' in js_code , (
-        "useEffect should be auto-imported from @jac/runtime"
-    );
-
-    # Check that useEffect is called
-    assert "useEffect(" in js_code , "useEffect should be called";
-
-    # Dependency array: `userId` is a prop (bare), `loading` samples the cell.
-    assert "[userId, __jacS_loading.val])" in js_code , (
-        "Effect with (userId, loading) tuple should have both in dependency array"
-    );
-}
-
-test "jsx comprehension basic" {
-    es_ast = compile_to_esast(fixture_path("jsx_comprehension.jac"));
-    js_code = es_to_js(es_ast);
-
-    # Check that basic comprehension generates .map() call
-    assert ".map(" in js_code , "JSX comprehension should generate .map() call";
-    assert "item =>" in js_code , (
-        "JSX comprehension should generate arrow function with item"
-    );
-
-    # Check that the JSX element is in the map callback
-    assert "__jacJsx" in js_code , "JSX should be lowered to __jacJsx calls";
-}
-
-test "jsx comprehension with filter" {
-    es_ast = compile_to_esast(fixture_path("jsx_comprehension.jac"));
-    js_code = es_to_js(es_ast);
-
-    # Check that filtered comprehension generates .filter() call
-    assert ".filter(" in js_code , (
-        "JSX comprehension with if should generate .filter() call"
-    );
-
-    # Check that filter is chained with map
-    assert ".filter(" in js_code and ".map(" in js_code , (
-        "Filtered JSX comprehension should chain .filter().map()"
-    );
-}
-
-test "jsx html entity decoding in text and attributes" {
-    es_ast = compile_to_esast(fixture_path("jsx_entity_decode.jac"));
-    js_code = es_to_js(es_ast);
-
-    # Attribute value: &amp; must be decoded to &
-    assert '"A & B"' in js_code , (
-        "HTML entity &amp; in attribute should be decoded to & in emitted JS"
-    );
-    assert '"A &amp; B"' not in js_code , (
-        "Raw &amp; should NOT appear in emitted JS attribute value"
-    );
-
-    # Text children: named entities must be decoded
-    assert "Before > After & More" in js_code , (
-        "HTML entities &gt; and &amp; in text content should be decoded"
-    );
-    assert "&gt;" not in js_code , (
-        "Raw &gt; should NOT appear in emitted JS text content"
-    );
-    assert "&amp;" not in js_code , (
-        "Raw &amp; should NOT appear in emitted JS text content"
-    );
-
-    # Decimal and hex numeric references must be decoded
-    assert "Decimal > and Hex > refs" in js_code , (
-        "Decimal &#62; and hex &#x3e; references should both decode to >"
-    );
-    assert "&#62;" not in js_code , (
-        "Raw decimal entity should NOT appear in emitted JS"
-    );
-    assert "&#x3e;" not in js_code , ("Raw hex entity should NOT appear in emitted JS");
-}
-
-test "jsx block comment is a no-op child" {
-    # `{#* ... *#}` inside JSX children must compile cleanly and produce no
-    # rendered output — the comment body must not leak into the generated JS,
-    # and surrounding sibling elements must render normally.
-    es_ast = compile_to_esast(fixture_path("jsx_block_comment.jac"));
-    js_code = es_to_js(es_ast);
-
-    assert "JSX_COMMENT_PROBE" not in js_code , (
-        "Block-comment body must not appear in emitted JS"
-    );
-    assert "__jacJsx" in js_code , "Surrounding JSX should still compile to __jacJsx";
-    assert "Hello" in js_code , "Sibling text before the comment should render";
-    assert "Click" in js_code , "Sibling text after the comment should render";
 }
 
 test "stale has read emits W3041" {

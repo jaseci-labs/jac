@@ -123,83 +123,99 @@ test "solid aug-assign uses a functional updater (contract §5.3)" {
     assert js == "setCount(prev => (prev + 1))" , f"unexpected: {js}";
 }
 
-test "solid counter fixture: createSignal, accessor reads, setter writes (fixture #1)" {
-    js = compile_fixture_with_backend("reactive_state.jac", SolidBackend());
-    # State declaration uses createSignal, not useState.
-    assert "const [count, setCount] = createSignal(0)" in js;
-    assert "useState" not in js;
-    assert 'from "solid-js"' in js;
-    # Writes route through the setter.
-    assert "setCount(42)" in js;
-    assert 'setName("hello")' in js;
-    # Plain self-referential assign — documented stale-read asymmetry (§5.3).
-    assert "setCount((count() + 1))" in js;
-    # Dynamic JSX child reads are bare accessor calls in `{…}` containers — under
-    # the dom-expressions path `babel-plugin-jsx-dom-expressions` tracks the read,
-    # so the `() =>` thunk (a `solid-js/h` artifact) is gone.
-    assert "{count()}" in js , "dynamic child should be an un-thunked accessor read";
-    assert "{name()}" in js;
-    assert "() => count()" not in js , "JSX path must not thunk dynamic reads";
-}
+# (case, input, text the output must contain, text it must not contain)
+glob SOLIDBACKEND_CASES: list[tuple[str, str, list[any], list[str]]] = [
+         (
+             "solid counter fixture: createSignal, accessor reads, setter writes (fixture #1)",
+             "reactive_state.jac",
+             [
+                 "const [count, setCount] = createSignal(0)",
+                 'from "solid-js"',
+                 "setCount(42)",
+                 'setName("hello")',
+                 "setCount((count() + 1))",
+                 "{count()}",
+                 "{name()}"
+             ],
+             ["useState", "() => count()"]
+         ),
+         (
+             "solid keeps the signal destructure for a setter used as a value",
+             "state_setter_value_ref.jac",
+             ['const [theme, setTheme] = createSignal("dark")', "setTheme: setTheme"],
+             ["useJacState", "__jacS_theme"]
+         ),
+         (
+             "solid aug-assign fixture emits functional updaters (fixture #3)",
+             "reactive_aug_assign.jac",
+             [
+                 "setCount(prev => (prev + 5))",
+                 "setCount(prev => (prev - 2))",
+                 "setCount(prev => (prev * 3))"
+             ],
+             ["setCount((count() +"]
+         ),
+         (
+             "solid sync effect lowers to createEffect (fixture #2)",
+             "reactive_effects_sync.jac",
+             ["createEffect(", 'from "solid-js"', "document.title = title()"],
+             ["useEffect"]
+         ),
+         (
+             "solid cleanup effect lowers to onCleanup",
+             "reactive_effects_cleanup.jac",
+             ["onCleanup("],
+             ["useEffect"]
+         ),
+         (
+             "solid async effect keeps the IIFE and ignores the dep array",
+             "reactive_effects_deps.jac",
+             ["createEffect(", "setLoading(", "setUserData("],
+             ["useEffect"]
+         ),
+         (
+             "solid view seam emits un-thunked dynamic JSX, never wraps handlers (fixture #4/#6)",
+             "reactive_view_audit.jac",
+             ["value={count()}", "{count()}", 'type="text"', "onClick={() => count()}"],
+             ["value={() => count()}", "onClick={() => () =>"]
+         ),
+         (
+             "solid awaiting lowers to a native solid-js Suspense import",
+             "view_awaiting.jac",
+             ['import { Suspense } from "solid-js";'],
+             ["JacAwaiting"]
+         ),
+         (
+             "solid registers closure-local returned cleanup",
+             "reactive_effects_return_cleanup.jac",
+             [
+                 "onCleanup(__jacCleanup)",
+                 'typeof __jacCleanup === "function"',
+                 'removeEventListener("jac-ping", listener)'
+             ],
+             []
+         )
+     ];
 
-test "solid keeps the signal destructure for a setter used as a value" {
-    # Solid always bound `setX` through the createSignal destructure, so the
-    # #8224 fix on the React family must leave this shape exactly as it was.
-    js = compile_fixture_with_backend("state_setter_value_ref.jac", SolidBackend());
-    assert 'const [theme, setTheme] = createSignal("dark")' in js , (
-        f"solid state lowering must stay a signal destructure; got:\n{js}"
-    );
-    assert "setTheme: setTheme" in js;
-    assert "useJacState" not in js;
-    assert "__jacS_theme" not in js;
-}
-
-test "solid aug-assign fixture emits functional updaters (fixture #3)" {
-    js = compile_fixture_with_backend("reactive_aug_assign.jac", SolidBackend());
-    assert "setCount(prev => (prev + 5))" in js;
-    assert "setCount(prev => (prev - 2))" in js;
-    assert "setCount(prev => (prev * 3))" in js;
-    # Never the stale double-read form.
-    assert "setCount((count() +" not in js;
-}
-
-test "solid sync effect lowers to createEffect (fixture #2)" {
-    js = compile_fixture_with_backend("reactive_effects_sync.jac", SolidBackend());
-    assert "createEffect(" in js;
-    assert "useEffect" not in js;
-    assert 'from "solid-js"' in js;
-    # Reactive read inside the effect body is an accessor call.
-    assert "document.title = title()" in js;
-}
-
-test "solid cleanup effect lowers to onCleanup" {
-    js = compile_fixture_with_backend("reactive_effects_cleanup.jac", SolidBackend());
-    assert "onCleanup(" in js;
-    assert "useEffect" not in js;
-}
-
-test "solid async effect keeps the IIFE and ignores the dep array" {
-    js = compile_fixture_with_backend("reactive_effects_deps.jac", SolidBackend());
-    assert "createEffect(" in js;
-    assert "useEffect" not in js;
-    # Writes inside the async effect route through setters.
-    assert "setLoading(" in js;
-    assert "setUserData(" in js;
-}
-
-test "solid view seam emits un-thunked dynamic JSX, never wraps handlers (fixture #4/#6)" {
-    js = compile_fixture_with_backend("reactive_view_audit.jac", SolidBackend());
-    # Dynamic attribute value and dynamic child are bare `{expr}` — un-thunked on
-    # the JSX/dom-expressions path (the compiler owns reactive tracking).
-    assert "value={count()}" in js , "dynamic attribute value should be un-thunked";
-    assert "value={() => count()}" not in js , "JSX path must not thunk attr values";
-    assert "{count()}" in js , "dynamic child should be an un-thunked accessor read";
-    # Static literal attribute is a plain string attribute.
-    assert 'type="text"' in js;
-    # Event handler is emitted as-is: the authored lambda's implicit return
-    # compiles to `() => count()`; a view wrap would add a second arrow layer.
-    assert "onClick={() => count()}" in js , "handler should be emitted as-is";
-    assert "onClick={() => () =>" not in js , "handler must not be view-wrapped";
+test "each solidbackend case emits the expected JavaScript" {
+    failed: list[str] = [];
+    for (label, arg, present, absent) in SOLIDBACKEND_CASES {
+        out = compile_fixture_with_backend(arg, SolidBackend());
+        missing = [
+            p
+            for p in present
+            if not (any(a in out for a in p) if isinstance(p, tuple) else p in out)
+        ];
+        leaked = [
+            a
+            for a in absent
+            if a in out
+        ];
+        if missing or leaked {
+            failed.append(f"{label}: missing {missing}, unexpected {leaked}");
+        }
+    }
+    assert not failed , "\n".join(failed);
 }
 
 test "solid lifts a keyed comprehension to native <For> (Branch 4)" {
@@ -255,14 +271,6 @@ test "JS family renders lifted control flow from the carried js_fallback (Branch
     assert ".map(" in js , "comprehension renders via .map() on the JS family";
     assert ".filter(" in js , "filtered comprehension renders via .filter()";
     assert " ? " in js , "the view ternary renders as a conditional expression";
-}
-
-test "solid awaiting lowers to a native solid-js Suspense import" {
-    js = compile_fixture_with_backend("view_awaiting.jac", SolidBackend());
-    # Unlike the acceptance-matrix smoke check, assert the import *source*: the
-    # awaiting clause must lower to Solid's own Suspense, not the React shim.
-    assert 'import { Suspense } from "solid-js";' in js , f"expected a solid-js Suspense import, got: {js[:200]}";
-    assert "JacAwaiting" not in js , "Solid must not emit the React Suspense shim";
 }
 
 test "solid ref field defers to a let binding (fixture #7)" {
@@ -539,13 +547,4 @@ test "solid runtime shim imports no react ecosystem package" {
             }
         }
     }
-}
-
-test "solid registers closure-local returned cleanup" {
-    js = compile_fixture_with_backend(
-        "reactive_effects_return_cleanup.jac", SolidBackend()
-    );
-    assert "onCleanup(__jacCleanup)" in js;
-    assert 'typeof __jacCleanup === "function"' in js;
-    assert 'removeEventListener("jac-ping", listener)' in js;
 }
