@@ -6233,6 +6233,9 @@ graph import compiler {
         passes.boundary_analysis_pass.BoundaryAnalysisPass._check_provider_pub {
             E5106
         },
+        passes.boundary_analysis_pass.BoundaryAnalysisPass._register_client_bridged_import {
+            E2036
+        },
         passes.boundary_analysis_pass.BoundaryAnalysisPass._reject_owned_type_import {
             E5108
         },

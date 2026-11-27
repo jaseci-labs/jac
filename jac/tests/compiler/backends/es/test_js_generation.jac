@@ -1223,6 +1223,10 @@ test "cl.jac with impl.jac does not duplicate __jacCallFunction import" {
     assert import_count == 1 , (
         f"Expected exactly 1 __jacCallFunction import, found {import_count}"
     );
+    # The annex repeats the import; a second stub is a browser SyntaxError (#10756).
+    for stub in ["function create_item(", "function list_items("] {
+        assert js_code.count(stub) == 1 , f"{stub}: {js_code}";
+    }
 
     assert_balanced_syntax(js_code, fixture);
 }

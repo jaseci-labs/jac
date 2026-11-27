@@ -50,7 +50,7 @@ impl EsastGenPass._exit_name_impl(nd: uni.Name) -> None {
         return;
     }
     name_map = {'None': 'null', 'True': 'true', 'False': 'false', 'self': 'this'};
-    name = name_map.get(nd.sym_name, nd.sym_name);
+    name = name_map.get(nd.sym_name, self._import_js_name(nd));
     identifier = self.sync_loc(es.Identifier(name=name), jac_node=nd);
     nd.gen.es_ast = identifier;
 }
