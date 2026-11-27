@@ -133,6 +133,18 @@ def shifts(kind: type[Shifted]) -> list[int] {
     ];
 }
 
+def late_fails(kind: type[Shifted]) -> int {
+    caught = 0;
+    for key in ["x", "bogus"] {
+        try {
+            kind(**{key: 1}, x=track("late"));
+        } except TypeError {
+            caught += 1;
+        }
+    }
+    return caught;
+}
+
 def pick(big: bool) -> type[Shape] {
     return Square if big else Shape;
 }
@@ -168,5 +180,5 @@ with entry {
     );
     print(make_link(Heavy, 4).weight, make_link(Link, 2).weight);
     print(make_tile(Wall).cost, make_tile(Tile).cost, pick(True)(size=2).area());
-    print(shifts(Shifted), calls);
+    print(shifts(Shifted), late_fails(Shifted), calls);
 }

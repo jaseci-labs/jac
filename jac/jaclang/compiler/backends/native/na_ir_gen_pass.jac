@@ -977,8 +977,12 @@ walker NaIRGenPass(CompilerPass) {
         helpers: dict[str, any],
         bind_records: list[dict[str, any]],
         loc: str,
-        release_on_error: list[ir.Value] = []
+        deferred: (list[tuple[ir.Value, str]] | None) = None
     ) -> ir.Value;
+
+    def _kw_spread_fail(
+        is_error: ir.Value, msg: str, deferred: (list[tuple[ir.Value, str]] | None)
+    ) -> None;
 
     def _kw_spread_value_fits(value_type: ir.Type, slot_type: ir.Type) -> bool;
     def _consume_kw_spreads(
@@ -2455,7 +2459,8 @@ walker NaIRGenPass(CompilerPass) {
         values: dict[int, ir.Value],
         explicit: set[int],
         mask: ir.Value,
-        bound: str
+        bound: str,
+        deferred: list[tuple[ir.Value, str]]
     ) -> (ir.Value | None);
 
     def _class_record_type -> ir.LiteralStructType;
