@@ -131,6 +131,14 @@ The orchestration lives in [`compiler/driver/pipeline.jac`](https://github.com/J
 Each named "schedule" function returns a list of `Transform[uni.Module, uni.Module]`
 classes to run, and the `JacCompiler.compile` method walks them in order.
 
+Client placement validates the referenced declaration closure before pulling a
+plain imported helper into the client. One validation shares a module-element
+index across recursive visits. The index retains the `PlacementWork.refs`
+snapshot it describes: refreshing or forgetting a module replaces that snapshot,
+so a lazy dependency load that changes its topology rebuilds the index. Placement
+changes alone preserve the snapshot. The index belongs to that validation call;
+it does not survive a later compilation or edit.
+
 ---
 
 ## Stage 1: Parsing and the Unified AST

@@ -7,7 +7,9 @@ import from tests.support { JAC_ROOT }
 import jaclang.compiler.frontend.unitree as uni;
 import jaclang.compiler.placement.placement_solver as solver;
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.constant { CodeContext }
+import from jaclang.compiler.frontend.roles { BodyRole }
 
 def _compile -> tuple[JacProgram, uni.Module] {
     prog = JacProgram();
@@ -18,6 +20,133 @@ def _compile -> tuple[JacProgram, uni.Module] {
     assert not prog.errors_had , [str(e) for e in prog.errors_had];
     return (prog, mod);
 }
+
+def _closure_module(prog: JacProgram, path: str, source: str) -> uni.Module {
+    with open(path, "w") as stream {
+        stream.write(source);
+    }
+    prog.invalidate_module(path);
+    mod = prog.compile(
+        path,
+        options=CompileOptions(
+            no_cgen=True, force_codespace="server", skip_native_engine=True
+        )
+    );
+    assert not prog.errors_had , [str(e) for e in prog.errors_had];
+    return mod;
+}
+
+
+test "closure validation enumerates each module once per invocation" {
+    with tempfile.TemporaryDirectory(prefix="jac-placement-closure-") as tmp {
+        source = "def f0 -> int { return 1; }\n";
+        for i in range(1, 48) {
+            source += f"def f{i} -> int {{ return f{i - 1}(); }}\n";
+        }
+        prog = JacProgram();
+        mod = _closure_module(prog, os.path.join(tmp, "helpers.jac"), source);
+        top = solver._named_top_element(mod, "f47");
+        assert top is not None;
+        solver.placement_work(prog).refs(mod);
+        reads: list[int] = [];
+        original: any = vars(uni.Module)["elements"].fget;
+        def elements(module: uni.Module) -> list[uni.UniNode] {
+            if module is mod {
+                reads.append(id(module));
+            }
+            return original(module);
+        }
+        with patch.object(uni.Module, "elements", property(elements)) {
+            assert solver._closure_pullable(top, mod, prog, set());
+            assert solver._closure_pullable(top, mod, prog, set());
+        }
+        assert len(reads) == 2 , len(reads);
+    }
+}
+
+
+test "closure indexes do not outlive edits or hide denied dependencies" {
+    with tempfile.TemporaryDirectory(prefix="jac-placement-closure-edit-") as tmp {
+        prog = JacProgram();
+        path = os.path.join(tmp, "helpers.jac");
+        for (source, allowed) in [
+            ("def value -> int { return 1; }", True),
+            ("import os;\ndef value -> int { return len(os.sep); }", False),
+            ("node Doc {}\ndef:pub value -> int { return 1; }", False),
+            (
+                "node Doc { can seen with entry { print(root); } }\n"
+                    + "def value -> int { doc = Doc(); return 1; }",
+                False
+            ),
+            ("def value -> int { return 2; }", True)
+        ] {
+            mod = _closure_module(prog, path, source);
+            top = solver._named_top_element(mod, "value");
+            assert top is not None;
+            assert solver._closure_pullable(top, mod, prog, set()) == allowed , (
+                source,
+                allowed
+            );
+        }
+    }
+}
+
+
+test "lazy materialization refreshes an index before following added declarations" {
+    prog = JacProgram();
+    mod = prog.parse_str(
+        "import from late { ready }\ndef start -> int { return 1; }",
+        "/tmp/placement-lazy-index.jac"
+    );
+    imp = next(
+        top
+        for top in mod.body
+        if isinstance(top, uni.Import)
+    );
+    start = next(
+        top
+        for top in mod.body
+        if isinstance(top, uni.Ability)
+    );
+    extra = prog.parse_str(
+        "def ready -> int { return 1; }\n"
+            + "node Blocked { can seen with entry { print(root); } }",
+        "/tmp/placement-lazy-extra.jac"
+    );
+    ready = next(
+        top
+        for top in extra.body
+        if isinstance(top, uni.Ability)
+    );
+    blocked = next(
+        top
+        for top in extra.body
+        if isinstance(top, uni.Archetype)
+    );
+    references: dict[int, set[int]] = {id(start): {id(imp)}, id(ready): {id(blocked)}};
+    work = solver.placement_work(prog);
+    def refs(module: uni.Module, top: uni.UniNode) -> set[int] {
+        return references.get(id(top), set());
+    }
+    with patch.object(solver, "_ref_top_ids", side_effect=refs) {
+        work.refresh(mod);
+        before = work.refs(mod);
+        def materialize(imported: uni.Import, program: JacProgram) -> uni.Module {
+            assert imported is imp;
+            assert program is prog;
+            mod.add_kids_right(list(extra.body), role=BodyRole);
+            work.refresh(mod);
+            assert work.refs(mod) is not before;
+            return mod;
+        }
+        with patch.object(solver, "_import_source_module", side_effect=materialize), patch.object(
+            solver, "_named_top_element", return_value=ready
+        ) {
+            assert not solver._closure_pullable(start, mod, prog, set());
+        }
+    }
+}
+
 
 test "unchanged and unrelated modules do not rescan the solved import graph" {
     (prog, mod) = _compile();
@@ -50,6 +179,7 @@ test "symbol refresh invalidates references while placement changes reuse them" 
         assert refs.call_count == len(mod.body);
         work.refresh(mod);
         assert work.refs(mod) == before;
+        assert work.refs(mod) is not before;
         assert refs.call_count == 2 * len(mod.body);
     }
 }
