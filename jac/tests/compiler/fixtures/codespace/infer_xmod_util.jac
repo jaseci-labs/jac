@@ -18,3 +18,7 @@ def tag_count -> int {
 def:pub server_ping(payload: str) -> str {
     return payload;
 }
+
+obj Badge {
+    has label: str = "";
+}

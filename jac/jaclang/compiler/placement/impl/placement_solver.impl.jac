@@ -977,7 +977,6 @@ impl _pull_boundary_import(
         _is_sv_import(imp)
         or imp.is_typed
         or imp.is_virtual_jac
-        or imp.has_string_path
         or imp.from_loc is None
         or not imp.items
         or not imp.in_client_context()

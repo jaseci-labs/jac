@@ -335,10 +335,7 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
         }
         path_list = node_.resolve_relative_path_list();
 
-        offset = 0;
-        if len(path_list) > len(path_parts) and node_.level > 0 {
-            offset = len(path_list) - len(path_parts);
-        }
+        offset = len(path_list) - len(path_parts);
         for (idx, npath) in enumerate(path_parts) {
             part: Expr = npath;
             mod_path = path_list[idx + offset];
