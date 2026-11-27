@@ -568,6 +568,33 @@ test "the gateway stops its own session for a deleted account, and forwards an a
 }
 
 
+test "the request middleware never provisions a session another store minted" {
+    manager = _manager(provision_unknown_users=True);
+    def seen_by_request(t: str) -> dict[str, any] {
+        request = Request();
+        request.headers.set("Authorization", "Bearer " + t);
+        seen: list[dict[str, any]] = [];
+        async def next_fn(req: Request) -> Response {
+            seen.append(
+                {"username": req.state.username, "unknown": req.state.unknown_subject}
+            );
+            return Response();
+        }
+        asyncio.run(jwt_middleware(manager)(request, next_fn));
+        return seen[0];
+    }
+    for issuer in ["payments_app", "orders_app"] {
+        stranger = uuid.uuid4().hex;
+        seen = seen_by_request(_signed({"sub": stranger, "iss": issuer}));
+        assert seen == {"username": None, "unknown": stranger} , f"{issuer}: {seen}";
+        assert manager.user_exists(stranger) is False;
+    }
+    started = uuid.uuid4().hex;
+    assert seen_by_request(_signed({"sub": started, "iss": "__gateway__"}))["username"]
+        == started;
+}
+
+
 test "the gateway leaves an app's own socket tokens alone" {
     manager = _manager();
     async def verify {

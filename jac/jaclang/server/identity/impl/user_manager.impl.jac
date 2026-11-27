@@ -457,8 +457,9 @@ impl UserManager.validate_jwt_token_detail(
     }
     issuer = decoded.get(ISSUER_CLAIM);
     if self.provision_unknown_users {
-        if check_existence and not self.user_exists(user_id) {
-            if issuer is not None and issuer != GATEWAY_ISSUER {
+        foreign = issuer is not None and issuer != GATEWAY_ISSUER;
+        if (check_existence or foreign) and not self.user_exists(user_id) {
+            if foreign {
                 return {
                     'status': 'unknown_user',
                     'user_id': None,
