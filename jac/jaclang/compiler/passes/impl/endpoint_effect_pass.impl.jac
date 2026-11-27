@@ -376,7 +376,13 @@ impl EndpointEffectPass._declaration_effects(
         if not isinstance(decorator, FuncCall) {
             continue;
         }
-        target = ability_of_symbol(self._call_target_symbol(decorator));
+        symbol = self._call_target_symbol(decorator);
+        if symbol is None {
+            continue;
+        }
+
+        found = callable_key(symbol);
+        target = found.owner if found.key == "effects" else None;
         if target is None
             or not target.loc.mod_path.replace("\\", "/").endswith(
                 "/jaclang/lib/effects.jac"
