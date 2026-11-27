@@ -622,32 +622,48 @@ def hub_module(prog: JacProgram, name_suffix: str) -> any {
 }
 
 test "client import pulls a pure markerless module cross-module" {
-    prog = JacProgram();
-    mod = prog.compile(os.path.join(FIXTURE_DIR, "infer_xmod_app.jac"), no_cgen=False);
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    js = mod.gen.js;
-    assert '__jacCallFunction("register"' not in js , (
-        "accessless helper from a pure module must not bridge over RPC"
-    );
-    assert '__jacCallFunction("tag_count"' not in js , (
-        "accessless helper from a pure module must not bridge over RPC"
-    );
-    assert '__jacCallFunction("server_ping"' not in js , (
-        "def:pub in an unanchored module is an export, not an endpoint --"
-        " it pulls into the importing codespace instead of bridging"
-    );
-    util = hub_module(prog, "infer_xmod_util.jac");
-    assert util is not None , "imported module missing from hub";
-    assert stamp_of(util, "register") == 'client' , (
-        "accessless def imported by client code is placed client"
-    );
-    assert stamp_of(util, "tag_count") == 'client';
-    assert stamp_of(util, "_tags") == 'client' , (
-        "glob used by pulled defs follows them client"
-    );
-    assert stamp_of(util, "server_ping") == 'client' , (
-        "def:pub in a pure module follows its client caller (export semantics)"
-    );
+    for app in ["infer_xmod_app.jac", "infer_xmod_app_quoted.jac"] {
+        prog = JacProgram();
+        mod = prog.compile(os.path.join(FIXTURE_DIR, app), no_cgen=False);
+        assert not prog.errors_had , f"{app}: {[str(e) for e in prog.errors_had]}";
+        js = mod.gen.js;
+        for helper in ["register", "tag_count"] {
+            assert f'__jacCallFunction("{helper}"' not in js , (
+                f"{app}: accessless helper {helper} from a pure module must not "
+                "bridge over RPC"
+            );
+        }
+        assert '__jacCallFunction("server_ping"' not in js , (
+            f"{app}: def:pub in an unanchored module is an export, not an endpoint"
+            " -- it pulls into the importing codespace instead of bridging"
+        );
+        assert 'from "./infer_xmod_util.js"' in js , (
+            f"{app}: the pulled module is ES-imported:\n{js}"
+        );
+        assert "new Badge(" in js , (
+            f"{app}: an imported obj constructs with new:\n{js}"
+        );
+        assert "class Badge" not in js , (
+            f"{app}: a pulled obj is imported with its methods, not inlined as a "
+            f"wire copy:\n{js}"
+        );
+        util = hub_module(prog, "infer_xmod_util.jac");
+        assert util is not None , f"{app}: imported module missing from hub";
+        assert stamp_of(util, "register") == 'client' , (
+            f"{app}: accessless def imported by client code is placed client"
+        );
+        assert stamp_of(util, "tag_count") == 'client' , app;
+        assert stamp_of(util, "Badge") == 'client' , (
+            f"{app}: obj constructed by client code is placed client"
+        );
+        assert stamp_of(util, "_tags") == 'client' , (
+            f"{app}: glob used by pulled defs follows them client"
+        );
+        assert stamp_of(util, "server_ping") == 'client' , (
+            f"{app}: def:pub in a pure module follows its client caller (export "
+            "semantics)"
+        );
+    }
 }
 
 test "cross-module pulled elements dual-emit for the server side" {

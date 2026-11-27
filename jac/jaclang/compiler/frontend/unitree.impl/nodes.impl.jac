@@ -1943,14 +1943,15 @@ impl ModulePath.native_variant_path -> (str | None) {
 }
 
 impl ModulePath.resolve_relative_path_list -> list[str] {
-    parts = self.dot_path_str.split('.');
-    if not parts {
+    if not self.path {
         return [];
     }
-
     full_path = self.resolve_relative_path();
+    if self.string_path_value is not None {
+        return [full_path];
+    }
 
-    paths: list[str] = [''] * len(parts);
+    paths: list[str] = [''] * len(self.path);
     paths[-1] = full_path;
 
     full_basename = os.path.basename(full_path);
@@ -1958,7 +1959,7 @@ impl ModulePath.resolve_relative_path_list -> list[str] {
     if full_basename.startswith('__init__') {
         cur_dir = os.path.dirname(cur_dir);
     }
-    for i in range(len(parts) - 2, -1, -1) {
+    for i in range(len(self.path) - 2, -1, -1) {
         init_found = False;
         for init_name in ('__init__.jac', '__init__.py', '__init__.pyi') {
             init_path = os.path.join(cur_dir, init_name);

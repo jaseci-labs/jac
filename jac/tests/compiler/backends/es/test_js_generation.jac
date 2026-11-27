@@ -3098,42 +3098,49 @@ test "imported JS/TS class constructs with new (#8017)" {
         "export function plain(x) { return x; }\n"
     );
     fixture_src = Path(os.path.join(FIXTURES, "ts_class_new.jac")).read_text();
-    jac_path = os.path.join(comp_dir, "ts_class_new.jac");
-    Path(jac_path).write_text(fixture_src);
-    js_code = compile_fixture_to_js(jac_path);
-
-    assert "new Local(" in js_code , (
-        "Jac obj construction must keep emitting new:\n" + js_code
-    );
-    assert "new Greeter(" in js_code , (
-        "imported TS class construction must emit new:\n" + js_code
-    );
-    assert "new plain(" not in js_code , (
-        "imported TS function must stay a plain call:\n" + js_code
-    );
-
     # Without a module marker Node treats sibling .js files as CommonJS and
     # the generated named imports fail to resolve.
     Path(os.path.join(comp_dir, "package.json")).write_text('{"type": "module"}');
     stage_prelude_dir(comp_dir);
-    Path(os.path.join(comp_dir, "main.mjs")).write_text(
-        js_code + "\nconsole.log(go());\n"
-    );
-    result = subprocess.run(
-        ["node", os.path.join(comp_dir, "main.mjs")],
-        capture_output=True,
-        text=True,
-        timeout=30
-    );
-    assert result.returncode == 0 , (
-        "constructing an imported TS class crashed in Node:\n"
-        f"stderr={result.stderr!r}\njs:\n{js_code}"
-    );
-    assert result.stdout.strip() == "hi worldxa" , (
-        f"unexpected runtime output: {result.stdout!r}\njs:\n{js_code}"
-    );
+    for (name, spec) in [
+        ("ts_class_new.jac", ".ts_class_new_lib"),
+        ("ts_class_new_quoted.jac", '"./ts_class_new_lib.js"')
+    ] {
+        jac_path = os.path.join(comp_dir, name);
+        Path(jac_path).write_text(
+            fixture_src.replace("import from .ts_class_new_lib", f"import from {spec}")
+        );
+        js_code = compile_fixture_to_js(jac_path);
 
-    assert_balanced_syntax(js_code, "ts_class_new.jac");
+        assert "new Local(" in js_code , (
+            f"{spec}: Jac obj construction must keep emitting new:\n{js_code}"
+        );
+        assert "new Greeter(" in js_code , (
+            f"{spec}: imported TS class construction must emit new:\n{js_code}"
+        );
+        assert "new plain(" not in js_code , (
+            f"{spec}: imported TS function must stay a plain call:\n{js_code}"
+        );
+
+        Path(os.path.join(comp_dir, "main.mjs")).write_text(
+            js_code + "\nconsole.log(go());\n"
+        );
+        result = subprocess.run(
+            ["node", os.path.join(comp_dir, "main.mjs")],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            f"{spec}: constructing an imported TS class crashed in Node:\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        assert result.stdout.strip() == "hi worldxa" , (
+            f"{spec}: unexpected runtime output: {result.stdout!r}\njs:\n{js_code}"
+        );
+
+        assert_balanced_syntax(js_code, name);
+    }
 }
 
 test "builtin functions lower to runtime helpers without type-check (#7480, #8589)" {

@@ -334,14 +334,9 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
             return escaped;
         }
         path_list = node_.resolve_relative_path_list();
-
-        offset = 0;
-        if len(path_list) > len(path_parts) and node_.level > 0 {
-            offset = len(path_list) - len(path_parts);
-        }
         for (idx, npath) in enumerate(path_parts) {
             part: Expr = npath;
-            mod_path = path_list[idx + offset];
+            mod_path = path_list[idx];
             if idx == len(path_parts) - 1
                 and self._imports_own_module(node_, mod_path) {
                 self.emit_diag(E1139, npath, module=node_.dot_path_str);
