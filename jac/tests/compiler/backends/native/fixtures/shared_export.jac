@@ -1,7 +1,7 @@
 """Fixture for the C-ABI shared-library build (`jac build --native --lib`).
 
 Exercises the export surface the shared-object linkers must expose: `:pub`
-free functions (scalar in/out), a `:pub` global, and opaque object handles
+free functions (scalar and string in/out), a `:pub` global, and opaque object handles
 (`make_point` returns a Point*, `point_sum` consumes it) — the latter proving
 that Jac object pointers cross the C ABI as opaque handles.
 """
@@ -16,7 +16,7 @@ def:pub jmul(a: int, b: int) -> int {
     return a * b;
 }
 
-def:pub get_counter() -> int {
+def:pub get_counter -> int {
     return counter;
 }
 
@@ -31,4 +31,12 @@ def:pub make_point(x: int, y: int) -> Point {
 
 def:pub point_sum(p: Point) -> int {
     return p.x + p.y;
+}
+
+def:pub name_length(name: str) -> int {
+    return len(name);
+}
+
+def:pub greet(name: str) -> str {
+    return "hi " + name;
 }

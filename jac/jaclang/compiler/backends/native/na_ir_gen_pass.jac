@@ -1339,6 +1339,7 @@ walker NaIRGenPass(CompilerPass) {
         name: str, owner: (uni.Module | None) = None, is_pub: bool = False
     ) -> str;
 
+    def _exports_bare(owner: (uni.Module | None), is_pub: bool) -> bool;
     def _record_export(
         name: str, symbol: str, kind: str, is_pub: bool = False
     ) -> None;
@@ -1788,6 +1789,8 @@ walker NaIRGenPass(CompilerPass) {
         func: ir.Function, local_type: ir.FunctionType
     ) -> ir.Function;
 
+    def _carries_jac_str(fnty: ir.FunctionType) -> bool;
+    def _emit_c_string_entry(body: ir.Function, c_name: str) -> None;
     def _apply_ownership_param_attrs(
         func: ir.Function, params: list[uni.ParamVar], base: int
     ) -> None;
