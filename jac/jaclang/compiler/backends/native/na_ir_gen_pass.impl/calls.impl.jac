@@ -4241,8 +4241,7 @@ impl NaIRGenPass._bind_kw_spread(
     spread: ir.Value,
     helpers: dict[str, any],
     bind_records: list[dict[str, any]],
-    loc: str,
-    release_on_error: list[ir.Value] = []
+    loc: str
 ) -> ir.Value {
     i64 = ir.IntType(64);
     matched: ir.Value = ir.Constant(i64, 0);
@@ -4256,9 +4255,7 @@ impl NaIRGenPass._bind_kw_spread(
             matched, self.builder.zext(present, i64), name="kwbind.matched"
         );
         if rec["alloca"] is None {
-            self._emit_runtime_raise(
-                present, "TypeError", rec["dup_msg"], release_on_error=release_on_error
-            );
+            self._emit_runtime_raise(present, "TypeError", rec["dup_msg"]);
             continue;
         }
         _want = rec["erased_want"];
@@ -4275,8 +4272,7 @@ impl NaIRGenPass._bind_kw_spread(
                 "TypeError",
                 f"argument '{rec[
                     'name'
-                ]}' cannot take a value of the unpacked mapping's type",
-                release_on_error=release_on_error
+                ]}' cannot take a value of the unpacked mapping's type"
             );
             continue;
         }
@@ -4284,8 +4280,7 @@ impl NaIRGenPass._bind_kw_spread(
         self._emit_runtime_raise(
             self.builder.and_(present, bound, name="kwbind.dup"),
             "TypeError",
-            rec["dup_msg"],
-            release_on_error=release_on_error
+            rec["dup_msg"]
         );
         take = self.builder.and_(
             present, self.builder.not_(bound, name="kwbind.unset"), name="kwbind.do"

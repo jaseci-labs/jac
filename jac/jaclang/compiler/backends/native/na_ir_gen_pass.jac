@@ -976,8 +976,7 @@ walker NaIRGenPass(CompilerPass) {
         spread: ir.Value,
         helpers: dict[str, any],
         bind_records: list[dict[str, any]],
-        loc: str,
-        release_on_error: list[ir.Value] = []
+        loc: str
     ) -> ir.Value;
 
     def _kw_spread_value_fits(value_type: ir.Type, slot_type: ir.Type) -> bool;
@@ -2450,7 +2449,7 @@ walker NaIRGenPass(CompilerPass) {
         args: list[uni.Expr | uni.KWPair],
         params: list[NativeCtorParam],
         bound: str
-    ) -> (list[tuple[int, uni.Expr]] | None);
+    ) -> (tuple[list[tuple[int, uni.Expr]], uni.Expr | None] | None);
 
     def _bind_class_ctor_spread(
         nd: uni.FuncCall,
