@@ -28,20 +28,22 @@ This tutorial covers deploying to a local Kubernetes cluster (MicroK8s, minikube
 - Deploys your application to Kubernetes
 - Auto-provisions Postgres (persistence)
 - Creates all necessary Kubernetes resources
-- Exposes your application through the NGINX ingress NodePort (default `30080`)
+- Puts a gateway in front of your application, reachable through the `gateway-service` Service
 
 ```mermaid
 graph TD
     subgraph cluster["Kubernetes Cluster (Auto-Created)"]
+        GW["gateway-service"]
         subgraph app["Application"]
             P1["Pod: jac-app"]
         end
         subgraph data["Data Layer (Auto-Provisioned)"]
             PG["Postgres<br/>Persistence"]
         end
+        GW --> P1
         P1 --> PG
     end
-    LB["Ingress NodePort :30080"] --> P1
+    U["kubectl port-forward, or your Ingress"] --> GW
 ```
 
 ---
@@ -93,8 +95,16 @@ That's it. Your application is now running on Kubernetes.
 
 **Access your application:**
 
-- API: http://localhost:30080
-- Swagger docs: http://localhost:30080/docs
+The gateway has no address outside the cluster until you configure an Ingress, so the deploy prints a port-forward command:
+
+```bash
+kubectl -n default port-forward svc/gateway-service 8080:8000
+```
+
+- API: http://localhost:8080
+- Swagger docs: http://localhost:8080/docs
+
+To serve the app through your cluster's ingress controller instead, see [Ports](../../reference/plugins/jac-scale-kubernetes.md#ports).
 
 ---
 
@@ -133,7 +143,6 @@ Configure deployment in `jac.toml`:
 [scale.kubernetes]
 app_name = "jaseci"
 namespace = "default"
-ingress_node_port = 30080
 ```
 
 ### Application Settings
@@ -142,7 +151,6 @@ ingress_node_port = 30080
 |----------|-------------|---------|
 | `app_name` | Name of your application | slug of `[project].name` (else `jaseci`) |
 | `namespace` | Kubernetes namespace | `default` |
-| `ingress_node_port` | Ingress NodePort for local access | `30080` |
 
 ### Resource Limits
 
@@ -395,7 +403,7 @@ When you run `jac scale deploy`, the following happens automatically:
 1. **Namespace Setup** - Creates or uses the specified Kubernetes namespace
 2. **Database Provisioning** - Deploys Postgres as a StatefulSet with persistent storage (first run only)
 3. **Application Deployment** - Creates a deployment for your Jac application
-4. **Service Exposure** - Exposes the application through the NGINX ingress NodePort
+4. **Service Exposure** - Puts the gateway in front of the application, plus an Ingress when you configure one
 
 Subsequent deployments only update the application - databases persist across deployments.
 
@@ -425,7 +433,7 @@ mkdir -p ~/.kube && microk8s config > ~/.kube/config
 chmod 600 ~/.kube/config
 ```
 
-The last two steps are required, not cosmetic: `jac scale deploy` reads `~/.kube/config` to reach the cluster and shells out to a real `kubectl` binary to seed the source bundle. A shell alias (`alias kubectl='microk8s kubectl'`) is not enough because subprocesses cannot see it. You do not need the MicroK8s `ingress` addon -- the deploy ships its own NGINX ingress controller.
+The last two steps are required, not cosmetic: `jac scale deploy` reads `~/.kube/config` to reach the cluster and shells out to a real `kubectl` binary to seed the source bundle. A shell alias (`alias kubectl='microk8s kubectl'`) is not enough because subprocesses cannot see it. The MicroK8s `ingress` addon is only needed if you serve the app through an Ingress (see [Ports](../../reference/plugins/jac-scale-kubernetes.md#ports)).
 
 ### Option B: Docker Desktop
 
@@ -440,12 +448,12 @@ The last two steps are required, not cosmetic: `jac scale deploy` reads `~/.kube
 # Install minikube -- see https://minikube.sigs.k8s.io/docs/start/
 brew install minikube  # macOS
 
-# Start cluster with the ingress addon
 minikube start
+# Optional: an ingress controller for [scale.gateway.ingress]
 minikube addons enable ingress
 ```
 
-With minikube the ingress NodePort is reachable on the VM's address, not localhost: use `http://$(minikube ip):30080`.
+The `ingress` addon's controller answers on the VM's address, not localhost: use `http://$(minikube ip)` with the configured `host`.
 
 ---
 
@@ -461,8 +469,9 @@ jac scale status main.jac
 kubectl get pods
 kubectl get svc
 
-# Default local ingress access (minikube: http://$(minikube ip):30080)
-# http://localhost:30080
+# Without an Ingress, the app is reached through the gateway Service
+kubectl port-forward svc/gateway-service 8080:8000
+# then open http://localhost:8080
 ```
 
 If the app is not reachable yet, wait for the pod to be `Running` and `Ready` first -- the first deploy installs dependencies inside the cluster and can take several minutes:
@@ -527,11 +536,11 @@ cd todo
 jac scale deploy
 ```
 
-Access:
+Access, after `kubectl port-forward svc/gateway-service 8080:8000`:
 
-- Frontend: http://localhost:30080/cl/app
-- Backend API: http://localhost:30080
-- Swagger docs: http://localhost:30080/docs
+- Frontend: http://localhost:8080/cl/app
+- Backend API: http://localhost:8080
+- Swagger docs: http://localhost:8080/docs
 
 ---
 
