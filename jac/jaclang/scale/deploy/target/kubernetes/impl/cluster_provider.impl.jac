@@ -13,40 +13,6 @@ impl AWSProvider.service_url(
     return None;
 }
 
-impl AWSProvider.ingress_controller_service(
-    service_name: str, namespace: str, controller_name: str, ingress_node_port: int
-) -> dict[str, any] {
-    return {
-        'apiVersion': 'v1',
-        'kind': 'Service',
-        'metadata': {
-            'name': service_name,
-            'namespace': namespace,
-            'labels': {'app': controller_name, 'managed': 'jac-scale'},
-            'annotations': {
-                'service.beta.kubernetes.io/aws-load-balancer-type': 'nlb',
-                'service.beta.kubernetes.io/aws-load-balancer-scheme': 'internet-facing'
-            }
-        },
-        'spec': {
-            'type': 'LoadBalancer',
-            'selector': {'app': controller_name},
-            'ports': [
-                {'name': 'http', 'protocol': 'TCP', 'port': 80, 'targetPort': 80},
-                {'name': 'https', 'protocol': 'TCP', 'port': 443, 'targetPort': 443}
-            ]
-        }
-    };
-}
-
-impl AWSProvider.log_ingress_deployed(
-    logger: (Logger | None), app_name: str, ingress_node_port: int
-) {
-    if logger {
-        logger.info(f"NGINX ingress controller deployed for '{app_name}' (AWS NLB)");
-    }
-}
-
 impl AWSProvider.needs_nlb_wait -> bool {
     return True;
 }
@@ -88,44 +54,6 @@ impl LocalProvider.service_url(
     lb_endpoint: (str | None), ingress_node_port: int
 ) -> (str | None) {
     return f"http://localhost:{ingress_node_port}";
-}
-
-impl LocalProvider.ingress_controller_service(
-    service_name: str, namespace: str, controller_name: str, ingress_node_port: int
-) -> dict[str, any] {
-    return {
-        'apiVersion': 'v1',
-        'kind': 'Service',
-        'metadata': {
-            'name': service_name,
-            'namespace': namespace,
-            'labels': {'app': controller_name, 'managed': 'jac-scale'}
-        },
-        'spec': {
-            'type': 'NodePort',
-            'selector': {'app': controller_name},
-            'ports': [
-                {
-                    'name': 'http',
-                    'protocol': 'TCP',
-                    'port': 80,
-                    'targetPort': 80,
-                    'nodePort': ingress_node_port
-                },
-                {'name': 'https', 'protocol': 'TCP', 'port': 443, 'targetPort': 443}
-            ]
-        }
-    };
-}
-
-impl LocalProvider.log_ingress_deployed(
-    logger: (Logger | None), app_name: str, ingress_node_port: int
-) {
-    if logger {
-        logger.info(
-            f"NGINX ingress controller deployed for '{app_name}' at localhost:{ingress_node_port}"
-        );
-    }
 }
 
 impl LocalProvider.needs_nlb_wait -> bool {
