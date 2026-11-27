@@ -151,17 +151,14 @@ test "client import local jac module gets relative path" {
         assert "./mymodule.js" in js , f"Local Jac module import should use ./mymodule.js, got: {js}";
         assert 'from "mymodule"' not in js , "Should not have bare module name without ./ prefix";
         assert js.count('from "./mymodule.js"') == 1 , f"helper is imported more than once: {js}";
-        names = dict(
-            re.findall(
+        renamed = {
+            src: n
+            for (n, src) in re.findall(
                 r'import \{ Helper as (Helper\$\d) \} from "\./([\w./]+)\.js"', js
             )
-        );
-        assert sorted(names.values()) == ["main.impl/mymodule", "other"] , js;
-        other = [
-            n
-            for (n, src) in names.items()
-            if src == "other"
-        ][0];
+        };
+        assert sorted(renamed) == ["main.impl/mymodule", "other"] , js;
+        other = renamed["other"];
         assert f"{other}()" in js and f"__jacJsx({other}," in js , js;
         # except and case patterns check the function's Oops, not the module's.
         assert js.count("instanceof Oops$1") == 2 and "instanceof Oops)" not in js , js;
