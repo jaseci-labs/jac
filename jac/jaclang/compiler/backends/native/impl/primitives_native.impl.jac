@@ -6047,12 +6047,18 @@ impl NativeBuiltinEmitter.emit_int(
         return self._int_from_boxed(ctx, arg_val);
     }
     decoded: (ir.Value | None) = None;
+    held: (ir.Value | None) = None;
+    held_ty: ir.Type = ir.IntType(64);
     if p._is_bytes_type(arg_val.type) {
         decoded = p._emit_bytes_decode(arg_val, [], {}, None);
         if decoded is None {
             return None;
         }
         arg_val = decoded;
+        if p._is_owned(decoded) {
+            held = self._hold_until_unwind(p, b, decoded);
+            held_ty = decoded.type;
+        }
     }
     base: (ir.Value | None) = None;
     if len(args) >= 2 and isinstance(args[1].type, ir.IntType) {
@@ -6064,7 +6070,29 @@ impl NativeBuiltinEmitter.emit_int(
     if decoded is not None {
         p._release_owned_args([decoded], op="int_bytes");
     }
+    if held is not None {
+        b.store(ir.Constant(held_ty, None), held);
+    }
     return parsed;
+}
+
+impl NativeBuiltinEmitter._hold_until_unwind(
+    self: NativeBuiltinEmitter, p: any, b: ir.IRBuilder, value: ir.Value
+) -> ir.Value {
+    func = b.function;
+    entry_block = func.entry_basic_block;
+    cur_block = b.block;
+    if entry_block.instructions {
+        b.position_before(entry_block.instructions[0]);
+    } else {
+        b.position_at_start(entry_block);
+    }
+    slot = b.alloca(value.type, name="int.bytes.held");
+    b.store(ir.Constant(value.type, None), slot);
+    b.position_at_end(cur_block);
+    p.local_vars[f"int.bytes.{id(slot)}"] = slot;
+    b.store(value, slot);
+    return slot;
 }
 
 impl NativeBuiltinEmitter._int_from_c_string(
