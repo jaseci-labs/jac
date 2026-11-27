@@ -14034,7 +14034,6 @@ graph import scale {
         | deploy.autoscale.keda_autoscaler
         | deploy.target.deployment_target
         | deploy.target.factory
-        | deploy.target.kubernetes.cluster_provider
         | deploy.target.kubernetes.ingress
         | deploy.target.kubernetes.kubernetes_target
         | deploy.target.kubernetes.monitoring
@@ -14775,10 +14774,11 @@ graph import scale.deploy.target {
 }
 
 graph import scale.deploy.target.kubernetes {
-    cluster_provider ++> [
-        ingress { ClusterProvider },
-        utils.kubernetes_utils { AWSProvider, ClusterProvider, LocalProvider },
-    ]
+    cluster_provider ++> utils.kubernetes_utils {
+        AWSProvider,
+        ClusterProvider,
+        LocalProvider
+    }
     database_provisioner ++> target { DatabaseProvisioner }
     ingress ++> kubernetes_target { IngressDeployer }
     kubernetes_config ++> ingress
