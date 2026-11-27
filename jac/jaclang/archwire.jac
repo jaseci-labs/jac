@@ -5234,11 +5234,9 @@ graph import compiler {
             require
         },
     ]
-    driver.pipeline --> [
-        placement.placement_solver.solve_module_placement._invalidate_stale_codegen {
-            invalidate
-        },
-    ]
+    driver.pipeline --> placement.placement_solver.solve_module_placement._invalidate_stale_codegen {
+        invalidate
+    }
     driver.pipeline_types ++> [
         backends.es.esast_gen_pass
             | backends.native.na_compile_pass
@@ -6603,8 +6601,7 @@ graph import compiler {
             | passes.ownership_check_pass.OwnershipCheckPass._nogc_resolve_provenance {
             active_host
         },
-        backends.native.na_ir_gen_pass.NaIRGenPass._register_imported_archetype
-            | driver.program.JacProgram.iface_registry { active_host },
+        driver.program.JacProgram.iface_registry { active_host },
         driver.program.JacProgram.invalidate_own_module { active_host },
         driver.program.JacProgram.load_dependency_module { active_host },
         driver.program.JacProgram.native_units { active_host },

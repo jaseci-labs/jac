@@ -77,9 +77,7 @@ impl NaIRGenPass._class_value_ctor_bound(
         return None;
     }
     bound = self._class_expr_bound(target);
-    if bound is None
-        or bound not in self.struct_types
-        or self._is_enum_arch(bound) {
+    if bound is None or bound not in self.struct_types or self._is_enum_arch(bound) {
         return None;
     }
     return bound;

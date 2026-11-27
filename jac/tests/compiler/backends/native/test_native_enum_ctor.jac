@@ -62,7 +62,9 @@ def sv_lines(fixture: str) -> list[str] {
 """The seam report a build would show on stderr for a fixture."""
 def refusals(fixture: str) -> str {
     prog = JacProgram();
-    prog.compile(file_path=os.path.join(FIXTURES, fixture), options=native_force_opts());
+    prog.compile(
+        file_path=os.path.join(FIXTURES, fixture), options=native_force_opts()
+    );
     return "\n".join(str(e) for e in prog.errors_had);
 }
 
