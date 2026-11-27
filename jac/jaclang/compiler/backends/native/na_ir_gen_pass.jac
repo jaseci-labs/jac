@@ -2446,7 +2446,7 @@ walker NaIRGenPass(CompilerPass) {
         args: list[uni.Expr | uni.KWPair],
         params: list[NativeCtorParam],
         bound: str
-    ) -> (tuple[list[tuple[int, uni.Expr]], uni.Expr | None] | None);
+    ) -> (list[tuple[int, uni.Expr]] | None);
 
     def _bind_class_ctor_spread(
         nd: uni.FuncCall,

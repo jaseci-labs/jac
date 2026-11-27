@@ -1,0 +1,1 @@
+- **Fix: a `**` argument runs in source order when a class value builds an object natively**: in native code, `kind(**options(), y=next_y())` with `kind: type[Point]` ran `next_y()` before `options()`, and a later argument that replaced the dictionary could free it while it was still in use. Arguments now run left to right, as in Python.
