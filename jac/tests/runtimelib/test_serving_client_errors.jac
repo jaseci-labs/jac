@@ -30,6 +30,9 @@ import from jaclang.server.serving.client {
     _release,
     _take_idle
 }
+import from jaclang.server.serving.app { ServingApp }
+import from jaclang.server.serving.endpoint { HTTPMethod, JEndPoint }
+import from jaclang.server.serving.server { ServingServer }
 
 
 def _closed_port -> int {
@@ -492,6 +495,96 @@ test "bodiless responses end at the head" {
             failures.append(f"{name}: client kept waiting for a body");
         } finally {
             _stop_server(srv, held);
+        }
+    }
+    assert not failures , "\n".join(failures);
+}
+
+
+def _pong -> dict[str, any] {
+    return {"ok": True};
+}
+
+
+def _large -> str {
+    return "x" * 100000;
+}
+
+
+def _app -> ServingApp {
+    app = ServingApp();
+    app.add_endpoint(JEndPoint(method=HTTPMethod.GET, path="/ping", callback=_pong));
+    app.add_endpoint(JEndPoint(method=HTTPMethod.GET, path="/large", callback=_large));
+    return app;
+}
+
+
+async def _shelves_after(
+    port: int, method: str, path: str, mode: str
+) -> tuple[list[int], list[list[int]]] {
+    statuses: list[int] = [];
+    seen: list[any] = [];
+    shelves: list[list[int]] = [];
+    for i in range(2) {
+        resp: any = await arequest(
+            method,
+            f"http://127.0.0.1:{port}{path}",
+            headers={"Connection": "close"} if mode == "close" and i == 1 else None,
+            timeout=5.0,
+            stream=mode in ("stream", "partial"),
+            keep_alive=mode != "off"
+        );
+        if mode in ("stream", "partial") {
+            async for _ in resp.aiter_raw() {
+                if mode == "partial" {
+                    break;
+                }
+            }
+            await resp.aclose();
+        }
+        statuses.append(resp.status_code);
+        bucket = _idle_pool().get(("http", "127.0.0.1", port), []);
+        seen.extend(
+            conn
+            for conn in bucket
+            if all(conn is not s for s in seen)
+        );
+        shelves.append([[s is conn for s in seen].index(True) for conn in bucket]);
+    }
+    for conn in seen {
+        conn.writer.close();
+    }
+    return (statuses, shelves);
+}
+
+
+test "the client reuses a connection only after a complete keep-alive reply" {
+    cases: list[tuple[str, str, str, str, int, list[list[int]]]] = [
+        ("body read in full", "GET", "/ping", "body", 0, [[0], [0]]),
+        ("HEAD reply", "HEAD", "/ping", "body", 0, [[0], [0]]),
+        ("stream read to the end", "GET", "/ping", "stream", 0, [[0], [0]]),
+        ("stream closed early", "GET", "/large", "partial", 0, [[], []]),
+        ("server closes at its budget", "GET", "/ping", "body", 2, [[0], []]),
+        ("caller asks to close", "GET", "/ping", "close", 0, [[0], [0]]),
+        ("keep-alive not requested", "GET", "/ping", "off", 0, [[], []])
+    ];
+    failures: list[str] = [];
+    for (name, method, path, mode, budget, shelves) in cases {
+        server = ServingServer(
+            app=_app(), host="127.0.0.1", port=0, request_budget=budget
+        );
+        stop = server.serve_background();
+        try {
+            outcome: any = asyncio.run(
+                _shelves_after(server.bound_port, method, path, mode)
+            );
+            if outcome != ([200, 200], shelves) {
+                failures.append(f"{name}: got {outcome!r}, expected {shelves!r}");
+            }
+        } finally {
+            try {
+                stop();
+            } except RuntimeError {}
         }
     }
     assert not failures , "\n".join(failures);

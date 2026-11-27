@@ -538,6 +538,9 @@ impl EsastGenPass._lower_match_pattern(
         cls_name = pat.name.sym_name
             if isinstance(pat.name, uni.AstSymbolNode)
             else None;
+        if isinstance(pat.name, uni.Name) {
+            cls_name = self._import_js_name(pat.name);
+        }
         if cls_name is None {
             self.ctx.emit(
                 E5018,

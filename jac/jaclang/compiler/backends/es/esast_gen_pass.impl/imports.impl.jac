@@ -11,6 +11,58 @@ impl EsastGenPass._has_import(name: str) -> bool {
     return False;
 }
 
+impl EsastGenPass._plan_import_names -> dict[tuple[int, str], str] {
+    self._import_names = {};
+    taken: dict[str, str] = {};
+    imports = [
+        nd
+        for nd in self.module.get_all_sub_nodes(uni.Import)
+        if nd.from_loc and not (nd.is_typed or nd.is_comptime or nd.is_absorb)
+    ];
+
+    for nd in sorted(
+        imports, key=lambda (nd: uni.Import) { not isinstance(nd.parent, uni.Module); }
+    ) {
+        for item in nd.items {
+            if not isinstance(item, uni.ModuleItem) {
+                continue;
+            }
+            bound = item.alias or item.name;
+            if not isinstance(bound, uni.Name) or bound.sym is None {
+                continue;
+            }
+            src = item.from_mod_path;
+            target = os.path.realpath(src.resolve_relative_path() or src.dot_path_str)
+                + ":"
+                + item.name.value;
+            (name, n) = (bound.sym_name, 0);
+            while taken.setdefault(name, target) != target {
+                n += 1;
+                name = f"{bound.sym_name}${n}";
+            }
+            self._import_names[(id(bound.sym), bound.sym_name)] = name;
+        }
+    }
+    return self._import_names;
+}
+
+impl EsastGenPass._import_js_name(nd: uni.Name) -> str {
+    names = self._import_names
+        if self._import_names is not None
+        else self._plan_import_names();
+
+    return names.get((id(nd.sym), nd.sym_name), nd.sym_name);
+}
+
+impl EsastGenPass._emit_import_name(nd: uni.Name) -> (str | None) {
+    name = self._import_js_name(nd);
+    if name in self._emitted_imports {
+        return None;
+    }
+    self._emitted_imports.add(name);
+    return name;
+}
+
 impl EsastGenPass._register_jac_virtual_import(module_id: str) -> None {
     if not self.client_manifest or module_id in self.client_manifest.imports {
         return;
@@ -155,17 +207,20 @@ impl EsastGenPass.exit_import with uni.Import exit {
         list[
             es.ImportSpecifier | es.ImportDefaultSpecifier | es.ImportNamespaceSpecifier
         ] = [];
+    deduped = False;
     for item in emit_items {
         if isinstance(item, uni.ModuleItem) {
             if isinstance(item.name, uni.Name) {
+                local_name = self._emit_import_name(item.alias or item.name);
+                if local_name is None {
+                    deduped = True;
+                    continue;
+                }
                 imported = self.sync_loc(
                     es.Identifier(name=item.name.sym_name), jac_node=item.name
                 );
                 local = self.sync_loc(
-                    es.Identifier(
-                        name=item.alias.sym_name if item.alias else item.name.value
-                    ),
-                    jac_node=item.alias or item.name
+                    es.Identifier(name=local_name), jac_node=item.alias or item.name
                 );
                 specifiers.append(
                     self.sync_loc(
@@ -182,11 +237,15 @@ impl EsastGenPass.exit_import with uni.Import exit {
                 }
             } elif isinstance(item.name, uni.Token) {
                 if (item.name.value == 'default') {
-                    if not item.alias {
+                    local_name = self._emit_import_name(item.alias)
+                        if isinstance(item.alias, uni.Name)
+                        else None;
+                    if local_name is None {
+                        deduped = deduped or item.alias is not None;
                         continue;
                     }
                     local = self.sync_loc(
-                        es.Identifier(name=item.alias.sym_name), jac_node=item.alias
+                        es.Identifier(name=local_name), jac_node=item.alias
                     );
                     specifiers.append(
                         self.sync_loc(
@@ -194,11 +253,15 @@ impl EsastGenPass.exit_import with uni.Import exit {
                         )
                     );
                 } elif (item.name.value == '*') {
-                    if not item.alias {
+                    local_name = self._emit_import_name(item.alias)
+                        if isinstance(item.alias, uni.Name)
+                        else None;
+                    if local_name is None {
+                        deduped = deduped or item.alias is not None;
                         continue;
                     }
                     local = self.sync_loc(
-                        es.Identifier(name=item.alias.sym_name), jac_node=item.alias
+                        es.Identifier(name=local_name), jac_node=item.alias
                     );
                     specifiers.append(
                         self.sync_loc(
@@ -208,6 +271,10 @@ impl EsastGenPass.exit_import with uni.Import exit {
                 }
             }
         }
+    }
+    if deduped and not specifiers {
+        here.gen.es_ast = None;
+        return;
     }
     import_decl = self.sync_loc(
         es.ImportDeclaration(specifiers=specifiers, source=source), jac_node=here
@@ -275,6 +342,10 @@ impl EsastGenPass._generate_sv_import_stubs(
 
         binding = manifest.bindings.get(local_name);
         if binding is not None and binding.kind != 'function' {
+            continue;
+        }
+        js_name = self._emit_import_name(item.alias or item.name);
+        if js_name is None {
             continue;
         }
         boundary_types = manifest.boundary_types_for(
@@ -381,7 +452,7 @@ impl EsastGenPass._generate_sv_import_stubs(
             es.ReturnStatement(argument=await_expr), jac_node=nd
         );
         body = self.sync_loc(es.BlockStatement(body=[return_stmt]), jac_node=nd);
-        func_id = self.sync_loc(es.Identifier(name=local_name), jac_node=nd);
+        func_id = self.sync_loc(es.Identifier(name=js_name), jac_node=nd);
         func_decl = self.sync_loc(
             es.FunctionDeclaration(
                 id=func_id, params=js_params, body=body, generator=False, async_=True
@@ -450,14 +521,18 @@ impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
         if binding is None or not binding.native_contract {
             raise ValueError(f"Missing native contract for '{export_name}'");
         }
+        js_local = self._emit_import_name(item.alias or item.name);
+        if js_local is None {
+            continue;
+        }
         contracts[export_name] = binding.native_contract;
         host_imports = self.module.gen.interop_manifest.native_host_imports[stem];
         props.append(
             self.sync_loc(
                 es.AssignmentProperty(
                     key=es.Identifier(name=export_name),
-                    value=es.Identifier(name=local_name),
-                    shorthand=(export_name == local_name)
+                    value=es.Identifier(name=js_local),
+                    shorthand=(export_name == js_local)
                 ),
                 jac_node=item
             )
