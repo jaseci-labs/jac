@@ -69,6 +69,9 @@ obj MonitoringDeployer {
         capacity: (str | None), requested: (str | None), asked: str
     ) -> str;
 
+    def _requests(part: str) -> dict[str, str];
+    def _request_problems -> list[str];
+    def _apply_requests(deployment: dict[str, any], part: str) -> dict[str, any];
     def _apply_storage(deployment: dict[str, any], volume: str) -> dict[str, any];
     def _data_pvc(app_name: str, namespace: str, component: str) -> dict[str, any];
     def _ensure_data_pvc(apps_v1: any, core_v1: any, manifest: dict[str, any]) -> str;
