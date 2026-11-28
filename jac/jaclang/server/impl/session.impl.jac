@@ -1417,10 +1417,12 @@ impl Session.run_request(body: Callable) -> any {
     (attempts, backoff_ms) = conflict_policy();
     ctx = JacRI.get_context();
     owner = ctx if ctx.mem is self else None;
-    queued = len(owner.pending_effects) if owner is not None else 0;
+    before = owner.pending_effects if owner is not None else [];
+    queued = len(before);
     def forget_effects {
         if owner is not None {
-            del owner.pending_effects[queued:];
+            start = queued if owner.pending_effects is before else 0;
+            del owner.pending_effects[start:];
         }
     }
     try {
