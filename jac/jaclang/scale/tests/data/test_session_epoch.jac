@@ -515,11 +515,12 @@ test "gateway websocket refresh cannot switch to another account" {
 
 
 test "the gateway leaves a service's own accounts to the service" {
-    manager = _manager();
+    gw = MicroserviceGateway(registry=ServiceRegistry());
+    manager = gw.identity();
+    assert manager.issuer == "__gateway__";
     # Signed like a real token, for an account only a service holds.
     token = _signed({"sub": uuid.uuid4().hex});
     assert _status(manager, token) == "unknown_user";
-    gw = MicroserviceGateway(registry=ServiceRegistry(), user_manager=manager);
     request = Request();
     request.headers.set("Authorization", f"Bearer {token}");
     request.headers.set("Cookie", f"jac_session={token}; theme=dark");
@@ -532,6 +533,67 @@ test "the gateway leaves a service's own accounts to the service" {
         assert await first.allow({"text": json.dumps({"token": token})});
     }
     asyncio.run(verify());
+}
+
+
+test "the gateway stops its own session for a deleted account, and forwards an app's" {
+    gw = MicroserviceGateway(registry=ServiceRegistry());
+    manager = gw.identity();
+    assert manager.issuer == "__gateway__";
+    (user_id, password) = _account(manager);
+    token = _sign_in(manager, user_id, password);
+    def forwarded(bearer: str) -> dict[str, str] {
+        request = Request();
+        request.headers.set("Authorization", f"Bearer {bearer}");
+        request.headers.set("Cookie", f"jac_session={bearer}; theme=dark");
+        return {k.lower(): v for (k, v) in gw.build_forward_headers(request).items()};
+    }
+    assert forwarded(token)["authorization"] == f"Bearer {token}";
+    deleted = manager.delete_user(user_id);
+    assert "error" not in deleted , deleted;
+    assert _status(manager, token) == "unknown_user";
+    gone = forwarded(token);
+    assert "authorization" not in gone , "the gateway's own token for a deleted account must not reach a service";
+    assert gone["cookie"] == "theme=dark" , gone;
+
+    sibling = _signed({"sub": uuid.uuid4().hex, "iss": "orders_app"});
+    assert _status(manager, sibling) == "unknown_user";
+    assert forwarded(sibling)["authorization"] == f"Bearer {sibling}";
+
+    async def verify {
+        assert not await GatewaySessionGuard(manager=manager, token=token).allow();
+        opened = GatewaySessionGuard(manager=manager);
+        assert not await opened.allow({"text": json.dumps({"token": token})});
+        assert await GatewaySessionGuard(manager=manager, token=sibling).allow();
+    }
+    asyncio.run(verify());
+}
+
+
+test "the request middleware never provisions a session another store minted" {
+    manager = _manager(provision_unknown_users=True);
+    def seen_by_request(t: str) -> dict[str, any] {
+        request = Request();
+        request.headers.set("Authorization", "Bearer " + t);
+        seen: list[dict[str, any]] = [];
+        async def next_fn(req: Request) -> Response {
+            seen.append(
+                {"username": req.state.username, "unknown": req.state.unknown_subject}
+            );
+            return Response();
+        }
+        asyncio.run(jwt_middleware(manager)(request, next_fn));
+        return seen[0];
+    }
+    for issuer in ["payments_app", "orders_app"] {
+        stranger = uuid.uuid4().hex;
+        seen = seen_by_request(_signed({"sub": stranger, "iss": issuer}));
+        assert seen == {"username": None, "unknown": stranger} , f"{issuer}: {seen}";
+        assert manager.user_exists(stranger) is False;
+    }
+    started = uuid.uuid4().hex;
+    assert seen_by_request(_signed({"sub": started, "iss": "__gateway__"}))["username"]
+        == started;
 }
 
 

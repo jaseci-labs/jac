@@ -43,10 +43,16 @@ def _gateway_token(user_id: str) -> str {
 """
 def _manager(sv_name: str, own_store: bool = False) -> (UserManager | None) {
     previous = os.environ.get(_SV_ENV);
+    previous_own = os.environ.get(OWN_STORE_ENV);
     if sv_name {
         os.environ[_SV_ENV] = sv_name;
     } elif _SV_ENV in os.environ {
         del os.environ[_SV_ENV];
+    }
+    if own_store {
+        os.environ[OWN_STORE_ENV] = "1";
+    } else {
+        os.environ.pop(OWN_STORE_ENV, None);
     }
     try {
         return UserManager(
@@ -63,6 +69,11 @@ def _manager(sv_name: str, own_store: bool = False) -> (UserManager | None) {
             os.environ.pop(_SV_ENV, None);
         } else {
             os.environ[_SV_ENV] = previous;
+        }
+        if previous_own is None {
+            os.environ.pop(OWN_STORE_ENV, None);
+        } else {
+            os.environ[OWN_STORE_ENV] = previous_own;
         }
     }
 }
@@ -87,6 +98,79 @@ test "an app with its own store accepts a gateway token and provisions the user 
     again = manager.validate_jwt_token_detail(_gateway_token(user_id));
     assert again["status"] == "ok";
     assert manager.get_root_id(user_id) == root_id , "provisioning must be idempotent";
+}
+
+
+"""A session token minted by `issuer`, of the shape create_jwt_token makes."""
+def _token_from(issuer: str, user_id: str) -> str {
+    expires = datetime.now(UTC) + timedelta(days=1);
+    return jwt_encode(
+        {"sub": user_id, "exp": expires, "iss": issuer},
+        jwt_secret(),
+        algorithm=jwt_algorithm()
+    );
+}
+
+
+test "a session token names the identity store that holds the account" {
+    unnamed = _manager("");
+    orders = _manager("orders_app");
+    payments = _manager("payments_app", own_store=True);
+    if unnamed is None or orders is None or payments is None {
+        return;
+    }
+    for (manager, expected) in [
+        (unnamed, None),
+        (orders, "__gateway__"),
+        (payments, "payments_app")
+    ] {
+        name = f"iss_{uuid.uuid4().hex[:10]}";
+        made = manager.create_user_with_identities(
+            [{"type": "username", "value": name}],
+            {"type": "password", "password": f"pw-{uuid.uuid4().hex}"}
+        );
+        assert "error" not in made , made;
+        claims = manager.get_jwt_claims(manager.create_jwt_token(str(made["user_id"])));
+        assert claims is not None and claims.get("iss") == expected , claims;
+        detail = manager.validate_jwt_token_detail(
+            manager.create_jwt_token(str(made["user_id"]))
+        );
+        assert detail["status"] == "ok" and detail["iss"] == expected , detail;
+    }
+    name = f"iss_{uuid.uuid4().hex[:10]}";
+    made = orders.create_user_with_identities(
+        [{"type": "username", "value": name}],
+        {"type": "password", "password": f"pw-{uuid.uuid4().hex}"}
+    );
+    renewed = orders.refresh_jwt_token(orders.create_jwt_token(str(made["user_id"])));
+    assert renewed is not None;
+    claims = orders.get_jwt_claims(renewed);
+    assert claims is not None and claims.get("iss") == "__gateway__" , (
+        f"a session an app on the fleet's store renews still belongs to the fleet's store: {claims}"
+    );
+    assert payments.issuer == "payments_app";
+}
+
+
+test "an app with its own store provisions only a session the gateway started" {
+    manager = _manager("orders_app", own_store=True);
+    if manager is None {
+        return;
+    }
+    started = str(uuid.uuid4());
+    detail = manager.validate_jwt_token_detail(_token_from("__gateway__", started));
+    assert detail["status"] == "ok" , f"a gateway session must be provisioned: {detail}";
+    assert manager.user_exists(started) is True;
+
+    for issuer in ["payments_app", "orders_app"] {
+        stranger = str(uuid.uuid4());
+        detail = manager.validate_jwt_token_detail(_token_from(issuer, stranger));
+        assert detail["status"] == "unknown_user" , f"{issuer}: {detail}";
+        assert detail["iss"] == issuer;
+        assert manager.user_exists(stranger) is False , (
+            f"a token {issuer} minted must not provision a record"
+        );
+    }
 }
 
 
