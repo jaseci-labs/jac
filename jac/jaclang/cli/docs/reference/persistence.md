@@ -103,6 +103,34 @@ walker me {
 | `conflict_max_attempts` | `5` | Max attempts under `"retry"` before giving up with a `409` |
 | `conflict_backoff_ms` | `0` | Linear backoff (ms x attempt) between replay attempts |
 
+**Writes outside a request: `run_request`.** The server re-runs requests, and the scheduled jobs it starts, because it owns where they begin and end. Code that writes to the graph from anywhere else, such as a worker thread, a background loop or a script, marks its own unit of work: `Jac.get_context().mem.run_request(unit)` runs `unit` and commits. On a write conflict it rolls back and runs `unit` again from the top under the same `[serve]` policy as a request: it waits its turn on the node it lost (after `conflict_backoff_ms`), then re-runs, up to `conflict_max_attempts` attempts, and then raises the last conflict (`on_conflict = "fail"` raises the first). Called on a thread that runs an event loop, it re-runs at once without waiting, since a wait there would stall everything else on that loop; call it from a worker thread to get the turn. Without it, a conflict outside a request rolls the transaction back, raises `TransactionLost`, and nothing re-runs it.
+
+Because a re-run starts from the top, `unit` reads what it changes inside itself and does nothing outside the graph: no model calls, mail or external API calls. Do those before the unit and write their results in it, or register them with `on_commit` inside it: only the callbacks of the attempt that commits run. Inside a walker or function the request is already the unit: there `run_request` runs `unit` once and leaves the commit and any re-run to the request.
+
+```jac
+import from jaclang { JacRuntime as Jac }
+
+node Counter {
+    has n: int = 0;
+}
+
+def bump(step: int) -> int {
+    def unit -> int {
+        counter = [root-->[?:Counter]][0];
+        counter.n += step;
+        return counter.n;
+    }
+    return Jac.get_context().mem.run_request(unit);
+}
+
+with entry {
+    if not [root-->[?:Counter]] {
+        root ++> Counter();
+    }
+    print(bump(1));
+}
+```
+
 ---
 
 ## The schema fingerprint
