@@ -248,6 +248,23 @@ impl transient_db_error(e: Exception) -> bool {
 }
 
 
+impl conflict_policy -> tuple[int, int] {
+    mode = "retry";
+    max_attempts = 5;
+    backoff_ms = 0;
+    try {
+        import from jaclang.project.config { get_config }
+        cfg = get_config();
+        if cfg is not None {
+            mode = str(cfg.serve.on_conflict).strip().lower();
+            max_attempts = cfg.serve.conflict_max_attempts;
+            backoff_ms = cfg.serve.conflict_backoff_ms;
+        }
+    } except Exception {}
+    return (1 if mode == "fail" else max(1, max_attempts), backoff_ms);
+}
+
+
 def _is_lock_timeout(e: Exception) -> bool;
 
 
@@ -1391,29 +1408,63 @@ impl Session._leave_queue -> None {
 }
 
 impl Session.run_request(body: Callable) -> any {
-    attempt = 0;
-    while True {
-        try {
-            result = body();
-            self.commit();
-            return result;
-        } except Exception as e {
-            if (
-                self._store is not None
-                and (isinstance(e, WriteConflict) or _is_serialization_conflict(e))
-                and attempt < MAX_RETRIES
-            ) {
-                attempt += 1;
-                logger.info(
-                    "serialization conflict; re-running request "
-                    f"(attempt {attempt}/{MAX_RETRIES})"
-                );
-                self.abort();
-                continue;
-            }
-            self.abort();
-            raise;
+    import asyncio;
+    import time;
+    if self._active_units > 0 {
+        return body();
+    }
+    import from jaclang { JacRuntimeInterface as JacRI }
+    (attempts, backoff_ms) = conflict_policy();
+    ctx = JacRI.get_context();
+    owner = ctx if ctx.mem is self else None;
+    queued = len(owner.pending_effects) if owner is not None else 0;
+    def forget_effects {
+        if owner is not None {
+            del owner.pending_effects[queued:];
         }
+    }
+    try {
+        asyncio.get_running_loop();
+        waits = False;
+    } except RuntimeError {
+        waits = True;
+    }
+    attempt = 0;
+    try {
+        while True {
+            attempt += 1;
+            try {
+                result = body();
+                self.commit();
+                return result;
+            } except Exception as e {
+                if attempt >= attempts
+                    or self._store is None
+                    or not (isinstance(e, WriteConflict) or transient_db_error(e)) {
+                    raise;
+                }
+                self.abort();
+                forget_effects();
+                logger.info(
+                    f"conflict; re-running the unit (attempt {attempt + 1}/{attempts}"
+                    f"{', after its turn' if waits else ', at once on an event loop'})"
+                );
+            }
+            if waits {
+                if backoff_ms > 0 {
+                    time.sleep(backoff_ms * attempt / 1000.0);
+                }
+                self.wait_turn();
+            }
+        }
+    } except BaseException {
+        try {
+            self.abort();
+            forget_effects();
+        } finally {
+            self._leave_queue();
+        }
+        raise;
     }
 }
 

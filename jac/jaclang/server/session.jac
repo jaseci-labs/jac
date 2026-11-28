@@ -5,7 +5,6 @@ import from collections.abc { Generator }
 import from uuid { UUID }
 
 glob logger = logging.getLogger(__name__),
-     MAX_RETRIES = 5,
      PIN_ATTEMPTS = 20,
      FIRST_LOCK_WAIT = '250ms',
      SESSION_THREADS = 16,
@@ -39,6 +38,7 @@ glob logger = logging.getLogger(__name__),
          'unit_writes_recorded',
          'record_unit_writes',
          'transient_db_error',
+         'conflict_policy',
          'SCRATCH_ENV',
          'SCRATCH_OWNER_ENV',
          'RETENTION_ENV',
@@ -56,6 +56,9 @@ def unit_writes_recorded(key: str) -> bool;
 
 
 def transient_db_error(e: Exception) -> bool;
+
+
+def conflict_policy -> tuple[int, int];
 
 
 def record_unit_writes(key: str);

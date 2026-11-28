@@ -1971,7 +1971,7 @@ graph import {
             | client.client_deps._resolve_client_framework
             | client.jac_client_compiler.JacClientCompiler._app_root
             | client.vite_bundler.ViteBundler._client_app_dir
-            | server.server._occ_policy { get_config },
+            | server.session.conflict_policy { get_config },
         cli.dispatch._discover_project_config
             | client.jac_client_compiler.JacClientCompiler._client_app_dir
             | client.vite_bundler.ViteBundler._get_client_dir { get_config },
@@ -15595,7 +15595,7 @@ graph import server {
     ]
     session ++> outbox._writable_txn { Session }
     session --> [
-        server._run_function_with_occ { Session, transient_db_error },
+        server._run_function_with_occ { Session, conflict_policy, transient_db_error },
         shared_store.shared_store {
             conninfo_from_url,
             promotions_for,
