@@ -1620,17 +1620,6 @@ impl KubernetesTarget._revision_entries(strict: bool = False) -> list[dict[str, 
     return revisions;
 }
 
-impl KubernetesTarget._assert_own_app(app_name: str) {
-    mine = str(self.k8s_config.app_name or "");
-    if app_name and mine and str(app_name) != mine {
-        detail = f"configured for '{mine}', asked about '{app_name}'";
-        raise ValueError(
-            "This target cannot report or revert another app's revisions "
-                + f"({detail}). Build a target for that app."
-        );
-    }
-}
-
 impl KubernetesTarget.list_revisions(app_name: str) -> list[dict[str, any]] {
     self._assert_own_app(app_name);
     return releases_from_revisions(self._revision_entries());

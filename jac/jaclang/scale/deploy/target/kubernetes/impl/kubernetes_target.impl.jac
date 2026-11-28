@@ -216,8 +216,20 @@ impl KubernetesTargetBase._apply_provider_service_account(
     }
 }
 
+impl KubernetesTargetBase._assert_own_app(app_name: str) {
+    mine = str(self.k8s_config.app_name or "");
+    if app_name and mine and str(app_name) != mine {
+        detail = f"configured for '{mine}', asked about '{app_name}'";
+        raise ValueError(
+            "This target cannot report on or change another app "
+                + f"({detail}). Build a target for that app."
+        );
+    }
+}
+
 impl KubernetesTargetBase.get_status(app_name: str) -> ResourceStatusInfo {
     try {
+        self._assert_own_app(app_name);
         self._load_cluster_config();
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();
@@ -235,6 +247,7 @@ impl KubernetesTargetBase.get_status(app_name: str) -> ResourceStatusInfo {
 }
 
 impl KubernetesTargetBase.scale(app_name: str, replicas: int) {
+    self._assert_own_app(app_name);
     if self.logger {
         self.logger.info(f"Scaling application '{app_name}' to {replicas} replicas");
     }
@@ -448,6 +461,7 @@ impl KubernetesTargetBase.enable_tls(app_name: str) {
 
 impl KubernetesTargetBase.get_full_status(app_name: str) -> dict[str, any] {
     try {
+        self._assert_own_app(app_name);
         self._load_cluster_config();
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();

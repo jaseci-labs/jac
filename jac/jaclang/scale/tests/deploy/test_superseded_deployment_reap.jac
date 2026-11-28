@@ -941,18 +941,34 @@ test "a compensation that also fails names what is left split" {
 # The revision API is scoped by the target's own config, not by the argument,
 # so passing another app's name used to return THIS app's revisions with no
 # complaint, and rollback_to would revert this app while reporting the other.
-test "the revision API refuses an app it was not built for" {
+test "a target refuses an app it was not built for" {
     target = _target(app="orders", namespace="shared");
-    raised = False;
-
-    try {
-        target.list_revisions("billing");
-    } except ValueError as e {
-        raised = True;
-        assert "orders" in str(e) and "billing" in str(e);
+    def refusal(call: str) -> str {
+        try {
+            if call == "get_status" {
+                return str(target.get_status("billing").message);
+            }
+            if call == "get_full_status" {
+                return str(target.get_full_status("billing").get("error"));
+            }
+            if call == "scale" {
+                target.scale("billing", 2);
+            } else {
+                target.list_revisions("billing");
+            }
+        } except ValueError as e {
+            return str(e);
+        }
+        return "";
     }
-
-    assert raised , "another app's name must be refused, not silently ignored";
+    wrong: list[str] = [];
+    for call in ["list_revisions", "scale", "get_status", "get_full_status"] {
+        text = refusal(call);
+        if not ("orders" in text and "billing" in text) {
+            wrong.append(f"{call}: {text}");
+        }
+    }
+    assert wrong == [] , "\n".join(wrong);
 }
 
 
