@@ -21,5 +21,7 @@ with entry {
         out.append(parse(text, 2));
     }
     print(" ".join(out));
+    status = b"HTTP/1.0 200 OK";
+    print(int(status[9:12]), int(b" -42 "), int(b"7"));
     print(int("36", 36), int("zz", 36), int("777", 8), int("0o777", 8));
 }

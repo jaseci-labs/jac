@@ -130,3 +130,13 @@ test "dict ops pass under headerless --memory nogc" {
     out = proc.stdout.strip().split("\n");
     assert out == ["2", "w", "0", "y", "21", "p2", "q2", "1", "done"] , f"nogc dict output mismatch: {out}";
 }
+
+test "an any-keyed dict hashes and compares keys by value across kinds" {
+    (eng, _) = compile_native("any_key_dict.jac");
+    mixed_count = get_func(eng, "mixed_count", ctypes.c_int64);
+    assert mixed_count() == 511111 , mixed_count();
+    built_count = get_func(eng, "built_count", ctypes.c_int64);
+    assert built_count() == 3222 , built_count();
+    computed_count = get_func(eng, "computed_count", ctypes.c_int64);
+    assert computed_count() == 171 , computed_count();
+}

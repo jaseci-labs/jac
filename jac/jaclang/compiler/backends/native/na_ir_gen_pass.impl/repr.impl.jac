@@ -1207,6 +1207,9 @@ impl NaIRGenPass._emit_container_repr(
         return None;
     }
     fn = self._repr_fn_for_type_key(base);
+    if fn is None and _rt_key is not None and _rt_key != base {
+        fn = self._repr_fn_for_type_key(_rt_key);
+    }
     if fn is None {
         return None;
     }

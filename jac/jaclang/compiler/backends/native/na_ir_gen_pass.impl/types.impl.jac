@@ -669,7 +669,11 @@ impl NaIRGenPass._elem_storage_llvm(t: any) -> (ir.Type | None) {
         return self._lower_type(t);
     }
     if not isinstance(t, _EsUnionType) {
-        return self._lower_type(t);
+        _lt = self._lower_type(t);
+        if isinstance(_lt, ir.VoidType) and self?.jacval_type is not None {
+            return self.jacval_type;
+        }
+        return _lt;
     }
     _members = [
         m
@@ -911,9 +915,6 @@ impl NaIRGenPass._lower_class_type(t: ClassType) -> (ir.Type | None) {
             if _k is None or _v is None {
                 return None;
             }
-            if self?.jacval_type and _k == self.jacval_type {
-                return None;
-            }
             k_llvm = _k;
             v_llvm = _v;
         }
@@ -940,9 +941,6 @@ impl NaIRGenPass._lower_class_type(t: ClassType) -> (ir.Type | None) {
         if type_args {
             _e = self._elem_storage_llvm(type_args[0]);
             if _e is None {
-                return None;
-            }
-            if self?.jacval_type and _e == self.jacval_type {
                 return None;
             }
             elem_llvm = _e;
@@ -4214,6 +4212,16 @@ impl NaIRGenPass._emit_jacval_eq(left: ir.Value, right: ir.Value) -> ir.Value {
         mixed_numbers,
         self.builder.select(one_float, int_float_eq, pay_eq, name="jv.eq.mixedval"),
         name="jv.eq.mixedeq"
+    );
+    both_float = self.builder.and_(kinds[0][1], kinds[1][1], name="jv.eq.bothflt");
+    float_eq = self.builder.fcmp_ordered(
+        "==",
+        self.builder.bitcast(lpay, f64, name="jv.eq.lf"),
+        self.builder.bitcast(rpay, f64, name="jv.eq.rf"),
+        name="jv.eq.fltval"
+    );
+    same_kind_eq = self.builder.select(
+        both_float, float_eq, same_kind_eq, name="jv.eq.samekindv"
     );
     bits_eq = self.builder.or_(same_kind_eq, mixed_eq, name="jv.eq.bitseq");
     self.builder.branch(merge_bb);

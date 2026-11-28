@@ -9,7 +9,7 @@ It now goes through the formatting kernel's jac_int_parse.
 import from pathlib { Path }
 import from tests.support { assert_native_identity }
 
-test "native int() over strings matches CPython for every base form" {
+test "native int() over strings and bytes matches CPython for every base form" {
     source = str(Path(__file__).resolve().parent / "fixtures" / "int_parse.jac");
     out = assert_native_identity(source, profiles=["managed"]);
     assert out.splitlines()[-1] == "114 1295 511 511" , out;
