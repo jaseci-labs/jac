@@ -55,6 +55,18 @@ def _flatten_loki_response(
 ) -> list[dict[str, any]];
 
 
+async def _fetch_log_lines(
+    service: str,
+    level: str,
+    search: str,
+    trace_id: str,
+    start_ns: int,
+    end_ns: int,
+    limit: int,
+    ascending: bool
+) -> tuple[list[dict[str, any]], str];
+
+
 impl JacAPIServerLogs.register_logs_endpoints -> None {
     server = self.server;
     if server is None {
@@ -132,18 +144,10 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
         }
 
         namespace = _app_namespace();
-        logql = _build_logql(namespace, service, level, search, trace);
 
         try {
-            payload = await _loki_request(
-                "/loki/api/v1/query_range",
-                {
-                    "query": logql,
-                    "limit": str(limit),
-                    "start": str(start_ns),
-                    "end": str(end_ns),
-                    "direction": "backward"
-                }
+            (lines, logql) = await _fetch_log_lines(
+                service, level, search, trace, start_ns, end_ns, limit, False
             );
         } except ConnectionError as e {
             logger.warning(f"Loki query failed: {e}");
@@ -155,8 +159,6 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
                 }
             );
         }
-
-        lines = _flatten_loki_response(payload, ascending=False);
 
         next_before = None;
         if len(lines) >= limit and lines {
@@ -202,19 +204,10 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
 
         now_ns = int(time.time() * 1_000_000_000);
         start_ns = now_ns - (24 * 3600 * 1_000_000_000);
-        namespace = _app_namespace();
-        logql = _build_logql(namespace, "", "", "", trace_id);
 
         try {
-            payload = await _loki_request(
-                "/loki/api/v1/query_range",
-                {
-                    "query": logql,
-                    "limit": "500",
-                    "start": str(start_ns),
-                    "end": str(now_ns),
-                    "direction": "forward"
-                }
+            (lines, _) = await _fetch_log_lines(
+                "", "", "", trace_id, start_ns, now_ns, 500, True
             );
         } except ConnectionError as e {
             logger.warning(f"Loki trace query failed: {e}");
@@ -227,7 +220,6 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
             );
         }
 
-        lines = _flatten_loki_response(payload);
         services_touched = sorted(
             {
                 line["service"]
@@ -480,4 +472,29 @@ impl _flatten_loki_response(
 
     out.sort(key=lambda (line) { line.get("ts_ns", ""); }, reverse=not ascending);
     return out;
+}
+
+
+impl _fetch_log_lines(
+    service: str,
+    level: str,
+    search: str,
+    trace_id: str,
+    start_ns: int,
+    end_ns: int,
+    limit: int,
+    ascending: bool
+) -> tuple[list[dict[str, any]], str] {
+    logql = _build_logql(_app_namespace(), service, level, search, trace_id);
+    payload = await _loki_request(
+        "/loki/api/v1/query_range",
+        {
+            "query": logql,
+            "limit": str(limit),
+            "start": str(start_ns),
+            "end": str(end_ns),
+            "direction": "forward" if ascending else "backward"
+        }
+    );
+    return (_flatten_loki_response(payload, ascending=ascending), logql);
 }
