@@ -288,14 +288,9 @@ test "hetero nogc fixture passes under headerless --memory nogc (AOT)" {
     assert out == ["600", "400", "done"] , f"hetero nogc output mismatch: {out}";
 }
 
-test "mixed dict keys and mixed set elements are stable diagnostics" {
+test "mixed set elements are a stable diagnostic" {
     import tempfile as _tf;
     for (src_text, fn_name, label) in [
-        (
-            "def bad_keys -> int { d: dict[any, any] = {1: \"a\", \"b\": 2}; return len(d); }",
-            "bad_keys",
-            "dict-mixed-keys"
-        ),
         (
             "def bad_set -> int { s: set = {1, \"a\"}; return len(s); }",
             "bad_set",

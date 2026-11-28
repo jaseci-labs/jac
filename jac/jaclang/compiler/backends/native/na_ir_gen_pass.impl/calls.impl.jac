@@ -1914,7 +1914,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         return self._emit_copy_call(_copy_kind, nd);
     }
 
-    _class_bound = self._class_value_ctor_bound(nd.target);
+    _class_bound = self._class_value_ctor_bound(
+        nd.target, direct=self._has_kw_spread(nd)
+    );
     if _class_bound is not None and isinstance(nd.target, uni.Expr) {
         return self._codegen_class_value_call(
             nd, nd.target, list(nd.params or []), _class_bound
@@ -4235,12 +4237,22 @@ impl NaIRGenPass._str_dict_helpers_of(value: ir.Value) -> (dict[str, any] | None
     return None;
 }
 
+impl NaIRGenPass._kw_spread_fail(
+    is_error: ir.Value, msg: str, deferred: (list[tuple[ir.Value, str]] | None)
+) -> None {
+    if deferred is None {
+        self._emit_runtime_raise(is_error, "TypeError", msg);
+    } else {
+        deferred.append((is_error, msg));
+    }
+}
+
 impl NaIRGenPass._bind_kw_spread(
     spread: ir.Value,
     helpers: dict[str, any],
     bind_records: list[dict[str, any]],
     loc: str,
-    release_on_error: list[ir.Value] = []
+    deferred: (list[tuple[ir.Value, str]] | None) = None
 ) -> ir.Value {
     i64 = ir.IntType(64);
     matched: ir.Value = ir.Constant(i64, 0);
@@ -4254,9 +4266,7 @@ impl NaIRGenPass._bind_kw_spread(
             matched, self.builder.zext(present, i64), name="kwbind.matched"
         );
         if rec["alloca"] is None {
-            self._emit_runtime_raise(
-                present, "TypeError", rec["dup_msg"], release_on_error=release_on_error
-            );
+            self._kw_spread_fail(present, rec["dup_msg"], deferred);
             continue;
         }
         _want = rec["erased_want"];
@@ -4268,22 +4278,20 @@ impl NaIRGenPass._bind_kw_spread(
             else rec["slot_type"];
         if not (_box and _want is None)
             and not self._kw_spread_value_fits(helpers["val_type"], _fit_type) {
-            self._emit_runtime_raise(
+            self._kw_spread_fail(
                 present,
-                "TypeError",
                 f"argument '{rec[
                     'name'
                 ]}' cannot take a value of the unpacked mapping's type",
-                release_on_error=release_on_error
+                deferred
             );
             continue;
         }
         bound = self.builder.load(rec["flag"], name="kwbind.flag");
-        self._emit_runtime_raise(
+        self._kw_spread_fail(
             self.builder.and_(present, bound, name="kwbind.dup"),
-            "TypeError",
             rec["dup_msg"],
-            release_on_error=release_on_error
+            deferred
         );
         take = self.builder.and_(
             present, self.builder.not_(bound, name="kwbind.unset"), name="kwbind.do"
