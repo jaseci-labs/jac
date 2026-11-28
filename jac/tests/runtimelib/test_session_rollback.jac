@@ -1256,50 +1256,57 @@ test "run_request that fails while taking its turn leaves no transaction or turn
 }
 
 test "run_request runs the on_commit callbacks of the attempt that committed only" {
-    with TemporaryDirectory() as td {
-        old = JacRuntime.exec_ctx;
-        seed = _ctx(td);
-        JacRuntime.exec_ctx = seed;
-        xid: UUID;
-        try {
-            _ = seed.user_root;
-            xid = _loose(seed, 1).ensure_id();
-            seed.mem.commit();
-        } finally {
-            JacRuntime.exec_ctx = old;
-            seed.close();
-        }
-        ctx = _ctx(td);
-        JacRuntime.exec_ctx = ctx;
-        fired: list[str] = [];
-        try {
-            ctx.on_commit(lambda { fired.append("before the unit"); });
-            runs: list[int] = [];
-            def body {
-                runs.append(1);
-                attempt = len(runs);
-                ctx.on_commit(lambda { fired.append(f"attempt {attempt}"); });
-                mine = ctx.mem.get(xid);
-                assert mine is not None;
-                _as_any(mine).archetype.n += 1;
-                ctx.mem.mark_dirty(mine);
-                if attempt == 1 {
-                    _rival_write(td, ctx, xid);
-                }
+    for commits_inside in [False, True] {
+        with TemporaryDirectory() as td {
+            old = JacRuntime.exec_ctx;
+            seed = _ctx(td);
+            JacRuntime.exec_ctx = seed;
+            xid: UUID;
+            try {
+                _ = seed.user_root;
+                xid = _loose(seed, 1).ensure_id();
+                seed.mem.commit();
+            } finally {
+                JacRuntime.exec_ctx = old;
+                seed.close();
             }
-            _sess(ctx).run_request(body);
-            assert runs == [1, 1];
-        } finally {
-            JacRuntime.exec_ctx = old;
-            ctx.close();
+            ctx = _ctx(td);
+            JacRuntime.exec_ctx = ctx;
+            fired: list[str] = [];
+            try {
+                ctx.on_commit(lambda { fired.append("before the unit"); });
+                runs: list[int] = [];
+                def body {
+                    runs.append(1);
+                    attempt = len(runs);
+                    if commits_inside {
+                        JacRuntime.commit();
+                    }
+                    ctx.on_commit(lambda { fired.append(f"attempt {attempt}"); });
+                    mine = ctx.mem.get(xid);
+                    assert mine is not None;
+                    _as_any(mine).archetype.n += 1;
+                    ctx.mem.mark_dirty(mine);
+                    if attempt == 1 {
+                        _rival_write(td, ctx, xid);
+                    }
+                }
+                _sess(ctx).run_request(body);
+                assert runs == [1, 1];
+            } finally {
+                JacRuntime.exec_ctx = old;
+                ctx.close();
+            }
+            assert fired == ["before the unit", "attempt 2"] , (
+                "the attempt that lost its conflict was rolled back, so its callback "
+                "must not run, and the caller's own callback must (commit inside the "
+                f"unit: {commits_inside}): {fired}"
+            );
+            assert _stored(ctx, xid, "n") == "100";
         }
-        assert fired == ["before the unit", "attempt 2"] , (
-            "the attempt that lost its conflict was rolled back, so its callback must "
-            f"not run, and the caller's own callback must: {fired}"
-        );
-        assert _stored(ctx, xid, "n") == "100";
     }
 }
+
 
 test "run_request gives up a unit that keeps conflicting where [serve] says to" {
     import from jaclang.project.config { JacConfig, get_explicit_config, set_config }
