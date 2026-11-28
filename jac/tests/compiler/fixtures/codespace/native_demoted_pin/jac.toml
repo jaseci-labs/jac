@@ -1,6 +1,0 @@
-[project]
-name = "native-demoted-pin-fixture"
-entry-point = "app"
-
-[placement.pins]
-models = "native"

@@ -126,34 +126,6 @@ impl LinkPlan.layout_digest -> str {
     return layout_digest_of(self.merged_layout());
 }
 
-impl LinkPlan.lowering_failures -> list[str] {
-    registry = self.prog.native_units();
-    out: list[str] = [];
-    for u in self.units {
-        names = [
-            name
-            for name in u.iface.demoted
-            if "__jac_test_" not in name
-        ];
-        if not names {
-            continue;
-        }
-        details: dict[str, str] = {};
-        bitcode = registry.bitcode_for(u.path, self.options);
-        if bitcode is not None {
-            for issue in native_lowering_issues(str(llvm.parse_bitcode(bitcode))) {
-                details.setdefault(issue.symbol, issue.detail);
-            }
-        }
-        base = os.path.basename(u.path);
-        for name in names {
-            detail = details.get(name, "");
-            out.append(f"{base}:{name}" + (f": {detail}" if detail else ""));
-        }
-    }
-    return sorted(out);
-}
-
 impl LinkPlan.clib_paths -> list[str] {
     out: list[str] = [];
     for u in self.units {
@@ -1376,12 +1348,12 @@ impl unresolved_unit_symbols(plan: LinkPlan, objects: list[bytes]) -> list[str] 
             ),
             None
         );
-        demoted = (symbol + DEMOTED_SUFFIX) in defined;
-        if owner is None and not demoted {
+        if owner is None {
             continue;
         }
-        why = "demoted to Python" if demoted else f"not defined by {owner}";
-        out.append(f"{symbol} ({why}; used by {', '.join(wanted[symbol])})");
+        out.append(
+            f"{symbol} (not defined by {owner}; used by {', '.join(wanted[symbol])})"
+        );
     }
     return out;
 }

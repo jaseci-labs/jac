@@ -8,7 +8,6 @@ impl validate_native_application(module: Module, shared: bool, memory: str) -> s
         );
     }
     llvm_ir = native_linked_ir_text(module);
-    native_fallbacks_in_ir(llvm_ir).require();
     if memory == 'nogc' {
         (symbols, probes) = _scan_rc_machinery(llvm_ir);
         if symbols or probes {

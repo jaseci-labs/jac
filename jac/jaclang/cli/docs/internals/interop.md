@@ -314,8 +314,8 @@ the next crossing has to meet; the entries that meet it are its own to write.
 ### AOT alternative
 
 `jac run` JITs `jac_entry` directly when a markerless module infers
-native, which is the default codespace preference (demoting gracefully
-to the Python path when it cannot lower). The
+native, which is the default codespace (a module placed native that
+cannot lower is a compile error, not a fallback to the Python path). The
 *ahead-of-time* counterpart is the **`na → C host`** native-lib export
 path (below), where the native side is packaged as a real `.so` and a host (Python via `ctypes`, or C) loads
 it across the process boundary.

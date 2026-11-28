@@ -73,9 +73,7 @@ impl print_native_coverage(coverage: dict[str, dict[str, any]]) -> None {
     for rec in coverage.values() {
         counts[rec['outcome']] = counts.get(rec['outcome'], 0) + 1;
     }
-    console.print(
-        ", ".join(f"{counts.get(k, 0)} {k}" for k in ('native', 'demoted', 'server'))
-    );
+    console.print(", ".join(f"{counts.get(k, 0)} {k}" for k in ('native', 'server')));
     native_paths = sorted(
         _coverage_relpath(p)
         for (p, rec) in coverage.items()
@@ -86,54 +84,6 @@ impl print_native_coverage(coverage: dict[str, dict[str, any]]) -> None {
         console.print("native modules:");
         for p in native_paths {
             console.print(f"  {p}");
-        }
-    }
-    seamed = sorted(
-        (_coverage_relpath(p), rec)
-        for (p, rec) in coverage.items()
-        if rec['outcome'] == 'native' and rec.get('seams')
-    );
-    if seamed {
-        import from jaclang.compiler.frontend.codeinfo { native_display_text }
-        console.print("");
-        console.print("native seams (callables demoted to Python-only):");
-        total_seams = sum(len(rec['seams']) for (_p, rec) in seamed);
-        late_seams = sum(int(rec.get('late') or 0) for (_p, rec) in seamed);
-        console.print(
-            f"  {total_seams - late_seams} decided by the static legality rules, "
-            f"{late_seams} found while lowering"
-        );
-        for (p, rec) in seamed {
-            console.print(f"  {p}  ({len(rec['seams'])})");
-            for s in rec['seams'] {
-                console.print(f"    {native_display_text(str(s))}");
-            }
-        }
-    }
-    demoted = [
-        (p, rec)
-        for (p, rec) in coverage.items()
-        if rec['outcome'] == 'demoted'
-    ];
-    if demoted {
-        console.print("");
-        console.print("demotions (ranked by first error code):");
-        by_code: dict[str, list[tuple[str, dict[str, any]]]] = {};
-        for (p, rec) in demoted {
-            by_code.setdefault(rec['code'] or '<uncoded>', []).append((p, rec));
-        }
-        ranked = sorted(
-            by_code.items(),
-            key=lambda (x: tuple[str, list[tuple[str, dict[str, any]]]]) { (
-                -len(x[1]),
-                x[0]
-            ); }
-        );
-        for (code, entries) in ranked {
-            console.print(f"  {code}  ({len(entries)})");
-            for (p, rec) in sorted(entries) {
-                console.print(f"    {_coverage_relpath(p)}  {rec['detail']}");
-            }
         }
     }
     server = [
@@ -156,21 +106,6 @@ impl print_native_coverage(coverage: dict[str, dict[str, any]]) -> None {
             console.print(f"  {reason}  ({len(paths)})");
             for p in sorted(paths) {
                 console.print(f"    {_coverage_relpath(p)}");
-            }
-        }
-    }
-    seamed = [
-        (p, rec)
-        for (p, rec) in coverage.items()
-        if rec['seams']
-    ];
-    if seamed {
-        console.print("");
-        console.print("native modules with demoted methods (seams):");
-        for (p, rec) in sorted(seamed) {
-            console.print(f"  {_coverage_relpath(p)}");
-            for s in rec['seams'] {
-                console.print(f"    {s}");
             }
         }
     }

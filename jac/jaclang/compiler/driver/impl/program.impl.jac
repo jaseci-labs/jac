@@ -508,25 +508,7 @@ impl JacProgram.declared_codespace(self: JacProgram, file_path: str) -> str {
     return kind_space if kind_space in ('client', 'native') else '';
 }
 
-impl JacProgram.prefers_native_codespace(self: JacProgram, file_path: str) -> bool {
-    if self.internal
-        or native_only(file_path)
-        or is_kernel_unit_path(file_path)
-        or native_placement_hard(self, file_path) {
-        return False;
-    }
-    if effective_module_pin(file_path, self) == 'native' {
-        return True;
-    }
-    opts = self.options;
-    return config_kind_space(file_path, opts.app_kind if opts is not None else '')
-        == 'native';
-}
-
 impl JacProgram.infers_native_codespace(self: JacProgram, file_path: str) -> bool {
-    if self.prefers_native_codespace(file_path) {
-        return True;
-    }
     opts = self.options;
     if opts is not None and opts.no_cgen and not opts.native_import {
         return False;
@@ -573,9 +555,6 @@ impl JacProgram.parse_source(
         }
         import from jaclang.compiler.frontend.constant { CodeContext }
         codespace = self.declared_codespace(file_path);
-        if codespace == 'native' and self.prefers_native_codespace(file_path) {
-            codespace = '';
-        }
         infer_native = not codespace and self.infers_native_codespace(file_path);
         (parsed, had_error) = parse_woven(
             source_str, file_path, self, annex_sources(file_path)

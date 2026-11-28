@@ -788,8 +788,7 @@ impl check_settings_of(check: any) -> CheckSettings {
         lint_select=list(lint.select) if lint else [],
         lint_ignore=list(lint.ignore) if lint else [],
         enforce_access=bool(check.enforce_access),
-        untyped_external_error=check.untyped_external == "error",
-        warn_native_seams=bool(check.warn_native_seams)
+        untyped_external_error=check.untyped_external == "error"
     );
 }
 

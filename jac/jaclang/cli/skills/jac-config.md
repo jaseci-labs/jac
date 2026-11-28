@@ -20,7 +20,7 @@ description: Edit jac.toml project, app, dependency, build, and runtime settings
 | `[optional-dependencies.<group>]` | extras: `jac install --extras <group>`, wheel extras on publish |
 | `[serve]` | `jac run` defaults: `port`, `session`, `on_conflict` (the served app's client is at `/`; sibling apps with a built bundle at `/cl/<app>/`) |
 | `[run]` | `jac run` defaults: `cache`, `session`, `diagnostics` (`"error"`/`"all"`/`"none"`) |
-| `[check]` | type-check behavior: `enforce_access` (promote `:pub`/`:protect`/`:priv` visibility violations from warnings to hard errors), `warn_native_seams` (warn when a native-eligible method falls back to Python) |
+| `[check]` | type-check behavior: `enforce_access` (promote `:pub`/`:protect`/`:priv` visibility violations from warnings to hard errors) |
 | `[check.lint]` | lint rule selection: `select = ["default"]` / `["all"]`, `ignore = ["combine-has"]`, `exclude = ["legacy/*"]` |
 | `[test]` | `jac test` defaults: `directory`, `filter`, `verbose`, `fail_fast`, `max_failures` |
 | `[build]` | `dir` (artifact root, default `.jac/` - holds `cache/`, `venv/`, `client/`, `data/`) |

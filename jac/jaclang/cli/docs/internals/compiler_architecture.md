@@ -244,12 +244,13 @@ tree every backend reads.
 1. **Declared at parse** (`JacProgram.parse_source`): a module whose
    codespace is declared (a native-only or client location, a native unit,
    a forced or ahead-of-time build) is stamped before symbol tables are
-   built and is typed in that codespace. A native pin or a native project
-   kind is a preference, not a declaration: such a module is typed with no
-   codespace assumed, like any module that may take the project's native
-   default. The parse records only whether the preference is open
-   (`gen.native_undecided`), from configuration: the default or a pin is
-   native, the compile generates code, the native pipeline is available,
+   built and is typed in that codespace. A module that may take the
+   project's native default is typed with no codespace assumed. A native
+   pin or a native project kind is a declaration, not a preference: such a
+   module is also typed with no codespace assumed, but if it cannot lower
+   the compile fails rather than placing it on the server. The parse records
+   only whether native placement is open (`gen.native_undecided`), from
+   configuration: the default or a pin is native, the compile generates code, the native pipeline is available,
    and the module declares no client elements. Nothing about the module's
    contents is decided here.
 2. **Seeded before typing** (`PlacementApplyPass`, scheduled in both the
@@ -297,8 +298,9 @@ tree every backend reads.
    that uses it. Any other closure that cannot be native (a dependency
    whose summary records a blocker, or into the compiler's own frontend)
    closes the preference, however many modules the closure holds. A native
-   pin on a module is a preference like the project default: only a pin on
-   an element holds that element native. The pass places each top-level element
+   pin on a module declares the module native, so a blocker there is an
+   error rather than a reason to stay on the server; a pin on an element
+   holds that element native. The pass places each top-level element
    native unless a capability rule or a refusal rules it out, and a
    reference between two elements placed apart is allowed when the
    callee's signature can cross (`compiler/boundary_rules.jac`): between
@@ -310,12 +312,11 @@ The placement is final when the pass returns (`gen.placement_mode` is
 `inferred`): the solver adds nothing afterwards, and nothing types the
 module again. The native backend lowers the neutrally typed tree, binding
 interface declarations to the native library, whose conformance to those
-interfaces is checked (`E5116`). A refusal only the backend can see places
-the module on the server in place (`settle_native_module`): the tree was
-typed for no codespace, so the Python backend, which runs after the native
-one in the same schedule, emits it as it is. A backend exception is a
-compiler error (E9003, which blocks the module) and is never absorbed as a
-refusal, and so is a native unit that fails to link. Nothing about a
+interfaces is checked (`E5116`). A refusal only the backend can see is a
+compile error (`E5090`/`E5092`) naming the callable and the reason; the
+module is never moved to the server after lowering starts. A backend
+exception is a compiler error (E9003, which blocks the module), and so is a
+native unit that fails to link. Nothing about a
 placement is stored between compiles beyond each module's summary.
 
 Between client and server code the same boundary rule judges what a request
@@ -783,7 +784,7 @@ Each cache entry is a **JIR file** (Jac IR) with named sections defined in
 | `SEC_BYTECODE` | Marshalled Python `CodeType` (server backend) |
 | `SEC_MTIR` | Meaning-Typed IR for `by llm` calls |
 | `SEC_NBITCODE` | The unit's LLVM bitcode under its native stamp (whole-program and JIT link modes) |
-| `SEC_NIFACE` | The unit's native interface: link symbols, class layouts, initializer, demoted symbols, C library needs; digest-prefixed |
+| `SEC_NIFACE` | The unit's native interface: link symbols, class layouts, initializer, C library needs; digest-prefixed |
 | `SEC_NOBJ` | The unit's relocatable object, materialized on demand from bitcode under its native stamp (incremental link mode) |
 | `SEC_NCTDEPS` | Native compile-time inputs, using the shared CTDEPS codec under a native stamp |
 | `SEC_INTEROP` | Serialised `InteropManifest` |

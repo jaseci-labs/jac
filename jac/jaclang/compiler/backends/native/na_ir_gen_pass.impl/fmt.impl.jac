@@ -7,7 +7,7 @@ impl NaIRGenPass._ensure_fmt_kernel -> bool {
     if kernel_mod is None {
         return False;
     }
-    self._walk_imported_module_abilities(kernel_mod, with_fn_verdicts=False);
+    self._walk_imported_module_abilities(kernel_mod);
     self._fmt_kernel_mod = kernel_mod;
     if kernel_mod?.loc and kernel_mod.loc.mod_path {
         self._note_native_dep(kernel_mod.loc.mod_path);

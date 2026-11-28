@@ -197,12 +197,7 @@ impl NaIRGenPass._maybe_declare_ability(
         self.decorated_fns.pop(name, None);
 
         _fd_imported = _fdm is not None and _fdm is not self.module;
-        if self._demote_method_if_unlowerable(
-            name, func, _sig_mark, stub_body=not _fd_imported
-        )
-            and not _fd_imported {
-            self._rename_demoted_symbol(name, func);
-        }
+        self._drop_if_unlowerable(name, func, _sig_mark, stub_body=not _fd_imported);
     }
 }
 
@@ -611,7 +606,6 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     if _pre_viols is not None {
         self._claimed_units.add(id(nd));
         if self._stub_refused_unit(name, func, _pre_viols) {
-            self._rename_demoted_symbol(name, func);
             return;
         }
     }
@@ -630,8 +624,8 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
             _gen_raised = True;
             self._internal_error(nd, "function", name, _gen_exc, _gen_mark);
         }
-        if _gen_raised and self._demote_method_if_unlowerable(name, func, _gen_mark) {
-            self._rename_demoted_symbol(name, func);
+        if _gen_raised {
+            self._drop_if_unlowerable(name, func, _gen_mark);
         }
         return;
     }
@@ -700,8 +694,7 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     } finally {
         self._leave_function(state);
     }
-    if self._demote_method_if_unlowerable(name, func, _local_mark) {
-        self._rename_demoted_symbol(name, func);
+    if self._drop_if_unlowerable(name, func, _local_mark) {
         return;
     }
 
@@ -790,26 +783,6 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
     self.has_native_code = True;
 
     nd.code_context = CodeContext.NATIVE;
-    if len(self.ctx.errors_had) > _local_mark {
-        self._demote_native_test(nd, func, _local_mark);
-    }
-}
-
-impl NaIRGenPass._demote_native_test(
-    nd: uni.Test, func: ir.Function, local_mark: int
-) -> None {
-    line = nd.loc.first_line if nd.loc else 0;
-    key = native_test_symbol(nd.name.sym_name, line);
-    if not self._demote_method_if_unlowerable(key, func, local_mark, keep_func=True) {
-        return;
-    }
-    self.native_tests = [
-        t
-        for t in self.native_tests
-        if t[1] != func.name
-    ];
-    self._native_test_nodes.pop(func.name, None);
-    nd.code_context = CodeContext.SERVER;
 }
 
 impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {

@@ -143,23 +143,3 @@ impl compile_once(
     options = inherit_session_options(program, options, compiler.closure_options());
     return compiler.run_module(file_path, program, use_str, options);
 }
-
-impl drop_native_bindings(mod: uni.Module, resolved: str) {
-    key = os.path.realpath(resolved);
-    manifest = mod.gen.interop_manifest;
-    if not isinstance(manifest, InteropManifest) or not manifest.bindings {
-        return;
-    }
-    stale = [
-        name
-        for (name, b) in manifest.bindings.items()
-        if (
-            b.source_context == InteropContext.NATIVE
-            and b.source_module
-            and os.path.realpath(b.source_module) == key
-        )
-    ];
-    for name in stale {
-        manifest.bindings.pop(name, None);
-    }
-}

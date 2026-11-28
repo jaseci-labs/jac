@@ -181,17 +181,6 @@ impl native_build(
         f"  Link plan: {len(plan.units)} unit(s), mode={plan.mode}, target={plan.triple}"
     );
 
-    _failures = plan.lowering_failures();
-    if _failures {
-        console.error(
-            f"{len(_failures)} function(s) in the native closure could not lower:\n  "
-                + "\n  ".join(_failures),
-            hint="A native binary or library cannot run a function that did not lower. Run `jac explain placement` on the file for the full report."
-        );
-        _restore_target(_prev_target);
-        return 1;
-    }
-
     if assert_no_rc {
         (_rc_syms, _rc_probes) = _scan_rc_machinery(_application_ir(plan));
         if _rc_syms or _rc_probes {

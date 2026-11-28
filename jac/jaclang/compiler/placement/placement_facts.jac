@@ -7,12 +7,6 @@ glob SPACE_SERVER: str = 'server',
 glob NATIVE_POLICY_DIR_REL: tuple[str, ...] = ("client/targets/desktop/native", );
 
 
-def native_placement_hard(prog: JacProgram, mod_path: str) -> bool;
-
-
-def native_placement_soft(prog: JacProgram, mod: uni.Module) -> bool;
-
-
 def contexts_of(module: uni.Module) -> list[str];
 
 

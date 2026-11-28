@@ -227,7 +227,7 @@ impl NaIRGenPass._emit_osp_edge_factories -> None {
         state = self._enter_function(fn);
         try {
             arch = self.arch_ast_map.get(name);
-            constructible = arch is not None and self._demoted_init_of(name) is None;
+            constructible = arch is not None;
             init_params = self._arch_init_params_of(name);
             if init_params is not None {
                 for param in init_params {

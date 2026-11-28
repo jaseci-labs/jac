@@ -326,14 +326,10 @@ walker NaIRGenPass(CompilerPass) {
         _unit_prefix: str = "",
         _unit_prefixes: dict[str, str] = {},
         _native_dep_paths: list[str] = [],
-        _typed_only_imports: set[str] = set(),
         _full_ast_cache: dict[str, uni.Module] = {},
         _pub_symbols: set[str] = set(),
         _unit_exports: dict[str, NativeExport] = {},
-        _demoted_names: set[str] = set(),
-        _seam_stub_ids: set[int] = set(),
         _native_test_nodes: dict[str, uni.Test] = {},
-        _lowering_issues: list[NativeLoweringIssue] = [],
         tuple_types: dict[str, ir.LiteralStructType] = {},
         global_vars: dict[str, ir.GlobalVariable] = {},
         global_var_types: dict[str, ir.Type] = {},
@@ -1331,10 +1327,7 @@ walker NaIRGenPass(CompilerPass) {
     def _extract_import_module_name(imp: uni.Import) -> (str | None);
     def _walk_imported_module_types(imported_mod: uni.Module) -> None;
     def _walk_imported_module_type_names(imported_mod: uni.Module) -> None;
-    def _walk_imported_module_abilities(
-        imported_mod: uni.Module, with_fn_verdicts: bool = True
-    ) -> None;
-
+    def _walk_imported_module_abilities(imported_mod: uni.Module) -> None;
     def _register_imported_hierarchy(imported_mod: uni.Module) -> None;
     def _report_unreachable_overrides -> None;
     def _own_prefix -> str;
@@ -1357,7 +1350,6 @@ walker NaIRGenPass(CompilerPass) {
     def _dep_is_native_unit(imported_mod: uni.Module, path: str) -> bool;
     def _load_native_unit_module(path: str) -> (uni.Module | None);
     def _is_kernel_unit -> bool;
-    def _record_lowering_issue(issue: NativeLoweringIssue) -> None;
     def _export_native_iface -> None;
     def _build_class_layouts -> dict[str, any];
     def _osp_kernel_init_fns -> list[ir.Function];
@@ -1374,7 +1366,7 @@ walker NaIRGenPass(CompilerPass) {
     def _forward_declare_archetype_methods(arch: uni.Archetype) -> None;
     def _register_imported_globals(nd: uni.GlobalVars, source_path: str = "") -> None;
     def _forward_declare_imported_ability(
-        nd: uni.Ability, unavailable: (set | None) = None, imp_layout: any = None
+        nd: uni.Ability, imp_layout: any = None
     ) -> None;
 
     def _declares_lazily(nd: uni.Ability) -> bool;
@@ -1385,7 +1377,6 @@ walker NaIRGenPass(CompilerPass) {
     def _record_linked_decl(func: (ir.Function | None), decl: uni.Ability) -> None;
     def _ensure_dep_inference(dep_mod: uni.Module) -> None;
     def _ensure_body_inference(method: uni.Ability) -> None;
-    def _imported_function_demotions(imported_mod: uni.Module) -> (set | None);
     def _lower_module -> None;
     def _settle_module -> None;
     def _static_refusals(owner: uni.UniNode) -> (list[NativeRefusal] | None);
@@ -1396,10 +1387,9 @@ walker NaIRGenPass(CompilerPass) {
         keep_func: bool = False
     ) -> bool;
 
-    def _place_unit_python(
+    def _drop_native_unit(
         full_name: str,
         func: ir.Function,
-        refusals: list[NativeRefusal],
         keep_func: bool = False,
         stub_body: bool = True
     ) -> None;
@@ -1408,9 +1398,6 @@ walker NaIRGenPass(CompilerPass) {
         nd: uni.UniNode, kind: str, name: str, exc: Exception, mark: int = 0
     ) -> None;
 
-    def _rename_demoted_symbol(name: str, func: ir.Function) -> None;
-    def _propagate_seam_demotions -> None;
-    def _reaches_seam_stub(func: ir.Function, seen: set[int]) -> (str | None);
     def _check_native_import_names(
         imported_mods: list[tuple[str, uni.Module]]
     ) -> None;
@@ -1803,7 +1790,6 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_nested_ability(nd: uni.Ability) -> None;
     def _predeclare_nested_siblings(nd: uni.Ability) -> None;
     def _codegen_test(nd: uni.Test) -> None;
-    def _demote_native_test(nd: uni.Test, func: ir.Function, local_mark: int) -> None;
     def _apply_static_decorators -> None;
     def _ability_is_generator(nd: uni.Ability) -> bool;
     def _generator_elem_type(nd: uni.Ability) -> (ir.Type | None);
@@ -2294,7 +2280,7 @@ walker NaIRGenPass(CompilerPass) {
         nd: uni.UniNode, _sfull: str, _mnames: list[str], _recv_cls: (str | None)
     ) -> (ir.Function | None);
 
-    def _demote_method_if_unlowerable(
+    def _drop_if_unlowerable(
         full_name: str,
         func: ir.Function,
         local_mark: int,
@@ -2302,10 +2288,6 @@ walker NaIRGenPass(CompilerPass) {
         stub_body: bool = True
     ) -> bool;
 
-    def _owner_element(full_name: str) -> (uni.UniNode | None);
-    def _owner_required(full_name: str) -> bool;
-    def _lacks_python_body(full_name: str) -> bool;
-    def _seam_warnings_on -> bool;
     def _opaque_field_if_unlowerable(
         arch_name: str, fname: str, local_mark: int
     ) -> (ir.Type | None);
@@ -2315,10 +2297,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> bool;
 
     def _constructor_slots -> tuple[str, ...];
-    def _constructor_ability_for(cls: str, slot: str) -> (uni.Ability | None);
-    def _predemote_capability_constructors -> None;
     def _codegen_constructors_first(archetypes: list[uni.Archetype]) -> None;
-    def _demoted_init_of(type_name: str) -> (str | None);
     def _codegen_no_sig_method(arch_name: str, method: uni.Ability) -> None;
     def _event_from_walker(method: uni.Ability) -> bool;
     def _forward_declare_event_method(arch_name: str, method: uni.Ability) -> None;

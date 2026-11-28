@@ -379,7 +379,7 @@ impl build_native_legality(
                 }
                 continue;
             }
-            owner = native_capability_demotion_owner(note.site);
+            owner = native_capability_owner(note.site);
             if owner is None {
                 legality.refuse_site(mod, noted);
             } else {
@@ -388,7 +388,7 @@ impl build_native_legality(
         }
     }
     for (vnode, vkind, vname, vhelp) in native_capability_violations(mod) {
-        owner = native_capability_demotion_owner(vnode);
+        owner = native_capability_owner(vnode);
         if owner is None {
             note = "No owning method or function can absorb this construct as a "
             "native seam, so the element that contains it is placed in Python.";
@@ -443,7 +443,7 @@ impl build_native_legality(
             }
             unprovided = interop_refusal(mod, nm);
             if unprovided is not None {
-                caller = native_capability_demotion_owner(nm);
+                caller = native_capability_owner(nm);
                 if caller is None {
                     legality.refuse_site(mod, unprovided);
                 } else {
@@ -458,7 +458,7 @@ impl build_native_legality(
                         site=nm,
                         text=f"error[E5090]: {gap}"
                     );
-                    gap_owner = native_capability_demotion_owner(nm);
+                    gap_owner = native_capability_owner(nm);
                     if gap_owner is None {
                         legality.refuse_site(mod, missing);
                     } else {
@@ -582,22 +582,12 @@ impl element_requirements(mod: Module, prog: JacProgram) -> dict[int, tuple[str,
     out: dict[int, tuple[str, str]] = {};
     mod_path = mod.loc.mod_path if mod.loc is not None else "";
     declared = prog.declared_codespace(mod_path) if mod_path else "";
-    preferred = declared == TARGET_NATIVE and prog.prefers_native_codespace(mod_path);
-    if preferred {
-        declared = "";
-    }
     for elem in mod.elements {
         if not isinstance(elem, ContextAwareNode) {
             continue;
         }
         name = element_display_name(elem);
-        pin = (
-            config_element_pin(mod_path, name)
-                if preferred
-                else config_pin_for(mod_path, name)
-        )
-            if mod_path
-            else "";
+        pin = config_pin_for(mod_path, name) if mod_path else "";
         if pin {
             out[id(elem)] = (pin, "pinned in jac.toml");
         } elif declared {
@@ -704,7 +694,7 @@ impl uncrossable_native(mod: Module, prog: JacProgram, held: set[int]) -> set[in
     return moved;
 }
 
-impl _demote_unreached_imports(
+impl _server_place_unreached_imports(
     mod: Module, tentative: list[ContextAwareNode], prog: JacProgram
 ) -> None {
     refresh_placement_module(mod, prog);
@@ -764,50 +754,6 @@ impl stamp_native(mod: Module, held: set[int]) -> list[ContextAwareNode] {
         }
     }
     return stamped;
-}
-
-impl settle_native_module(
-    mod: Module, prog: JacProgram, pending: list[Alert], warnings: list[Alert]
-) -> (NativeRefusal | None) {
-    if not pending or not native_placement_soft(prog, mod) {
-        return None;
-    }
-    if mod.gen.placement_mode == "inferred" {
-        for (need, _why) in element_requirements(mod, prog).values() {
-            if need == "native" {
-                return None;
-            }
-        }
-    }
-
-    refusal = refusal_from_alert(pending[0]);
-    del pending[:];
-    del warnings[:];
-    gen = mod.gen;
-    gen.native_refusal = refusal.headline();
-    gen.llvm_ir = None;
-    gen.native_engine = None;
-    gen.native_bitcode = None;
-    gen.native_object = None;
-    gen.native_iface = None;
-    gen.native_layout = None;
-    gen.native_deps = [];
-    settle_server(mod);
-
-    record_decided(prog, mod);
-    mod_path = mod.loc.mod_path if mod.loc is not None else "";
-    resolved = os.path.realpath(mod_path);
-    for stale in invalidate_importers_es(prog, resolved) {
-        drop_native_bindings(stale, resolved);
-    }
-    host = active_host();
-    host.record_native_coverage(resolved, 'demoted', refusal.code, refusal.headline());
-    host.note(
-        f"note: {mod_path} preferred native but did not lower; "
-        f"compiled in the server codespace ({refusal.headline()})",
-        "dim"
-    );
-    return refusal;
 }
 
 impl PlacementPass._emit_refusal(refusal: NativeRefusal, required_by: str) -> None {
@@ -991,12 +937,12 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
     }
     refresh_placement_module(ir_in, self.prog);
     if carries_native and inferred_refused {
-        _demote_unreached_imports(ir_in, tentative, self.prog);
+        _server_place_unreached_imports(ir_in, tentative, self.prog);
         if _runs_split(ir_in) {
             split_moved = uncrossable_native(ir_in, self.prog, set(required.keys()));
             if split_moved {
                 inferred_refused.update(split_moved);
-                _demote_unreached_imports(ir_in, tentative, self.prog);
+                _server_place_unreached_imports(ir_in, tentative, self.prog);
                 still_native = False;
                 for elem in ir_in.elements {
                     if isinstance(elem, ContextAwareNode)

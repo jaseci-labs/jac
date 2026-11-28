@@ -547,10 +547,8 @@ native layout records the emitted name separately from its source-level key.
   halves exist only as the internal `_teredo_server` and `_teredo_client`
   (each `IPv4Address | None`): CPython's
   single 2-tuple-or-`None` property has to be typed `any` here, and a tuple of
-  objects boxed into `any` does not lower -- it fails a native build closure
-  outright ("Declarations in the native closure could not lower") and, worse,
-  merely *demotes* under the JIT, where a demoted callee reached from a pinned
-  function aborts with SIGABRT and no diagnostic. Comparisons go through
+  objects boxed into `any` does not lower, and that is a compile error naming
+  the callable under `jac run` and `jac build --native` alike. Comparisons go through
   `__eq__`/`__lt__` explicitly, since the operators do not dispatch to a
   bundled obj's dunders.
 
@@ -835,8 +833,8 @@ native layout records the emitted name separately from its source-level key.
   dispatch (`obj(args)` is not callable; `obj.__call__(args)` is a normal
   method call). `lru_cache(fn)` direct decoration is a TypeError on na: a
   function passed through `any` arrives boxed with no callable tag and
-  `callable()` has no native lowering. The `@dec` spelling demotes for the
-  same bare-function-pointer rule (the lowering raises "a native decorator
+  `callable()` has no native lowering. The `@dec` spelling is a compile error for
+  the same bare-function-pointer rule (the lowering raises "a native decorator
   returned a capturing closure" or worse; decorate by explicit call
   instead). SCOPE/divergences: functions are single-argument and keys are
   int/float/bool/str/None (tagged length-prefixed str keys; other arg types
@@ -860,8 +858,8 @@ native layout records the emitted name separately from its source-level key.
   `bundled_functools_reduce_init.jac`); `cmp_to_key(mycmp)` returns
   a factory whose key objects expose `.obj` and the six comparison dunders
   over the stored comparator, whose result may be an int or a float and is
-  compared against zero as a number either way -- but **sorting with them demotes the whole
-  native program** (E5092: native `sorted`/`list.sort` compare only
+  compared against zero as a number either way -- but **sorting with them is a compile
+  error** (E5092: native `sorted`/`list.sort` compare only
   orderable primitive keys and never dispatch `__lt__` on key objects), so
   `cmp_to_key` is only directly usable (`.obj`, dunder calls) on na;
   `wraps` returns a decorator that answers its wrapper unchanged because

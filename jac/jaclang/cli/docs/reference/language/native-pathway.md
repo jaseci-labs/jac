@@ -41,18 +41,19 @@ Native placement is **inferred, never spelled in the filename**. Under
 `[placement] default = "native"` (the default), the placement
 solver decides each module's codespace: `scan_native_blockers` plus an
 import-closure fixpoint determine whether the module can lower natively.
-A module that can, goes native; one that prefers native but cannot lower
-(Python imports, `pub` endpoints, `root`/persistence access, ...) demotes to the server codespace with a note.
+A module that can, goes native; one with a native blocker (Python imports,
+`pub` endpoints, `root`/persistence access, ...) is placed in the server codespace.
+Once a module is placed native, code in it that the backend cannot lower is a
+compile error (`E5090`/`E5092`) naming the callable and the reason.
 An import whose braces declare C-ABI functions, e.g. `import from raylib {
 def InitWindow(w: i32, h: i32, title: str) -> None; }`, is an FFI surface
 only the native backend can satisfy, so it -- and the declarations that
 use it -- always land native, just as JSX and npm imports infer the client
 codespace. `pub` elements anchor a *standalone* module to the server
 (endpoint semantics); a module pulled in as a native dependency may still
-use `pub` freely as its C-ABI export marker. To *force* native -- so
-lowering problems stay loud errors instead of demoting -- use `jac build
-<file> --native`, or `CompileOptions(force_codespace='native')`
-programmatically:
+use `pub` freely as its C-ABI export marker. To *force* a whole module
+native, use `jac build <file> --native`, or
+`CompileOptions(force_codespace='native')` programmatically:
 
 | Aspect | Details |
 |--------|---------|
@@ -228,7 +229,7 @@ Hello, World!
 The output is a fully linked, self-contained executable. No external compiler (gcc, clang) or linker (ld, lld) is invoked -- Jac's built-in compilation pipeline handles everything from LLVM IR generation through to the final binary format for your platform.
 
 !!! info "Forcing vs. inference"
-    Under the default `[placement] default = "native"`, `jac run` already infers native placement -- but a module that cannot lower quietly demotes to the server codespace with a note. `jac build <file> --native` instead *coerces* the module native, so anything that cannot lower is a loud compile error rather than a demotion.
+    Under the default `[placement] default = "native"`, `jac run` already infers native placement, and a module with a native blocker stays in the server codespace. `jac build <file> --native` instead *coerces* the whole module native. In both cases, native code that cannot lower is a compile error: `jac run`, `jac check` and `jac build --native` report the same `E5090`/`E5092` diagnostics.
 
 ### Compilation Pipeline
 
@@ -1159,7 +1160,7 @@ No compile-time environment variable sets behavior. The diagnostic surfaces that
 The module is the native unit. Every native-locked module's JIR carries
 native sections beside its bytecode and type interface: `SEC_NIFACE`, the
 unit's native interface (exports with their link symbols, class layouts,
-initializer, demoted symbols, C library needs, direct native dependencies;
+initializer, C library needs, direct native dependencies;
 digest-prefixed exactly as the type interface is), and `SEC_NOBJ`, its
 relocatable object, plus `SEC_NBITCODE`, its bitcode. The native sections
 are keyed by the module's content key plus a stamp of the compiler digest,
@@ -1219,15 +1220,15 @@ JAC_DUMP_IR=/tmp/output.ll jac build --native program.jac
 
 This produces a human-readable `.ll` file that can be inspected with any text editor or processed with LLVM tools (`llc`, `opt`, `llvm-dis`).
 
-### Explaining a demotion
+### Explaining a lowering error
 
-A method the backend cannot lower is *demoted*: it falls back to its Python implementation while the rest of its class stays native. The build prints a `⚠ native seam -- demoting ...` warning for each, naming why on one line and, when the refusal carries one, a `help:` line with the fix (for a call through an `any` value, the `Callable[[...], R]` binding). `jac explain placement <file>` turns that line into the full story:
+A native function or method the backend cannot lower is a compile error (`E5090` or `E5092`) naming the callable and why on one line and, when the refusal carries one, a `help:` line with the fix (for a call through an `any` value, the `Callable[[...], R]` binding). The same error appears under `jac run`, `jac check` and `jac build --native`. Fix the construct (often by adding types), or move the code to the server codespace: drop the module's `"native"` pin, or pin it `"server"` under `[placement.pins]`. Calling server functions from native code, or using `sv import`, stays available for code that must remain on the server. `jac explain placement <file>` shows where each element was placed and why, and the debug flag prints the full story for each error:
 
 ```bash
 JAC_NA_DEBUG=1 jac build --native program.jac
 ```
 
-Each demotion emits `NA_DEBUG demote <Type>.<method>` followed by every diagnostic that made the method un-lowerable, with source context. When the emitter raises outright rather than reporting a diagnostic, that is a compiler bug and the build fails with an `E5092` error naming the callable; under the flag the line `NA_DEBUG raise <Type>.<method>` and the Python traceback pointing at the codegen site are printed as well. Pin the module to the server codespace under `[placement.pins]` to keep working until the bug is fixed. The flag also forces the seam warning on when `[check] warn_native_seams = false` would otherwise silence it.
+For each un-lowerable callable the flag prints every diagnostic that made it un-lowerable, with source context. When the emitter raises outright rather than reporting a diagnostic, that is a compiler bug and the build fails with an `E5092` error naming the callable; under the flag the line `NA_DEBUG raise <Type>.<method>` and the Python traceback pointing at the codegen site are printed as well. Pin the module to the server codespace under `[placement.pins]` to keep working until the bug is fixed.
 
 ### Bytecode Cache
 

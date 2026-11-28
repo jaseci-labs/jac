@@ -108,17 +108,8 @@ impl NaIRGenPass._static_refusals(owner: uni.UniNode) -> (list[NativeRefusal] | 
 }
 
 impl NaIRGenPass._settle_module -> None {
-    if self._internal_errors {
-        self.ctx.errors_had.extend(self._internal_errors);
-        self._internal_errors = [];
-        return;
-    }
-    refusal = settle_native_module(
-        self.module, self.prog, self.ctx.errors_had, self.ctx.warnings_had
-    );
-    if refusal is not None and self._legality is not None {
-        self._legality.refuse_module(refusal);
-    }
+    self.ctx.errors_had.extend(self._internal_errors);
+    self._internal_errors = [];
 }
 
 impl NaIRGenPass._internal_error(
@@ -208,7 +199,6 @@ impl NaIRGenPass._lower_module -> None {
     }
     self._emit_clib_definitions();
     self._emit_clib_data_inits();
-    self._propagate_seam_demotions();
     _unclaimed = False;
     for (_ck, _crefusals) in self._legality.units.items() {
         if _ck in self._claimed_units or _ck in self._legality.reached {
@@ -249,14 +239,6 @@ impl NaIRGenPass._lower_module -> None {
         self.module.gen.ir_module = self.llvm_module;
         self.module.gen.llvm_ir = self.llvm_module;
         self.module.gen.native_deps = list(self._native_dep_paths);
-        self.module.gen.native_fallbacks = native_fallbacks(
-            self._lowering_issues,
-            [
-                func.name.removesuffix(DEMOTED_SUFFIX)
-                for func in self.llvm_module.functions
-                if not func.is_declaration and func.name.endswith(DEMOTED_SUFFIX)
-            ]
-        );
 
         import os;
         if self.prog.options.rc_stats {
@@ -291,11 +273,6 @@ impl NaIRGenPass._lower_module -> None {
         self._export_native_layout();
         self._export_native_iface();
     }
-}
-
-impl NaIRGenPass._record_lowering_issue(issue: NativeLoweringIssue) -> None {
-    self._lowering_issues.append(issue);
-    issue.record(self.llvm_module);
 }
 
 impl NaIRGenPass._glob_init_symbols -> tuple[list[str], list[str]] {
@@ -409,9 +386,6 @@ impl NaIRGenPass._export_native_iface -> None {
     if entry_fn is not None {
         iface.entry_symbol = str(entry_fn.name);
     }
-    iface.demoted = sorted(
-        self._demoted_names | {issue.symbol for issue in self._lowering_issues}
-    );
     iface.clib_paths = list(self.module.gen._clib_paths or []);
     iface.python_imports = [
         binding.name for binding in self.module.gen.interop_manifest.native_imports
@@ -682,149 +656,20 @@ impl NaIRGenPass._stub_refused_unit(
     if not refusals {
         return False;
     }
-    if self.prog.options.native_required_for(self.module.loc.mod_path)
-        or (
-            self._lacks_python_body(full_name) and not self._owner_required(full_name)
-        ) {
-        for _refusal in refusals {
-            if _refusal.site is None {
-                continue;
-            }
-            self.emit(
-                E5090 if _refusal.code == "E5090" else E5092,
-                node_override=_refusal.site,
-                kind=_refusal.kind,
-                name=_refusal.name,
-                help_text=_refusal.help
-            );
-        }
-    }
-    self._place_unit_python(full_name, func, refusals, keep_func=keep_func);
-    return True;
-}
-
-impl NaIRGenPass._rename_demoted_symbol(name: str, func: ir.Function) -> None {
-    self._demoted_names.add(name);
-    self._unit_exports.pop(name, None);
-    try {
-        self.llvm_module.globals.pop(func.name, None);
-        func.name = f"{func.name}{DEMOTED_SUFFIX}";
-        self.llvm_module.globals[func.name] = func;
-    } except Exception {}
-}
-
-impl NaIRGenPass._propagate_seam_demotions -> None {
-    if not self._seam_stub_ids {
-        return;
-    }
-    method_names = {id(fn): name for (name, fn) in self.method_funcs.items()};
-    owners: list[tuple[str, ir.Function, uni.Ability, bool]] = [];
-    for (_fid, _linked) in self._linked_fn_decls.items() {
-        _linked_fn = _linked[0];
-        _linked_decl = _linked[1];
-        if _linked_fn is None
-            or not _linked_fn.blocks
-            or id(_linked_fn) in self._seam_stub_ids {
+    for _refusal in refusals {
+        if _refusal.site is None {
             continue;
         }
-        if id(_linked_fn) in method_names {
-            owners.append(
-                (method_names[id(_linked_fn)], _linked_fn, _linked_decl, True)
-            );
-        } elif _linked_decl.name_ref is not None
-            and self.scope.function(_linked_decl.name_ref.sym_name) is _linked_fn {
-            owners.append(
-                (_linked_decl.name_ref.sym_name, _linked_fn, _linked_decl, False)
-            );
-        }
-    }
-    changed = True;
-    while changed {
-        changed = False;
-        for (name, func, decl, is_method) in owners {
-            if id(func) in self._seam_stub_ids {
-                continue;
-            }
-            _owner_seen: set[int] = set();
-            reached = self._reaches_seam_stub(func, _owner_seen);
-            if reached is None {
-                continue;
-            }
-            mark = len(self.ctx.errors_had);
-            self.emit(
-                E5092,
-                node_override=decl,
-                kind="function",
-                name=reached,
-                help_text=f"'{reached}' demoted to its Python-only implementation "
-                f"(native seam), so '{name}' cannot reach it natively; hoist the "
-                f"blocking construct out of '{reached}' or move '{name}' off the "
-                f"native pathway."
-            );
-            if self._demote_method_if_unlowerable(name, func, mark, keep_func=is_method)
-                and not is_method {
-                self._rename_demoted_symbol(name, func);
-            }
-            changed = True;
-        }
-    }
-    for (symbol, nd) in list(self._native_test_nodes.items()) {
-        _test_fn = self.llvm_module.globals.get(symbol);
-        if not isinstance(_test_fn, ir.Function)
-            or id(_test_fn) in self._seam_stub_ids {
-            continue;
-        }
-        _test_seen: set[int] = set();
-        reached = self._reaches_seam_stub(_test_fn, _test_seen);
-        if reached is None {
-            continue;
-        }
-        mark = len(self.ctx.errors_had);
         self.emit(
-            E5092,
-            node_override=nd,
-            kind="function",
-            name=reached,
-            help_text=f"'{reached}' demoted to its Python-only implementation "
-            f"(native seam); the test runs in the server codespace instead."
+            E5090 if _refusal.code == "E5090" else E5092,
+            node_override=_refusal.site,
+            kind=_refusal.kind,
+            name=_refusal.name,
+            help_text=_refusal.help
         );
-        self._demote_native_test(nd, _test_fn, mark);
     }
-}
-
-impl NaIRGenPass._reaches_seam_stub(func: ir.Function, seen: set[int]) -> (str | None) {
-    seen.add(id(func));
-    for blk in func.blocks {
-        for instr in blk.instructions {
-            if not isinstance(instr, ir.Instruction) {
-                continue;
-            }
-            for operand in instr.operands {
-                op = operand;
-                if isinstance(op, ir.GlobalVariable)
-                    and op.name in self._static_closure_fns {
-                    op = self._static_closure_fns[op.name];
-                }
-                if not isinstance(op, ir.Function) or id(op) in seen {
-                    continue;
-                }
-                if id(op) in self._seam_stub_ids {
-                    linked = self._linked_fn_decls.get(id(op));
-                    if linked is not None and linked[1].name_ref is not None {
-                        return linked[1].name_ref.sym_name;
-                    }
-                    return op.name.removesuffix(DEMOTED_SUFFIX);
-                }
-                if op.blocks and op.linkage in ("private", "internal") {
-                    found = self._reaches_seam_stub(op, seen);
-                    if found is not None {
-                        return found;
-                    }
-                }
-            }
-        }
-    }
-    return None;
+    self._drop_native_unit(full_name, func, keep_func=keep_func);
+    return True;
 }
 
 impl NaIRGenPass._llvm_type_str(ty: ir.Type, pointee_names: dict[str, str]) -> str {
@@ -1347,11 +1192,6 @@ impl NaIRGenPass._native_imports(
     }
 
     self._foreign_modules = [m for (_s, m) in imported_mods];
-    self._typed_only_imports = {
-        k
-        for (k, v) in typed_only.items()
-        if v
-    };
 
     runtime_reached: set[str] = set();
     _rt_todo: list[str] = list(runtime_edges.get("", []));
@@ -1467,12 +1307,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     }
 
     for (_, imported_mod) in imported_mods {
-        _imp_path = os.path.abspath(imported_mod.loc.mod_path)
-            if imported_mod?.loc
-            else "";
-        self._walk_imported_module_abilities(
-            imported_mod, with_fn_verdicts=(_imp_path not in self._typed_only_imports)
-        );
+        self._walk_imported_module_abilities(imported_mod);
     }
 }
 
@@ -1585,9 +1420,7 @@ impl NaIRGenPass._walk_imported_module_types(imported_mod: uni.Module) -> None {
     }
 }
 
-impl NaIRGenPass._walk_imported_module_abilities(
-    imported_mod: uni.Module, with_fn_verdicts: bool = True
-) -> None {
+impl NaIRGenPass._walk_imported_module_abilities(imported_mod: uni.Module) -> None {
     _imp_iface = self._dep_iface(imported_mod);
     _imp_layout = _imp_iface.layout if _imp_iface is not None else None;
     if _imp_layout is None {
@@ -1620,10 +1453,6 @@ impl NaIRGenPass._walk_imported_module_abilities(
             _wl_internal = sealed_runtime_active();
         }
     }
-    _imp_fn_unavail: (set | None) = None;
-    if with_fn_verdicts {
-        _imp_fn_unavail = self._imported_function_demotions(imported_mod);
-    }
     for _imp_arch in ModuleFacts.iter_context_stmts(imported_mod) {
         if not isinstance(_imp_arch, uni.Archetype)
             or _imp_arch.body is None
@@ -1643,8 +1472,7 @@ impl NaIRGenPass._walk_imported_module_abilities(
                     and _im_full not in _imp_layout.methods
                     and not _imp_stmt.type_params
                 )
-                    or (_imp_layout is None and _wl_internal)
-                    or (_imp_fn_unavail is not None and _im_full in _imp_fn_unavail) {
+                    or (_imp_layout is None and _wl_internal) {
                     self._native_skipped_methods.add(_im_full);
                 }
             }
@@ -1680,7 +1508,7 @@ impl NaIRGenPass._walk_imported_module_abilities(
             continue;
         }
         if isinstance(stmt, uni.Ability) {
-            self._forward_declare_imported_ability(stmt, _imp_fn_unavail, _imp_layout);
+            self._forward_declare_imported_ability(stmt, _imp_layout);
         }
     }
 }
@@ -1876,7 +1704,7 @@ impl NaIRGenPass._register_imported_globals(
 }
 
 impl NaIRGenPass._forward_declare_imported_ability(
-    nd: uni.Ability, unavailable: (set | None) = None, imp_layout: any = None
+    nd: uni.Ability, imp_layout: any = None
 ) -> None {
     name = nd.name_ref.sym_name if nd.name_ref else None;
     if name is None {
@@ -1912,8 +1740,7 @@ impl NaIRGenPass._forward_declare_imported_ability(
         _fd_unlisted = _layout is not None
             and not name.startswith("__")
             and name not in _layout.functions;
-        _fd_demoted = (unavailable is not None and name in unavailable) or _fd_unlisted;
-        if _fd_demoted {
+        if _fd_unlisted {
             if _owner_name {
                 self._native_skipped_methods.add(f"{_owner_name}.{name}");
             }
@@ -2075,19 +1902,6 @@ impl NaIRGenPass._ensure_body_inference(method: uni.Ability) -> None {
     if not require(self.prog, owner, CompilationProduct.ANALYSIS) {
         raise NativeRefused(f"Native dependency analysis failed: {owner.loc.mod_path}");
     }
-}
-
-impl NaIRGenPass._imported_function_demotions(
-    imported_mod: uni.Module
-) -> (set | None) {
-    if imported_mod.gen.native_iface is not None {
-        return set(imported_mod.gen.native_iface.demoted);
-    }
-    iface = self._dep_iface(imported_mod);
-    if iface is not None {
-        return set(iface.demoted);
-    }
-    return None;
 }
 
 impl NaIRGenPass._check_native_import_names(

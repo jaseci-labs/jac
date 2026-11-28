@@ -3,7 +3,6 @@ import ctypes;
 import os;
 import subprocess;
 import tempfile;
-import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
 import from tests.support {
     compile_native,
     get_func,
@@ -14,7 +13,6 @@ import from tests.support {
 
 test "list constructs scalar and mixed tuple elements in order" {
     (engine, module) = compile_native("tuple_list_conversion.jac");
-    assert not native_lowering_issues(str(module.gen.llvm_ir));
     call = get_func(engine, "scalars", ctypes.c_int64);
     actual = call();
     assert actual == 25 , actual;
@@ -22,7 +20,6 @@ test "list constructs scalar and mixed tuple elements in order" {
 
 test "list retains fresh and returned tuple objects exactly once" {
     (engine, module) = compile_native("tuple_list_conversion.jac");
-    assert not native_lowering_issues(str(module.gen.llvm_ir));
     drops = get_func(engine, "drops", ctypes.c_int64);
     for (name, expected) in [("fresh_objects", 10), ("returned_objects", 11)] {
         call = get_func(engine, name, ctypes.c_int64);
@@ -34,7 +31,6 @@ test "list retains fresh and returned tuple objects exactly once" {
 
 test "list shares borrowed tuple objects and releases both references" {
     (engine, module) = compile_native("tuple_list_shared.jac");
-    assert not native_lowering_issues(str(module.gen.llvm_ir));
     drops = get_func(engine, "shared_drops", ctypes.c_int64);
     call = get_func(engine, "borrowed_objects", ctypes.c_int64);
     before = drops();
@@ -44,8 +40,6 @@ test "list shares borrowed tuple objects and releases both references" {
 
 test "tuple conversion preserves empty and widened list storage" {
     (engine, module) = compile_native("tuple_list_context.jac");
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
-    assert not issues , str(issues);
     for (name, expected) in [("empty_lists", 43), ("widened_elements", 6)] {
         call = get_func(engine, name, ctypes.c_int64);
         actual = call();

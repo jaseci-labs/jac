@@ -104,8 +104,8 @@ build one binary per selected platform: `jac-<version>-<platform>` (or
 the same assets. Intel Mac remains a manually selected release target.
 
 * `JAC_NA_DEBUG=1 jac build --native launcher/launcher.jac` prints why a function in
-  the stub's closure would be demoted to Python-only; the stub must lower in
-  full (a demoted function cannot run before CPython exists).
+  the stub's closure could not lower; the stub must lower in full (it runs
+  before CPython exists).
 * To boot a freshly built stub against an existing payload:
   `jac run` a script that calls `jaclang.dist.fused_binary.graft_runtime(<installed jac>, <stub copy>)`,
   then run the copy with a fresh `HOME`.

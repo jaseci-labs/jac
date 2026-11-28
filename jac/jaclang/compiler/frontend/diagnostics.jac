@@ -2421,7 +2421,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E5099",
          Category.CODEGEN,
          "Client pathway lowered the keyword-argument key of call '{func}' to an unusable shape: {shape}",
-         help="A keyword-argument key names a parameter of the callee, so it must lower to a plain identifier or a string literal. Reaching the argument resolver as any other shape means an earlier lowering rewrote the key as if it were a scope reference; the resolver used to demote such a pair to a trailing '...spread', which left the named parameter as 'undefined' at runtime. This is an internal compiler bug; please report it with the call site.",
+         help="A keyword-argument key names a parameter of the callee, so it must lower to a plain identifier or a string literal. Reaching the argument resolver as any other shape means an earlier lowering rewrote the key as if it were a scope reference; the resolver used to turn such a pair into a trailing '...spread', which left the named parameter as 'undefined' at runtime. This is an internal compiler bug; please report it with the call site.",
          blocks_codegen=True
      ),
      E5098 = _err(

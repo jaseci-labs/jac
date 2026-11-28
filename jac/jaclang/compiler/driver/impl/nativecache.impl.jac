@@ -815,8 +815,7 @@ impl NativeBuildSession.lower(
         self.registry._event("native_unit_lower");
         self.registry.note_slow_step("lowering", resolved, started);
         if len(self.prog.errors_had) > errors_before or mod.gen.native_iface is None {
-            refusal = mod.gen.native_refusal
-                or unavailable(CompilationProduct.NATIVE_LOWER);
+            refusal = unavailable(CompilationProduct.NATIVE_LOWER);
             if refusal {
                 self.registry.failures[resolved] = refusal;
             } elif mod.gen.native_iface is None {
@@ -867,10 +866,7 @@ impl NativeBuildSession.compact_ir(paths: list[str]) {
     if _keeps_unit_ir(self.options) {
         return;
     }
-    import from jaclang.compiler.backends.native.na_compile_pass {
-        unit_bitcode,
-        unit_fallbacks
-    }
+    import from jaclang.compiler.backends.native.na_compile_pass { unit_bitcode }
     for path in paths {
         resolved = os.path.realpath(path);
         mod = self.lowered.get(resolved);
@@ -882,7 +878,6 @@ impl NativeBuildSession.compact_ir(paths: list[str]) {
         if symbols is None {
             continue;
         }
-        _ = unit_fallbacks(mod.gen);
         snapshot = NativeIRSnapshot(
             bitcode=unit_bitcode(ir), defined=symbols[0], declared=symbols[1]
         );
@@ -927,11 +922,7 @@ impl NativeBuildSession.unbound_symbols(
         defined = provided[0];
         prefix = f"{ent.iface.prefix}." if ent.iface.prefix else "";
         for symbol in declared {
-            if symbol not in defined
-                and (
-                    (prefix and symbol.startswith(prefix))
-                    or (symbol + DEMOTED_SUFFIX) in defined
-                ) {
+            if symbol not in defined and prefix and symbol.startswith(prefix) {
                 unbound.add(symbol);
             }
         }
@@ -979,9 +970,6 @@ impl NativeBuildSession._optimize_in_parallel(paths: list[str]) -> set[str] {
         mod = self.lowered.get(path);
         if mod is None or (mod.gen.llvm_ir is None and path not in self.ir_snapshots) {
             continue;
-        }
-        if opts.native_required_for(path) {
-            unit_fallbacks(mod.gen).require();
         }
         cached = self.registry.ensure(path, compile_on_miss=False, options=opts);
         if cached is not None and cached.bitcode is not None {

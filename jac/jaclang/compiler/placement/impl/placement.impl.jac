@@ -574,18 +574,8 @@ impl summarize_module(
         es.name = element_display_name(stmt);
         es.pinned = '';
         if ps.mod_path {
-            import from jaclang.compiler.placement.placement_pins {
-                config_element_pin,
-                config_module_pin,
-                effective_pin_for
-            }
+            import from jaclang.compiler.placement.placement_pins { effective_pin_for }
             es.pinned = effective_pin_for(ps.mod_path, es.name, prog);
-            if es.pinned == 'native'
-                and prog is not None
-                and config_module_pin(ps.mod_path) == 'native'
-                and prog.prefers_native_codespace(ps.mod_path) {
-                es.pinned = config_element_pin(ps.mod_path, es.name);
-            }
         }
         es.reqs = _element_reqs(stmt);
         if with_refs {

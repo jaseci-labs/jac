@@ -2714,10 +2714,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             node_override=nd,
             kind="function",
             name=func_name,
-            help_text=f"'{func_name}' demoted to its Python-only implementation "
-            f"(native seam), so a native caller cannot reach it; hoist the "
-            f"blocking construct out of '{func_name}' or move this caller off "
-            f"the native pathway."
+            help_text=f"'{func_name}' has no native implementation, so a native "
+            f"caller cannot call it; make '{func_name}' lowerable or move this "
+            f"caller to the server codespace."
         );
         return None;
     }
