@@ -72,8 +72,6 @@ glob _TURN_POOL: list[any] = [];
 def _conflict_turn_pool -> any;
 
 
-def _occ_policy -> tuple[str, int, int];
-
 impl ExecutionManager._finalize_call_response(
     call_state: CallState, result: any, serialize_result: bool = True
 ) -> dict[str, JsonValue] | Generator | AsyncGenerator {
@@ -1861,25 +1859,6 @@ impl _conflict_turn_pool -> any {
 }
 
 
-impl _occ_policy -> tuple[str, int, int] {
-    mode = "retry";
-    max_attempts = 5;
-    backoff_ms = 0;
-    try {
-        import from jaclang.project.config { get_config }
-        cfg = get_config();
-        if cfg is not None {
-            mode = str(cfg.serve.on_conflict).strip().lower();
-            if mode not in ("retry", "fail") {
-                mode = "retry";
-            }
-            max_attempts = cfg.serve.conflict_max_attempts;
-            backoff_ms = cfg.serve.conflict_backoff_ms;
-        }
-    } except Exception {}
-    return (mode, max_attempts, backoff_ms);
-}
-
 impl _plain_value(val: object) -> bool {
     kind = type(val);
     if val is None or kind in (str, int, float, bool, UUID) or isinstance(val, Enum) {
@@ -1918,8 +1897,12 @@ impl _run_function_with_occ(
         if deserialize_args {
             _deserialize_wire_args(args);
         }
-        (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
-        max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
+        import from jaclang.server.session {
+            Session,
+            conflict_policy,
+            transient_db_error
+        }
+        (max_attempts, occ_backoff_ms) = conflict_policy();
         attempt = 0;
         ro_retries = 0;
         reload_root = False;
@@ -2003,7 +1986,6 @@ impl _run_function_with_occ(
                 if occ_backoff_ms > 0 {
                     await asyncio.sleep(occ_backoff_ms * attempt / 1000.0);
                 }
-                import from jaclang.server.session { Session }
                 mem: any = ctx.mem;
                 if isinstance(mem, Session) {
                     import contextvars;
@@ -2029,7 +2011,6 @@ impl _run_function_with_occ(
                 }
                 reload_root = True;
             } except Exception as e {
-                import from jaclang.server.session { transient_db_error }
                 if attempt < max_attempts and transient_db_error(e) {
                     settled = False;
                     if ctx.mem.unit_depth() == 0 {

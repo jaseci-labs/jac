@@ -137,6 +137,44 @@ def _version(ctx: ExecutionContext, id: UUID) -> int {
 }
 
 
+"""How many sessions hold a node's turn queue (the advisory lock writers that
+lost a conflict on it wait on), read on a connection of its own."""
+def _queue_holders(ctx: ExecutionContext, id: UUID) -> int {
+    probe = _as_any(ctx.mem.store).new_session();
+    try {
+        got = probe.rows(
+            "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND granted"
+            " AND database = (SELECT oid FROM pg_database"
+            " WHERE datname = current_database())"
+            " AND ((CAST(classid AS bigint) << 32) | CAST(objid AS bigint))"
+            " = hashtextextended(CAST(:i AS text), 0)",
+            {"i": str(id)}
+        );
+    } finally {
+        probe.close();
+    }
+    return int(got[0][0]);
+}
+
+
+"""Commit `n = 99` on node `id` from a session of its own, then make `ctx` the
+running context again: the winner of a conflict `ctx` has yet to commit."""
+def _rival_write(td: str, ctx: ExecutionContext, id: UUID) {
+    rival = _ctx(td);
+    JacRuntime.exec_ctx = rival;
+    try {
+        theirs = rival.mem.get(id);
+        assert theirs is not None;
+        _as_any(theirs).archetype.n = 99;
+        rival.mem.mark_dirty(theirs);
+        rival.mem.commit();
+    } finally {
+        rival.close();
+        JacRuntime.exec_ctx = ctx;
+    }
+}
+
+
 """Make the next `times` COMMITs of this session's open transaction fail the
 way Postgres fails a serializable transaction at commit: the transaction is
 rolled back and the client is told SQLSTATE 40001. Returns the countdown."""
@@ -1124,6 +1162,269 @@ test "run_request re-runs a unit that ended in a conflict" {
 }
 
 
+test "run_request inside a unit joins it, so a conflict leaves the enclosing unit's writes to its own loop" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            sess = _sess(ctx);
+            assert sess.store is not None;
+            sess.unit_enter();
+            outer = _loose(ctx, 5).ensure_id();
+            calls: list[int] = [];
+            def body {
+                calls.append(1);
+                raise WriteConflict(anchor_id=UUID(int=0));
+            }
+            surfaced = False;
+            try {
+                sess.run_request(body);
+            } except WriteConflict {
+                surfaced = True;
+            }
+            assert surfaced and len(calls) == 1 , (
+                "inside a unit the enclosing loop owns the re-run; run_request ran "
+                f"the body {len(calls)} times"
+            );
+            sess.commit();
+            sess.unit_exit();
+            assert _stored(ctx, outer, "n") == "5" , (
+                "the nested conflict rolled back the enclosing unit's own write"
+            );
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+    }
+}
+
+test "run_request that fails while taking its turn leaves no transaction or turn behind" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        seed = _ctx(td);
+        JacRuntime.exec_ctx = seed;
+        xid: UUID;
+        try {
+            _ = seed.user_root;
+            xid = _loose(seed, 1).ensure_id();
+            seed.mem.commit();
+        } finally {
+            JacRuntime.exec_ctx = old;
+            seed.close();
+        }
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            sess = _sess(ctx);
+            store = _as_any(sess.store);
+            def broken_lock(ids: list[UUID]) {
+                raise RuntimeError("connection reset while pinning the turn");
+            }
+            store.lock_rows = broken_lock;
+            runs: list[int] = [];
+            def body {
+                runs.append(1);
+                mine = ctx.mem.get(xid);
+                assert mine is not None;
+                _as_any(mine).archetype.n += 1;
+                ctx.mem.mark_dirty(mine);
+                if len(runs) == 1 {
+                    _rival_write(td, ctx, xid);
+                }
+            }
+            failed = False;
+            try {
+                sess.run_request(body);
+            } except RuntimeError {
+                failed = True;
+            }
+            assert failed and runs == [1] , (
+                f"the failure taking the turn reaches the caller; the unit ran {len(
+                    runs
+                )} times"
+            );
+            assert not store.in_txn() , (
+                "the transaction the failed turn opened is still open on the session"
+            );
+            assert _queue_holders(ctx, xid) == 0;
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+    }
+}
+
+test "run_request runs the on_commit callbacks of the attempt that committed only" {
+    for commits_inside in [False, True] {
+        with TemporaryDirectory() as td {
+            old = JacRuntime.exec_ctx;
+            seed = _ctx(td);
+            JacRuntime.exec_ctx = seed;
+            xid: UUID;
+            try {
+                _ = seed.user_root;
+                xid = _loose(seed, 1).ensure_id();
+                seed.mem.commit();
+            } finally {
+                JacRuntime.exec_ctx = old;
+                seed.close();
+            }
+            ctx = _ctx(td);
+            JacRuntime.exec_ctx = ctx;
+            fired: list[str] = [];
+            try {
+                ctx.on_commit(lambda { fired.append("before the unit"); });
+                runs: list[int] = [];
+                def body {
+                    runs.append(1);
+                    attempt = len(runs);
+                    if commits_inside {
+                        JacRuntime.commit();
+                    }
+                    ctx.on_commit(lambda { fired.append(f"attempt {attempt}"); });
+                    mine = ctx.mem.get(xid);
+                    assert mine is not None;
+                    _as_any(mine).archetype.n += 1;
+                    ctx.mem.mark_dirty(mine);
+                    if attempt == 1 {
+                        _rival_write(td, ctx, xid);
+                    }
+                }
+                _sess(ctx).run_request(body);
+                assert runs == [1, 1];
+            } finally {
+                JacRuntime.exec_ctx = old;
+                ctx.close();
+            }
+            assert fired == ["before the unit", "attempt 2"] , (
+                "the attempt that lost its conflict was rolled back, so its callback "
+                "must not run, and the caller's own callback must (commit inside the "
+                f"unit: {commits_inside}): {fired}"
+            );
+            assert _stored(ctx, xid, "n") == "100";
+        }
+    }
+}
+
+
+test "run_request gives up a unit that keeps conflicting where [serve] says to" {
+    import from jaclang.project.config { JacConfig, get_explicit_config, set_config }
+    prior = get_explicit_config();
+    try {
+        for (serve, allowed) in [
+            ("conflict_max_attempts = 3", 3),
+            ('on_conflict = "fail"', 1)
+        ] {
+            set_config(JacConfig.from_toml_str(f"[serve]\n{serve}\n"));
+            with TemporaryDirectory() as td {
+                old = JacRuntime.exec_ctx;
+                ctx = _ctx(td);
+                JacRuntime.exec_ctx = ctx;
+                try {
+                    sess = _sess(ctx);
+                    assert sess.store is not None;
+                    calls: list[int] = [];
+                    def body {
+                        calls.append(1);
+                        raise WriteConflict(anchor_id=UUID(int=0));
+                    }
+                    gave_up = False;
+                    try {
+                        sess.run_request(body);
+                    } except WriteConflict {
+                        gave_up = True;
+                    }
+                    assert gave_up , f"[serve] {serve}: the last conflict reaches the caller";
+                    assert len(calls) == allowed , (
+                        f"[serve] {serve} allows {allowed} attempts; the unit ran "
+                        f"{len(calls)} times"
+                    );
+                } finally {
+                    JacRuntime.exec_ctx = old;
+                    ctx.close();
+                }
+            }
+        }
+    } finally {
+        set_config(prior);
+    }
+}
+
+
+test "run_request waits its turn on the node it lost unless it runs on an event loop, and gives the turn back when it gives up" {
+    import from jaclang.project.config { JacConfig, get_explicit_config, set_config }
+    prior = get_explicit_config();
+    set_config(JacConfig.from_toml_str("[serve]\nconflict_max_attempts = 2\n"));
+    try {
+        for (on_loop, turns) in [(False, [0, 1]), (True, [0, 0])] {
+            with TemporaryDirectory() as td {
+                old = JacRuntime.exec_ctx;
+                seed = _ctx(td);
+                JacRuntime.exec_ctx = seed;
+                xid: UUID;
+                try {
+                    _ = seed.user_root;
+                    xid = _loose(seed, 1).ensure_id();
+                    seed.mem.commit();
+                } finally {
+                    JacRuntime.exec_ctx = old;
+                    seed.close();
+                }
+                ctx = _ctx(td);
+                JacRuntime.exec_ctx = ctx;
+                try {
+                    held: list[int] = [];
+                    def body {
+                        held.append(_queue_holders(ctx, xid));
+                        mine = ctx.mem.get(xid);
+                        assert mine is not None;
+                        _as_any(mine).archetype.n += 1;
+                        ctx.mem.mark_dirty(mine);
+                        if len(held) > 1 {
+                            raise WriteConflict(anchor_id=xid);
+                        }
+                        _rival_write(td, ctx, xid);
+                    }
+                    async def from_loop {
+                        _sess(ctx).run_request(body);
+                    }
+                    gave_up = False;
+                    try {
+                        if on_loop {
+                            asyncio.run(from_loop());
+                        } else {
+                            _sess(ctx).run_request(body);
+                        }
+                    } except WriteConflict {
+                        gave_up = True;
+                    }
+                    where = "on an event loop" if on_loop else "off any event loop";
+                    assert gave_up , f"{where}: two attempts are allowed and both conflict";
+                    assert held == turns , (
+                        f"{where}: holders of the node's turn queue per attempt were "
+                        f"{held}, expected {turns}. Off a loop the attempt after a lost "
+                        "conflict waits its turn the way a request does; on a loop it "
+                        "must not block the loop waiting for one"
+                    );
+                    assert _queue_holders(ctx, xid) == 0 , (
+                        f"{where}: a unit that gave up still holds the node's turn "
+                        "queue, so the next writer that loses on it waits for a "
+                        "session that has stopped"
+                    );
+                    assert _stored(ctx, xid, "n") == "99";
+                } finally {
+                    JacRuntime.exec_ctx = old;
+                    ctx.close();
+                }
+            }
+        }
+    } finally {
+        set_config(prior);
+    }
+}
+
+
 """The vote fixture behind the server's own execution manager, so a walker
 runs through the real conflict loop. Returns the manager, the fixture's
 walkers by name, and the fixture module (for its switches and run counter)."""
@@ -1158,11 +1459,13 @@ def _vote_app(td: str) -> tuple[any, dict[str, any], any] {
 
 """Run one walker the way a transport does: inside a request scope of its
 own, on the database the process context uses."""
-def _spawn(exec_mgr: any, walker_cls: any) -> dict[str, any] {
+def _spawn(
+    exec_mgr: any, walker_cls: any, args: (dict[str, any] | None) = None
+) -> dict[str, any] {
     ambient = JacRuntime.get_context();
     async def scoped -> any {
         with RequestScope.open(ambient.base_path_dir, ambient.full_target_path) {
-            return await exec_mgr.spawn_walker(walker_cls, {}, "voter");
+            return await exec_mgr.spawn_walker(walker_cls, args or {}, "voter");
         }
     }
     return _as_any(asyncio.run(scoped()));
@@ -1363,15 +1666,14 @@ test "request loop: a read that runs out of predicate locks is retried, not a 50
 
 
 test "request loop: a COMMIT that never succeeds is re-run up to conflict_max_attempts, then 409" {
-    import from jaclang.server.server { _occ_policy }
+    import from jaclang.server.session { conflict_policy }
     prior = _without_read_tier();
     try {
         with TemporaryDirectory() as td {
             (exec_mgr, walkers, mod) = _vote_app(td);
             seeded = _spawn(exec_mgr, walkers["Seed"]);
             assert "error" not in seeded , f"seeding failed: {seeded}";
-            (mode, max_attempts, _backoff) = _occ_policy();
-            attempts = 1 if mode == "fail" else max(1, max_attempts);
+            (attempts, _backoff) = conflict_policy();
             mod.commit_faults.extend([1] * attempts);
             voted = _spawn(exec_mgr, walkers["Vote"]);
             assert voted.get("error_code") == "write_conflict" , f"{voted}";
@@ -1412,44 +1714,96 @@ test "request loop: a plain answer leaves the scan sealed for the session's clos
 }
 
 
-"""Run `n` copies of the fixture walker `name` at once, each in a request
-scope of its own, after spawning `seed` (when given). Returns their responses
-and how far the number `read` reports moved across the burst."""
-def _burst(
-    name: str, args: dict[str, any], read: str, n: int, seed: str = ""
-) -> tuple[list[any], int] {
-    with TemporaryDirectory() as td {
-        (exec_mgr, walkers, mod) = _vote_app(td);
-        if seed {
-            seeded = _spawn(exec_mgr, walkers[seed]);
-            assert "error" not in seeded , f"seeding failed: {seeded}";
+"""Run one walker the way code outside a request does: in a request scope of
+its own (a thread starts with none), through `run_request` on that scope's
+session. Answers like a transport: the walker's reports, or the error."""
+def _unit(walker_cls: any, args: dict[str, any]) -> dict[str, any] {
+    ambient = JacRuntime.get_context();
+    with RequestScope.open(ambient.base_path_dir, ambient.full_target_path) as ctx {
+        def body -> any {
+            instance = walker_cls(**args);
+            JacRuntime.`spawn(instance, ctx.get_root());
+            return instance;
         }
-        start = _spawn(exec_mgr, walkers[read])["reports"][0];
-        ambient = JacRuntime.get_context();
-        async def one -> any {
-            with RequestScope.open(ambient.base_path_dir, ambient.full_target_path) {
-                return await exec_mgr.spawn_walker(walkers[name], args, "voter");
-            }
+        try {
+            walked = ctx.mem.run_request(body);
+        } except Exception as e {
+            return {"error": f"{type(e).__name__}: {e}"};
         }
-        async def burst -> any {
-            return await asyncio.gather(*[one() for _ in range(n)]);
-        }
-        results = _as_any(asyncio.run(burst()));
-        final = _spawn(exec_mgr, walkers[read])["reports"][0];
-        return (list(results), final - start);
+        return {"reports": list(walked.reports)};
     }
 }
 
 
-test "request loop: ten concurrent writers to one node all land" {
-    for (writer, read, busy) in [
-        ("Bump", "ReadCounter", False),
-        ("Bump", "ReadCounter", True),
-        ("Mark", "ReadMarks", False)
+"""Run `n` copies of the fixture walker `name` at once after spawning `seed`
+(when given): as requests, each in a request scope of its own, or with
+`background`, each on a thread of its own through `run_request`. Returns their
+responses and how far the number `read` reports moved across the burst."""
+def _burst(
+    name: str,
+    args: dict[str, any],
+    read: str,
+    n: int,
+    seed: str = "",
+    background: bool = False
+) -> tuple[list[any], int] {
+    with TemporaryDirectory() as td {
+        (exec_mgr, walkers, mod) = _vote_app(td);
+        def call(which: str, given: dict[str, any]) -> any {
+            if background {
+                return _unit(walkers[which], given);
+            }
+            return _spawn(exec_mgr, walkers[which], given);
+        }
+        if seed {
+            seeded = call(seed, {});
+            assert "error" not in seeded , f"seeding failed: {seeded}";
+        }
+        start = call(read, {})["reports"][0];
+        results: list[any] = [];
+        if background {
+            import from concurrent.futures { ThreadPoolExecutor }
+            with ThreadPoolExecutor(max_workers=n) as pool {
+                running = [pool.submit(call, name, args) for _ in range(n)];
+                results = [job.result() for job in running];
+            }
+        } else {
+            ambient = JacRuntime.get_context();
+            async def one -> any {
+                with RequestScope.open(
+                    ambient.base_path_dir, ambient.full_target_path
+                ) {
+                    return await exec_mgr.spawn_walker(walkers[name], args, "voter");
+                }
+            }
+            async def burst -> any {
+                return await asyncio.gather(*[one() for _ in range(n)]);
+            }
+            results = list(_as_any(asyncio.run(burst())));
+        }
+        final = call(read, {})["reports"][0];
+        return (results, final - start);
+    }
+}
+
+
+test "ten concurrent writers to one node all land, as requests or through run_request" {
+    for (writer, read, busy, background) in [
+        ("Bump", "ReadCounter", False, False),
+        ("Bump", "ReadCounter", True, False),
+        ("Mark", "ReadMarks", False, False),
+        ("Bump", "ReadCounter", False, True),
+        ("Mark", "ReadMarks", False, True)
     ] {
         (results, landed) = _burst(
-            writer, {"hold": 0.05, "busy": busy}, read, 10, seed="SeedCounter"
+            writer,
+            {"hold": 0.05, "busy": busy},
+            read,
+            10,
+            seed="SeedCounter",
+            background=background
         );
+        how = "run_request on threads" if background else "requests";
         refused = [
             r
             for r in results
@@ -1457,11 +1811,12 @@ test "request loop: ten concurrent writers to one node all land" {
         ];
         assert not refused , (
             f"{len(refused)} of 10 writers to one counter were refused "
-            f"({writer}, busy={busy}): losers raced again instead of waiting their turn. "
-            f"First: {refused[0]}"
+            f"({writer}, busy={busy}, {how}): losers raced again instead of "
+            f"waiting their turn. First: {refused[0]}"
         );
         assert landed == 10 , (
-            f"10 accepted writes moved the counter by {landed} ({writer}, busy={busy})"
+            f"10 accepted writes moved the counter by {landed} "
+            f"({writer}, busy={busy}, {how})"
         );
     }
 }

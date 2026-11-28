@@ -227,7 +227,7 @@ obj _RollbackOnlyStore {
 
 
 test "a persistent conflict retries a bounded number of times" {
-    import from jaclang.server.session { MAX_RETRIES }
+    import from jaclang.server.session { conflict_policy }
 
     sess = Session();
     fake = _RollbackOnlyStore();
@@ -246,11 +246,12 @@ test "a persistent conflict retries a bounded number of times" {
         raised = True;
     }
     assert raised , "a persistent conflict must still surface after retrying";
-    assert len(calls) == MAX_RETRIES + 1 , (
-        f"request body ran {len(calls)} times; expected "
-        f"{MAX_RETRIES + 1} (1 try + bounded retries)"
+    (attempts, _backoff) = conflict_policy();
+    assert len(calls) == attempts , (
+        f"request body ran {len(calls)} times; expected the {attempts} "
+        "attempts the [serve] conflict policy allows"
     );
-    assert fake.rollbacks == MAX_RETRIES + 1 , (
+    assert fake.rollbacks == attempts , (
         f"abort() ran {fake.rollbacks} times; expected one per attempt"
     );
 }
